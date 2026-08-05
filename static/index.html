@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GLM-OCR & Unlimited-OCR Engine (Fail-Safe Service)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <style>
+    :root {
+      --bg: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #09090b 100%);
+      --panel: rgba(20, 20, 25, 0.75);
+      --border: rgba(255,255,255,0.08);
+      --text: #f4f4f5;
+      --muted: #a1a1aa;
+      --primary: #6366f1;
+      --primary-h: #4f46e5;
+      --accent: #06b6d4;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 20px;
+    }
+
+    .container { width: 100%; max-width: 1400px; }
+
+    /* Header */
+    header { text-align: center; margin-bottom: 30px; animation: fadeDown 0.7s ease-out; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2);
+      color: #818cf8; padding: 6px 16px; border-radius: 9999px;
+      font-size: 0.82rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.05em; margin-bottom: 12px;
+    }
+    h1 {
+      font-family: 'Outfit', sans-serif; font-size: 2.6rem; font-weight: 800;
+      background: linear-gradient(135deg, #fff 30%, #a5b4fc 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      letter-spacing: -0.02em; margin-bottom: 8px;
+    }
+    .tagline { color: var(--muted); font-size: 0.95rem; }
+
+    /* Dashboard Layout: 3 Columns */
+    .dashboard {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    @media (max-width: 1024px) { .dashboard { grid-template-columns: 1fr; } }
+
+    /* Panel */
+    .panel {
+      background: var(--panel);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+      margin-bottom: 20px;
+    }
+
+    /* Form */
+    .form-group { margin-bottom: 18px; }
+    label {
+      display: block; font-size: 0.78rem; font-weight: 600;
+      color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
+    }
+
+    /* Upload zone */
+    .upload-zone {
+      position: relative;
+      border: 2px dashed rgba(255,255,255,0.12);
+      border-radius: 12px; padding: 24px 16px; text-align: center;
+      background: rgba(255,255,255,0.02); cursor: pointer; transition: all 0.2s;
+    }
+    .upload-zone:hover, .upload-zone.dragging {
+      border-color: var(--primary); background: rgba(99,102,241,0.06);
+    }
+    .upload-zone i { font-size: 1.8rem; color: var(--primary); display: block; margin-bottom: 8px; }
+    .upload-zone span { font-size: 0.88rem; color: var(--text); display: block; margin-bottom: 4px; }
+    .upload-zone p { font-size: 0.76rem; color: var(--muted); }
+    .upload-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+
+    select, input[type="number"], input[type="text"] {
+      width: 100%; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1);
+      padding: 10px 14px; border-radius: 8px; color: var(--text); font-size: 0.88rem; outline: none;
+    }
+    select:focus, input:focus { border-color: var(--primary); }
+
+    /* Buttons */
+    .btn {
+      width: 100%; padding: 12px 18px; border: none; border-radius: 10px;
+      font-size: 0.9rem; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-h));
+      color: white; box-shadow: 0 4px 14px rgba(99,102,241,0.28);
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(99,102,241,0.4); }
+    .btn-primary:disabled { opacity: 0.45; transform: none; box-shadow: none; cursor: not-allowed; }
+
+    .btn-sm {
+      padding: 6px 12px; font-size: 0.78rem; border-radius: 6px; width: auto;
+    }
+    .btn-secondary {
+      background: rgba(255,255,255,0.06); color: var(--text);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.12); }
+    .btn-outline {
+      background: transparent; border: 1px solid var(--border); color: var(--text);
+    }
+    .btn-outline:hover { background: rgba(255,255,255,0.06); }
+    .btn-danger { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+    .btn-danger:hover { background: rgba(239,68,68,0.25); }
+
+    /* History List Panel */
+    .history-title {
+      font-family: 'Outfit', sans-serif; font-size: 1.1rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
+    }
+    .history-list {
+      max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+    }
+    .history-card {
+      background: rgba(0,0,0,0.25); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px; transition: all 0.2s; cursor: pointer;
+    }
+    .history-card:hover, .history-card.active {
+      border-color: var(--primary); background: rgba(99,102,241,0.08);
+    }
+    .history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .history-filename { font-weight: 600; font-size: 0.85rem; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 190px; }
+    
+    /* Badges */
+    .status-badge {
+      font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 12px;
+      text-transform: uppercase; display: inline-flex; align-items: center; gap: 4px;
+    }
+    .status-badge.completed { background: rgba(16,185,129,0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
+    .status-badge.processing { background: rgba(99,102,241,0.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.3); }
+    .status-badge.failed { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+    .status-badge.pending { background: rgba(245,158,11,0.15); color: #fde047; border: 1px solid rgba(245,158,11,0.3); }
+
+    .history-meta { font-size: 0.74rem; color: var(--muted); display: flex; align-items: center; justify-content: space-between; }
+    .history-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+    /* Viewer Panel */
+    .viewer-panel { min-height: 680px; display: flex; flex-direction: column; }
+    .viewer-toolbar {
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
+    }
+    .view-toggles {
+      display: flex; gap: 6px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 10px;
+    }
+    .view-toggle-btn {
+      padding: 6px 14px; border: none; border-radius: 6px; font-size: 0.8rem; font-weight: 600;
+      background: transparent; color: var(--muted); cursor: pointer; transition: all 0.2s;
+    }
+    .view-toggle-btn.active { background: var(--primary); color: white; }
+
+    .download-group { display: flex; gap: 8px; }
+
+    /* Dual Display Container */
+    .dual-viewport {
+      display: flex; gap: 16px; flex: 1; min-height: 560px; height: 560px;
+    }
+    .view-box {
+      flex: 1; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px; overflow: hidden; display: flex; flex-direction: column;
+    }
+    .view-box-header {
+      background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border);
+      padding: 10px 14px; font-size: 0.8rem; font-weight: 600; color: var(--accent);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .view-box-content { flex: 1; overflow-y: auto; padding: 16px; position: relative; }
+    
+    iframe.pdf-frame {
+      width: 100%; height: 100%; border: none; background: #1e293b;
+    }
+
+    /* Markdown styling */
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 {
+      font-family: 'Outfit', sans-serif; margin: 16px 0 10px; color: white;
+    }
+    .markdown-body table {
+      width: 100%; border-collapse: collapse; margin: 14px 0;
+      font-size: 0.84rem; border: 1px solid rgba(255,255,255,0.08);
+    }
+    .markdown-body th {
+      background: rgba(99,102,241,0.18); color: white; padding: 10px 12px; text-align: left;
+    }
+    .markdown-body td {
+      padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); color: #d4d4d8;
+    }
+
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.15); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    @keyframes fadeDown { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="badge"><i class="fa-solid fa-shield-halved"></i> Fail-Safe Persistent Service</div>
+    <h1>GLM-OCR & Baidu Unlimited Engine</h1>
+    <p class="tagline">Survives browser refresh, tab closes & connection drops. Documents persist safely in SQLite database.</p>
+  </header>
+
+  <div class="dashboard">
+    <!-- Left Column: Upload & History -->
+    <div>
+      <!-- Upload Panel -->
+      <div class="panel">
+        <div class="form-group">
+          <label>Upload Document (PDF / Image)</label>
+          <div class="upload-zone" id="dropzone">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span>Drag & Drop File Here</span>
+            <p>PDF, PNG, JPG, WEBP</p>
+            <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>OCR Engine</label>
+          <select id="engineSelect">
+            <option value="unlimited" selected>🧠 Unlimited-OCR — Baidu CPU (DEFAULT)</option>
+            <option value="glm">🤖 GLM-OCR — via Ollama Vision</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Render Quality Scale</label>
+          <select id="scaleSelect">
+            <option value="1.0">Standard (1.0x)</option>
+            <option value="1.5" selected>High Detail (1.5x)</option>
+            <option value="2.0">Ultra Detail (2.0x)</option>
+          </select>
+        </div>
+
+        <button class="btn btn-primary" id="submitBtn" onclick="submitOCRJob()">
+          <i class="fa-solid fa-play"></i> Start Fail-Safe OCR
+        </button>
+      </div>
+
+      <!-- History / Document List Panel -->
+      <div class="panel">
+        <div class="history-title">
+          <span><i class="fa-solid fa-list-check"></i> Documents List</span>
+          <button class="btn btn-sm btn-outline" onclick="loadJobsList()" title="Refresh List"><i class="fa-solid fa-rotate-right"></i></button>
+        </div>
+        <div class="history-list" id="historyList">
+          <div style="text-align:center; color:var(--muted); padding:20px; font-size:0.85rem;">Loading documents...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Dual Viewer Panel -->
+    <div class="panel viewer-panel">
+      <div class="viewer-toolbar">
+        <!-- Mode Switcher Tabs -->
+        <div class="view-toggles">
+          <button class="view-toggle-btn active" id="toggleSplitBtn" onclick="setViewMode('split')">
+            <i class="fa-solid fa-columns"></i> Split View
+          </button>
+          <button class="view-toggle-btn" id="togglePdfBtn" onclick="setViewMode('pdf')">
+            <i class="fa-regular fa-file-pdf"></i> PDF View Only
+          </button>
+          <button class="view-toggle-btn" id="toggleResultBtn" onclick="setViewMode('result')">
+            <i class="fa-solid fa-file-lines"></i> OCR Result Only
+          </button>
+        </div>
+
+        <!-- Separate Download Buttons -->
+        <div class="download-group" id="downloadGroup" style="display:none;">
+          <button class="btn btn-sm btn-secondary" onclick="downloadPdfFile()">
+            <i class="fa-solid fa-file-arrow-down"></i> Download PDF
+          </button>
+          <button class="btn btn-sm btn-primary" onclick="downloadOcrResult()">
+            <i class="fa-solid fa-download"></i> Download Result (.md)
+          </button>
+        </div>
+      </div>
+
+      <!-- Dual View Container -->
+      <div class="dual-viewport" id="dualViewport">
+        <!-- PDF Box -->
+        <div class="view-box" id="pdfBox">
+          <div class="view-box-header">
+            <span><i class="fa-regular fa-file-pdf"></i> Uploaded Document Viewer</span>
+            <span id="pdfStatusLabel" style="font-size:0.75rem; color:var(--muted);">No document selected</span>
+          </div>
+          <div class="view-box-content" style="padding:0;">
+            <iframe id="pdfFrame" class="pdf-frame" src="about:blank"></iframe>
+          </div>
+        </div>
+
+        <!-- OCR Markdown Result Box -->
+        <div class="view-box" id="resultBox">
+          <div class="view-box-header">
+            <span><i class="fa-solid fa-align-left"></i> Extracted OCR Markdown</span>
+            <span id="jobProgressLabel" style="font-size:0.75rem; color:var(--accent);">Ready</span>
+          </div>
+          <div class="view-box-content markdown-body" id="resultMarkdown">
+            <div style="text-align:center; color:var(--muted); padding-top:100px;">
+              <i class="fa-solid fa-arrow-left" style="font-size:2rem; margin-bottom:12px; display:block;"></i>
+              Select a document from the list or upload a new file to view results.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  let activeJobId = null;
+  let currentViewMode = 'split';
+  let pollInterval = null;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadJobsList();
+    startAutoPolling();
+  });
+
+  function startAutoPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(() => {
+      loadJobsList(true); // silent update
+      if (activeJobId) {
+        fetchJobDetails(activeJobId, true);
+      }
+    }, 2500);
+  }
+
+  async function submitOCRJob() {
+    const fileInput = document.getElementById('fileInput');
+    if (!fileInput.files || fileInput.files.length === 0) {
+      alert("Please select a PDF or image file first.");
+      return;
+    }
+
+    const file = fileInput.files[0];
+    const engine = document.getElementById('engineSelect').value;
+    const scale = document.getElementById('scaleSelect').value;
+    const submitBtn = document.getElementById('submitBtn');
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = `<div class="spinner"></div> Submitting Job...`;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const resp = await fetch(`/api/jobs?engine=${engine}&scale=${scale}&tiling=true&prompt_mode=document`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        alert(`Failed to submit job: ${err.detail || resp.statusText}`);
+        return;
+      }
+
+      const res = await resp.json();
+      activeJobId = res.job_id;
+      fileInput.value = '';
+      await loadJobsList();
+      selectJob(activeJobId);
+    } catch (e) {
+      alert(`Network Error: ${e.message}`);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = `<i class="fa-solid fa-play"></i> Start Fail-Safe OCR`;
+    }
+  }
+
+  async function loadJobsList(silent = false) {
+    try {
+      const resp = await fetch('/api/jobs');
+      if (!resp.ok) return;
+      const jobs = await resp.json();
+      const listEl = document.getElementById('historyList');
+
+      if (jobs.length === 0) {
+        listEl.innerHTML = `<div style="text-align:center; color:var(--muted); padding:20px; font-size:0.85rem;">No document history yet.</div>`;
+        return;
+      }
+
+      let html = '';
+      jobs.forEach(j => {
+        const isActive = (j.job_id === activeJobId) ? 'active' : '';
+        let badgeClass = 'pending';
+        let badgeText = j.status;
+
+        if (j.status === 'completed') badgeClass = 'completed';
+        else if (j.status === 'processing') {
+          badgeClass = 'processing';
+          badgeText = `Scanning ${j.processed_pages}/${j.total_pages}`;
+        } else if (j.status === 'failed') badgeClass = 'failed';
+
+        html += `
+          <div class="history-card ${isActive}" onclick="selectJob('${j.job_id}')">
+            <div class="history-header">
+              <span class="history-filename" title="${j.filename}">${j.filename}</span>
+              <span class="status-badge ${badgeClass}">${badgeText}</span>
+            </div>
+            <div class="history-meta">
+              <span><i class="fa-regular fa-file"></i> ${j.total_pages} page(s) • ${j.engine.toUpperCase()}</span>
+              <span>${new Date(j.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+            </div>
+            <div class="history-actions" onclick="event.stopPropagation()">
+              <button class="btn btn-sm btn-secondary" onclick="selectJob('${j.job_id}')" title="View"><i class="fa-solid fa-eye"></i></button>
+              <button class="btn btn-sm btn-outline" onclick="triggerDownloadFile('${j.job_id}')" title="Download PDF"><i class="fa-solid fa-file-pdf"></i></button>
+              <button class="btn btn-sm btn-outline" onclick="triggerDownloadResult('${j.job_id}')" title="Download Markdown Result"><i class="fa-solid fa-file-lines"></i></button>
+              ${j.status === 'failed' ? `<button class="btn btn-sm btn-secondary" onclick="retryJob('${j.job_id}')" title="Retry"><i class="fa-solid fa-rotate-right"></i></button>` : ''}
+              <button class="btn btn-sm btn-danger" onclick="deleteJob('${j.job_id}')" title="Delete"><i class="fa-solid fa-trash-can"></i></button>
+            </div>
+          </div>
+        `;
+      });
+
+      listEl.innerHTML = html;
+
+      // Auto select first job if none selected
+      if (!activeJobId && jobs.length > 0) {
+        selectJob(jobs[0].job_id);
+      }
+    } catch (e) {
+      if (!silent) console.error("Error loading job list:", e);
+    }
+  }
+
+  async function selectJob(jobId) {
+    activeJobId = jobId;
+    document.getElementById('downloadGroup').style.display = 'flex';
+    
+    // Update PDF frame URL
+    const pdfFrame = document.getElementById('pdfFrame');
+    const targetUrl = `/api/jobs/${jobId}/file`;
+    if (pdfFrame.src !== window.location.origin + targetUrl) {
+      pdfFrame.src = targetUrl;
+    }
+
+    await fetchJobDetails(jobId);
+    loadJobsList(true);
+  }
+
+  async function fetchJobDetails(jobId, silent = false) {
+    try {
+      const resp = await fetch(`/api/jobs/${jobId}`);
+      if (!resp.ok) return;
+      const job = await resp.json();
+
+      document.getElementById('pdfStatusLabel').innerText = `${job.filename} (${job.total_pages} pages)`;
+      const progressLabel = document.getElementById('jobProgressLabel');
+
+      if (job.status === 'processing') {
+        progressLabel.innerHTML = `<div class="spinner"></div> Processing (${job.processed_pages}/${job.total_pages} pages)...`;
+      } else if (job.status === 'completed') {
+        progressLabel.innerHTML = `<span style="color:var(--success);"><i class="fa-solid fa-check"></i> Extraction Completed (${job.total_pages} pages)</span>`;
+      } else if (job.status === 'failed') {
+        progressLabel.innerHTML = `<span style="color:var(--error);"><i class="fa-solid fa-triangle-exclamation"></i> Failed: ${job.error_message}</span>`;
+      } else {
+        progressLabel.innerText = 'Queued in background...';
+      }
+
+      // Render Markdown Text
+      const markdownEl = document.getElementById('resultMarkdown');
+      const pages = job.pages_data || [];
+      if (pages.length === 0) {
+        if (job.status === 'processing') {
+          markdownEl.innerHTML = `<div style="text-align:center; padding-top:60px; color:var(--accent);"><div class="spinner" style="width:24px;height:24px;margin-bottom:12px;"></div><br>Scan in progress... Please wait.</div>`;
+        } else if (job.status === 'failed') {
+          markdownEl.innerHTML = `<div style="color:var(--error); padding:20px;">### ❌ Extraction Failed\n${job.error_message}</div>`;
+        } else {
+          markdownEl.innerHTML = `<div style="text-align:center; padding-top:60px; color:var(--muted);">Waiting for first page results...</div>`;
+        }
+        return;
+      }
+
+      let combinedMd = '';
+      pages.forEach(p => {
+        combinedMd += `### Page ${p.page}\n\n${p.text || ''}\n\n---\n\n`;
+      });
+
+      markdownEl.innerHTML = marked.parse(combinedMd);
+    } catch (e) {
+      if (!silent) console.error("Error fetching job details:", e);
+    }
+  }
+
+  function setViewMode(mode) {
+    currentViewMode = mode;
+    const pdfBox = document.getElementById('pdfBox');
+    const resultBox = document.getElementById('resultBox');
+    
+    document.getElementById('toggleSplitBtn').classList.remove('active');
+    document.getElementById('togglePdfBtn').classList.remove('active');
+    document.getElementById('toggleResultBtn').classList.remove('active');
+
+    if (mode === 'split') {
+      document.getElementById('toggleSplitBtn').classList.add('active');
+      pdfBox.style.display = 'flex';
+      resultBox.style.display = 'flex';
+    } else if (mode === 'pdf') {
+      document.getElementById('togglePdfBtn').classList.add('active');
+      pdfBox.style.display = 'flex';
+      resultBox.style.display = 'none';
+    } else if (mode === 'result') {
+      document.getElementById('toggleResultBtn').classList.add('active');
+      pdfBox.style.display = 'none';
+      resultBox.style.display = 'flex';
+    }
+  }
+
+  function downloadPdfFile() {
+    if (activeJobId) triggerDownloadFile(activeJobId);
+  }
+
+  function downloadOcrResult() {
+    if (activeJobId) triggerDownloadResult(activeJobId);
+  }
+
+  function triggerDownloadFile(jobId) {
+    window.open(`/api/jobs/${jobId}/file?download=true`, '_blank');
+  }
+
+  function triggerDownloadResult(jobId) {
+    window.open(`/api/jobs/${jobId}/download-result`, '_blank');
+  }
+
+  async function retryJob(jobId) {
+    await fetch(`/api/jobs/${jobId}/retry`, { method: 'POST' });
+    loadJobsList();
+  }
+
+  async function deleteJob(jobId) {
+    if (!confirm("Are you sure you want to delete this document and its results?")) return;
+    await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
+    if (activeJobId === jobId) activeJobId = null;
+    loadJobsList();
+  }
+</script>
+</body>
+</html>

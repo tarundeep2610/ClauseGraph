@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    # External ports are not mapped to restrict direct access to Ollama.
+    # It will only be accessible from the internal docker network.
+
+  glm-ocr-api:
+    build: .
+    container_name: glm-ocr-api
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OCR_USER=admin
+      - OCR_PASS=admin123  # Set a secure password in production/hosting
+      - RENDER_SCALE=1.5
+      - OCR_TIMEOUT_SECONDS=600
+      - DATA_DIR=/app/data
+      # HuggingFace cache — model downloads persist in the hf_cache volume
+      - HF_HOME=/root/.cache/huggingface
+    depends_on:
+      - ollama
+    ports:
+      - "127.0.0.1:3001:8000"
+    volumes:
+      # Persists the Baidu Unlimited-OCR model (~6-8 GB) across container restarts
+      - hf_cache:/root/.cache/huggingface
+      # Persists SQLite database and uploaded document files across container restarts
+      - ocr_data:/app/data
+
+volumes:
+  ollama_data:
+  hf_cache:
+  ocr_data:
