@@ -43,6 +43,18 @@ def has_active_jobs() -> bool:
     """Return True if any OCR task is currently running."""
     return any(not t.done() for t in _active_tasks.values())
 
+def is_job_active(job_id: str) -> bool:
+    task = _active_tasks.get(job_id)
+    return task is not None and not task.done()
+
+def cancel_job(job_id: str) -> bool:
+    task = _active_tasks.get(job_id)
+    if task and not task.done():
+        _paused_jobs.discard(job_id)
+        task.cancel()
+        return True
+    return False
+
 def _parse_page_range(range_str: str, total_pages: int) -> set:
     """Parse '1-10,25,50-100' into a set of valid 1-indexed page numbers."""
     if not range_str or not range_str.strip():

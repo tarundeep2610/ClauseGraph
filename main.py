@@ -13,6 +13,7 @@ import asyncio
 import pypdfium2 as pdfium
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query, BackgroundTasks
 from fastapi.responses import HTMLResponse, FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
@@ -38,6 +39,9 @@ app = FastAPI(
     description="A standalone, production-ready OCR service with fail-safe background persistence.",
     version="1.1.0"
 )
+
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 # CORS: restrict to localhost origins only (wildcard + credentials is a spec violation)
 app.add_middleware(
@@ -394,7 +398,7 @@ async def submit_ocr_job(
 
     # Save uploaded file to persistent storage — basename strips any path traversal attempts
     database.init_db()
-    safe_filename = os.path.basename(filename)
+    safe_filename = os.path.basename(filename).replace('"', '').replace("'", '')
     saved_filename = f"{job_id}_{safe_filename}"
     saved_filepath = os.path.join(database.UPLOADS_DIR, saved_filename)
     with open(saved_filepath, "wb") as f:
@@ -585,8 +589,11 @@ async def retry_ocr_job(job_id: str, username: str = Depends(authenticate_user))
     return {"message": f"Job {job_id} retried successfully.", "status": "processing"}
 
 @app.delete("/api/jobs/{job_id}")
-def delete_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
+async def delete_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
     """Deletes an OCR job and removes its associated uploaded file from disk."""
+    if task_queue.is_job_active(job_id):
+        task_queue.cancel_job(job_id)
+        await asyncio.sleep(0.15)
     success = database.delete_job(job_id)
     if not success:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -602,7 +609,7 @@ async def ocr_single_page(
     tiling: bool = Query(True),
     prompt_mode: str = Query("document"),
     custom_prompt: str = Query(None),
-    engine: str = Query("glm"),
+    engine: str = Query("glm", pattern="^(unlimited|glm)$"),
     username: str = Depends(authenticate_user)
 ):
     filename_lower = file.filename.lower()
