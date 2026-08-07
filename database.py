@@ -130,6 +130,19 @@ def mark_job_completed(job_id: str, pages_data: List[Dict[str, Any]]):
     conn.commit()
     conn.close()
 
+def mark_job_paused(job_id: str, pages_data: List[Dict[str, Any]]):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    now = datetime.utcnow().isoformat()
+    processed = len([p for p in pages_data if p.get('status') == 'success'])
+    cursor.execute("""
+        UPDATE ocr_jobs
+        SET status = 'paused', processed_pages = ?, pages_data = ?, updated_at = ?
+        WHERE job_id = ?
+    """, (processed, json.dumps(pages_data), now, job_id))
+    conn.commit()
+    conn.close()
+
 def mark_job_failed(job_id: str, error_message: str):
     conn = get_db_connection()
     cursor = conn.cursor()

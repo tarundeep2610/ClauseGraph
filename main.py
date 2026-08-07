@@ -2,6 +2,9 @@ import os
 import io
 import re
 import sys
+import json
+import time
+import signal
 import base64
 import uuid
 import requests
@@ -47,6 +50,17 @@ app.add_middleware(
 
 security = HTTPBasic()
 
+from fastapi import Request
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class _ActivityMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        global _last_activity
+        _last_activity = time.time()
+        return await call_next(request)
+
+app.add_middleware(_ActivityMiddleware)
+
 PROMPTS = {
     "captcha": (
         "Read the exact text shown in this image. "
@@ -71,6 +85,66 @@ PROMPTS = {
         "6. Do not write consecutive separator lines (e.g. '---') or repeat characters/symbols/templates endlessly."
     ),
 }
+
+_DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+_SETTINGS_FILE = os.path.join(_DATA_DIR, "settings.json")
+_CUSTOM_PROMPTS_FILE = os.path.join(_DATA_DIR, "custom_prompts.json")
+
+# Default hardcoded prompts — kept separate so reset works correctly
+_DEFAULT_PROMPTS = {k: v for k, v in PROMPTS.items()}
+
+_last_activity = time.time()
+
+
+def _load_settings() -> dict:
+    defaults = {"output_path": "", "idle_timeout_minutes": 15}
+    try:
+        if os.path.exists(_SETTINGS_FILE):
+            with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                return {**defaults, **json.load(f)}
+    except Exception:
+        pass
+    return defaults
+
+
+def _save_settings(data: dict):
+    os.makedirs(_DATA_DIR, exist_ok=True)
+    with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def _load_custom_prompts():
+    try:
+        if os.path.exists(_CUSTOM_PROMPTS_FILE):
+            with open(_CUSTOM_PROMPTS_FILE, "r", encoding="utf-8") as f:
+                PROMPTS.update(json.load(f))
+    except Exception:
+        pass
+
+
+def _save_custom_prompts():
+    os.makedirs(_DATA_DIR, exist_ok=True)
+    with open(_CUSTOM_PROMPTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(PROMPTS, f, indent=2)
+
+
+async def _idle_watcher():
+    global _last_activity
+    while True:
+        await asyncio.sleep(30)
+        settings = _load_settings()
+        timeout_mins = settings.get("idle_timeout_minutes", 15)
+        if timeout_mins <= 0:
+            continue
+        # Never shut down while OCR is actively running
+        if task_queue.has_active_jobs():
+            _last_activity = time.time()
+            continue
+        if time.time() - _last_activity >= timeout_mins * 60:
+            print(f"[Service] Idle timeout reached — shutting down server.")
+            os.kill(os.getpid(), signal.SIGINT)
+            break
+
 
 def clean_captcha_result(text: str, expected_len: int = None) -> str:
     text = re.sub(r'```[^\n]*', '', text)
@@ -177,25 +251,77 @@ def run_ocr_for_image(pil_image, prompt: str, tiling: bool, timeout: int, option
             f"{results[2]}"
         )
 
-def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeout: int) -> str:
+def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeout: int, base_size: int = 1024) -> str:
     if not _UNLIMITED_OCR_AVAILABLE or unlimited_ocr_engine is None:
         raise Exception("unlimited_ocr_engine is not installed.")
-    if not unlimited_ocr_engine.is_loaded():
-        err = unlimited_ocr_engine.get_load_error() or "Model not loaded."
-        raise Exception(f"Unlimited-OCR model failed to load at startup: {err}")
-
     effective_prompt = "document parsing." if len(prompt) > 80 else prompt
-    return unlimited_ocr_engine.run_ocr(pil_image, prompt=effective_prompt)
+    return unlimited_ocr_engine.run_ocr(pil_image, prompt=effective_prompt, base_size=base_size)
+
 
 @app.on_event("startup")
 async def startup_event():
     database.init_db()
+    _load_custom_prompts()
+    settings = _load_settings()
     task_queue.resume_interrupted_jobs(
         run_ocr_for_image,
         run_unlimited_ocr_for_image,
         PROMPTS,
-        OCR_TIMEOUT
+        OCR_TIMEOUT,
+        settings.get("output_path", "")
     )
+    asyncio.create_task(_idle_watcher())
+
+
+# ─── SETTINGS & PROMPTS API ───────────────────────────────────────────────────
+
+@app.get("/api/settings")
+def get_settings(username: str = Depends(authenticate_user)):
+    return _load_settings()
+
+@app.post("/api/settings")
+def save_settings(body: dict, username: str = Depends(authenticate_user)):
+    current = _load_settings()
+    current.update({k: v for k, v in body.items() if k in ("output_path", "idle_timeout_minutes")})
+    _save_settings(current)
+    return current
+
+@app.get("/api/prompts")
+def get_prompts(username: str = Depends(authenticate_user)):
+    return {"prompts": PROMPTS, "defaults": _DEFAULT_PROMPTS}
+
+@app.post("/api/prompts/{mode}")
+def save_prompt(mode: str, body: dict, username: str = Depends(authenticate_user)):
+    allowed = set(_DEFAULT_PROMPTS.keys())
+    if mode not in allowed:
+        raise HTTPException(status_code=400, detail=f"Unknown prompt mode '{mode}'. Allowed: {allowed}")
+    text = body.get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Prompt text cannot be empty")
+    PROMPTS[mode] = text
+    _save_custom_prompts()
+    return {"mode": mode, "text": text}
+
+@app.delete("/api/prompts/{mode}")
+def reset_prompt(mode: str, username: str = Depends(authenticate_user)):
+    if mode not in _DEFAULT_PROMPTS:
+        raise HTTPException(status_code=400, detail=f"Unknown prompt mode '{mode}'")
+    PROMPTS[mode] = _DEFAULT_PROMPTS[mode]
+    _save_custom_prompts()
+    return {"mode": mode, "text": PROMPTS[mode], "reset": True}
+
+@app.get("/api/idle-status")
+def idle_status():
+    settings = _load_settings()
+    timeout_mins = settings.get("idle_timeout_minutes", 15)
+    idle_secs = time.time() - _last_activity
+    remaining = max(0.0, timeout_mins * 60 - idle_secs)
+    return {
+        "idle_seconds": round(idle_secs),
+        "remaining_seconds": round(remaining),
+        "timeout_minutes": timeout_mins,
+        "enabled": timeout_mins > 0,
+    }
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def get_ui(username: str = Depends(authenticate_user)):
@@ -236,6 +362,15 @@ async def submit_ocr_job(
     prompt_mode: str = Query("document", description="Prompt mode"),
     custom_prompt: str = Query(None, description="Custom prompt override"),
     engine: str = Query("unlimited", description="OCR engine ('unlimited' or 'glm')"),
+    # GLM-OCR (Ollama) hyperparameters
+    glm_temperature: float = Query(0.0, description="GLM sampling temperature"),
+    glm_num_ctx: int = Query(8192, description="GLM context window tokens"),
+    glm_num_predict: int = Query(2048, description="GLM max output tokens"),
+    glm_repeat_penalty: float = Query(1.2, description="GLM repeat penalty"),
+    # Unlimited-OCR hyperparameter
+    unlimited_base_size: int = Query(1024, description="Unlimited-OCR base resolution"),
+    # Page selection
+    page_range: str = Query("", description="Page range to process, e.g. '1-10,25,50-100'. Empty = all pages."),
     username: str = Depends(authenticate_user)
 ):
     """
@@ -288,14 +423,31 @@ async def submit_ocr_job(
         total_pages=total_pages
     )
 
-    # Launch non-blocking background processing task
+    # Build engine-specific runners with user's hyperparameters baked in
+    _glm_opts = {
+        "temperature": glm_temperature,
+        "num_ctx": glm_num_ctx,
+        "num_predict": glm_num_predict,
+        "repeat_penalty": glm_repeat_penalty,
+    }
+    def _glm_runner(pil_image, prompt, _tiling, timeout, captcha_override=None):
+        opts = captcha_override if captcha_override is not None else _glm_opts
+        return run_ocr_for_image(pil_image, prompt, _tiling, timeout, opts)
+
+    _u_base = unlimited_base_size
+    def _unlimited_runner(pil_image, prompt, timeout):
+        return run_unlimited_ocr_for_image(pil_image, prompt, timeout, base_size=_u_base)
+
+    settings = _load_settings()
     asyncio.create_task(
         task_queue.process_ocr_job(
             job_id,
-            run_ocr_for_image,
-            run_unlimited_ocr_for_image,
+            _glm_runner,
+            _unlimited_runner,
             PROMPTS,
-            OCR_TIMEOUT
+            OCR_TIMEOUT,
+            settings.get("output_path", ""),
+            page_range
         )
     )
 
@@ -311,6 +463,19 @@ async def submit_ocr_job(
 def list_ocr_jobs(limit: int = Query(50, ge=1, le=200), username: str = Depends(authenticate_user)):
     """Lists all past and current OCR jobs for the UI Document History Panel."""
     return database.list_jobs(limit=limit)
+
+@app.post("/api/jobs/stop-all")
+def stop_all_ocr_jobs(username: str = Depends(authenticate_user)):
+    """Cancel all currently running OCR tasks and mark them paused."""
+    count = task_queue.cancel_all_jobs()
+    return {"message": f"Requested cancellation of {count} active job(s).", "cancelled": count}
+
+@app.post("/api/shutdown")
+def shutdown_server(username: str = Depends(authenticate_user)):
+    """Stop all OCR tasks and shut down the server process to free memory."""
+    task_queue.cancel_all_jobs()
+    asyncio.get_event_loop().call_later(0.5, lambda: os.kill(os.getpid(), signal.SIGINT))
+    return {"message": "Server is shutting down."}
 
 @app.get("/api/jobs/{job_id}")
 def get_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
@@ -376,6 +541,17 @@ def download_ocr_result(job_id: str, username: str = Depends(authenticate_user))
         headers={"Content-Disposition": f'attachment; filename="{out_filename}"'}
     )
 
+@app.post("/api/jobs/{job_id}/pause")
+def pause_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
+    """Pause a running OCR job after its current page completes."""
+    job = database.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job['status'] not in ('processing', 'pending'):
+        raise HTTPException(status_code=400, detail=f"Job is '{job['status']}', not pausable.")
+    task_queue.pause_job(job_id)
+    return {"message": f"Job {job_id} will pause after the current page.", "status": "pausing"}
+
 @app.post("/api/jobs/{job_id}/retry")
 def retry_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
     """Retries or resumes a failed or stuck OCR job."""
@@ -383,13 +559,15 @@ def retry_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    settings = _load_settings()
     asyncio.create_task(
         task_queue.process_ocr_job(
             job_id,
             run_ocr_for_image,
             run_unlimited_ocr_for_image,
             PROMPTS,
-            OCR_TIMEOUT
+            OCR_TIMEOUT,
+            settings.get("output_path", "")
         )
     )
 

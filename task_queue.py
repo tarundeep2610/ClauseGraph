@@ -19,7 +19,52 @@ except ImportError:
 # Active background tasks dictionary to prevent duplicate runs
 _active_tasks = {}
 
-async def process_ocr_job(job_id: str, run_ocr_func, run_unlimited_func, prompts_dict, ollama_timeout: int = 600):
+# Set of job IDs requested to pause at the next page boundary
+_paused_jobs: set = set()
+
+
+def pause_job(job_id: str):
+    """Request a running job to pause after its current page finishes."""
+    _paused_jobs.add(job_id)
+
+
+def cancel_all_jobs() -> int:
+    """Cancel all running OCR tasks immediately. Returns number of tasks cancelled."""
+    count = 0
+    for job_id, task in list(_active_tasks.items()):
+        if not task.done():
+            _paused_jobs.add(job_id)
+            task.cancel()
+            count += 1
+    return count
+
+
+def has_active_jobs() -> bool:
+    """Return True if any OCR task is currently running."""
+    return any(not t.done() for t in _active_tasks.values())
+
+def _parse_page_range(range_str: str, total_pages: int) -> set:
+    """Parse '1-10,25,50-100' into a set of valid 1-indexed page numbers."""
+    if not range_str or not range_str.strip():
+        return set(range(1, total_pages + 1))
+    pages = set()
+    for part in range_str.split(','):
+        part = part.strip()
+        if not part:
+            continue
+        if '-' in part:
+            try:
+                a, b = part.split('-', 1)
+                pages.update(range(int(a.strip()), int(b.strip()) + 1))
+            except ValueError:
+                pass
+        elif part.isdigit():
+            pages.add(int(part))
+    valid = {p for p in pages if 1 <= p <= total_pages}
+    return valid if valid else set(range(1, total_pages + 1))
+
+
+async def process_ocr_job(job_id: str, run_ocr_func, run_unlimited_func, prompts_dict, ollama_timeout: int = 600, output_path: str = "", page_range: str = ""):
     """
     Background worker loop that processes a document page by page, saving intermediate progress
     to SQLite. Implements automatic retries per page.
@@ -72,8 +117,21 @@ async def process_ocr_job(job_id: str, run_ocr_func, run_unlimited_func, prompts
         pages_data = job['pages_data'] if isinstance(job['pages_data'], list) else []
         already_completed_pages = {p.get('page') for p in pages_data if p.get('status') == 'success'}
 
+        selected_pages = _parse_page_range(page_range, total_pages)
+
         for i in range(total_pages):
             page_num = i + 1
+
+            if page_num not in selected_pages:
+                continue
+
+            # Check for pause request before each page
+            if job_id in _paused_jobs:
+                _paused_jobs.discard(job_id)
+                print(f"[TaskQueue] ⏸️ Job {job_id} paused before page {page_num}.")
+                database.mark_job_paused(job_id, pages_data)
+                return
+
             if page_num in already_completed_pages:
                 print(f"[TaskQueue] Job {job_id}: Page {page_num} already processed. Skipping.")
                 continue
@@ -144,6 +202,29 @@ async def process_ocr_job(job_id: str, run_ocr_func, run_unlimited_func, prompts
         database.mark_job_completed(job_id, pages_data)
         print(f"[TaskQueue] ✅ Job {job_id} successfully completed!")
 
+        # Auto-export to output path if configured
+        if output_path and os.path.isdir(output_path):
+            try:
+                base_name = os.path.splitext(job['filename'])[0]
+                out_file = os.path.join(output_path, f"{base_name}_ocr.md")
+                lines = [f"# OCR Result: {job['filename']}\n"]
+                for p in sorted(pages_data, key=lambda x: x.get('page', 0)):
+                    lines.append(f"## Page {p.get('page')}\n\n{p.get('text','')}\n\n---\n")
+                with open(out_file, "w", encoding="utf-8") as f:
+                    f.write("\n".join(lines))
+                print(f"[TaskQueue] 📁 Auto-exported result to {out_file}")
+            except Exception as _ex:
+                print(f"[TaskQueue] ⚠️ Auto-export failed: {_ex}")
+
+    except asyncio.CancelledError:
+        print(f"[TaskQueue] ⏸️ Job {job_id} was cancelled — marking paused.")
+        _paused_jobs.discard(job_id)
+        try:
+            pages_data
+        except NameError:
+            pages_data = []
+        database.mark_job_paused(job_id, pages_data)
+        raise
     except Exception as outer_e:
         err_msg = f"Task worker error: {str(outer_e)}\n{traceback.format_exc()}"
         print(f"[TaskQueue] ❌ Job {job_id} failed completely: {err_msg}")
@@ -151,7 +232,7 @@ async def process_ocr_job(job_id: str, run_ocr_func, run_unlimited_func, prompts
     finally:
         _active_tasks.pop(job_id, None)
 
-def resume_interrupted_jobs(run_ocr_func, run_unlimited_func, prompts_dict, ollama_timeout: int = 600):
+def resume_interrupted_jobs(run_ocr_func, run_unlimited_func, prompts_dict, ollama_timeout: int = 600, output_path: str = ""):
     """
     Scans SQLite DB on startup and dispatches background tasks for any job left in
     'pending' or 'processing' state.
@@ -171,6 +252,7 @@ def resume_interrupted_jobs(run_ocr_func, run_unlimited_func, prompts_dict, olla
                 run_ocr_func,
                 run_unlimited_func,
                 prompts_dict,
-                ollama_timeout
+                ollama_timeout,
+                output_path
             )
         )

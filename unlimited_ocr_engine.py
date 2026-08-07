@@ -206,19 +206,23 @@ def get_load_error() -> str | None:
 # Inference
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_ocr(pil_image: Image.Image, prompt: str | None = None) -> str:
+def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 1024) -> str:
     """
     Run Baidu Unlimited-OCR on a PIL Image and return the extracted text as a string.
 
     Args:
         pil_image: A PIL Image (RGB mode preferred).
         prompt:    The prompt sent to the model. Defaults to DOCUMENT_PROMPT.
+        base_size: Resolution fed to the model (512/768/1024/2048). Higher = more detail, slower.
 
     Returns:
         Extracted text string, or an error message prefixed with "### ❌".
     """
     if not _loaded:
-        error = _load_error or "Model not loaded. Call unlimited_ocr_engine.initialize() first."
+        print("[Unlimited-OCR] 📥 First OCR request — loading model now (this may take a while)...")
+        initialize(verbose=True)
+    if not _loaded:
+        error = _load_error or "Model failed to load."
         return f"### ❌ Unlimited-OCR not available\n{error}"
 
     prompt = prompt or DOCUMENT_PROMPT
@@ -247,8 +251,8 @@ def run_ocr(pil_image: Image.Image, prompt: str | None = None) -> str:
                     prompt=f"<image>{prompt}",
                     image_file=img_path,
                     output_path=out_dir,
-                    base_size=1024,    # 'base' config — best for documents/multi-page
-                    image_size=1024,
+                    base_size=base_size,
+                    image_size=base_size,
                     crop_mode=False,   # preserve document structure (no cropping)
                 )
         except Exception as e:
@@ -334,9 +338,6 @@ def _collect_output(out_dir: str) -> str:
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Eager initialization at import time
-# ─────────────────────────────────────────────────────────────────────────────
-# The model is loaded when this module is imported, so the app starts with the
-# model ready. On first run, HuggingFace will automatically download the weights.
-initialize(verbose=True)
+# Model is loaded lazily on first OCR request via run_ocr(), not at import time.
+# This lets the server start and serve the UI immediately, even before the
+# ~6-8 GB weights finish downloading from HuggingFace.
