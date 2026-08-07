@@ -142,7 +142,7 @@ async def _idle_watcher():
             continue
         if time.time() - _last_activity >= timeout_mins * 60:
             print(f"[Service] Idle timeout reached — shutting down server.")
-            os.kill(os.getpid(), signal.SIGINT)
+            signal.raise_signal(signal.SIGINT)
             break
 
 
@@ -361,7 +361,7 @@ async def submit_ocr_job(
     tiling: bool = Query(True, description="Enable tiling"),
     prompt_mode: str = Query("document", description="Prompt mode"),
     custom_prompt: str = Query(None, description="Custom prompt override"),
-    engine: str = Query("unlimited", description="OCR engine ('unlimited' or 'glm')"),
+    engine: str = Query("unlimited", pattern="^(unlimited|glm)$", description="OCR engine ('unlimited' or 'glm')"),
     # GLM-OCR (Ollama) hyperparameters
     glm_temperature: float = Query(0.0, ge=0.0, le=2.0, description="GLM sampling temperature"),
     glm_num_ctx: int = Query(8192, ge=512, le=32768, description="GLM context window tokens"),
@@ -405,6 +405,9 @@ async def submit_ocr_job(
         try:
             pdf = pdfium.PdfDocument(saved_filepath)
             total_pages = len(pdf)
+            pdf.close()
+        except HTTPException:
+            raise
         except Exception as e:
             if os.path.exists(saved_filepath):
                 os.remove(saved_filepath)
@@ -459,7 +462,7 @@ async def submit_ocr_job(
 
     return {
         "job_id": job_id,
-        "filename": filename,
+        "filename": safe_filename,
         "total_pages": total_pages,
         "status": "pending",
         "message": "OCR job submitted successfully and is running in background."
@@ -607,7 +610,11 @@ async def ocr_single_page(
     if not filename_lower.endswith(supported_extensions):
         raise HTTPException(status_code=400, detail=f"Supported extensions: {supported_extensions}")
 
-    content = await file.read()
+    MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_MB", "200")) * 1024 * 1024
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"File exceeds {MAX_UPLOAD_BYTES // (1024*1024)} MB upload limit.")
+
     is_image = not filename_lower.endswith(".pdf")
     render_scale = scale if scale is not None else DEFAULT_RENDER_SCALE
 
@@ -624,19 +631,24 @@ async def ocr_single_page(
     else:
         try:
             pdf = pdfium.PdfDocument(content)
-            num_pages = len(pdf)
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"Invalid PDF file: {str(e)}")
 
-        if page > num_pages:
-            raise HTTPException(status_code=400, detail=f"Requested page {page} out of {num_pages}.")
-
         try:
+            num_pages = len(pdf)
+            if page > num_pages:
+                raise HTTPException(status_code=400, detail=f"Requested page {page} out of {num_pages}.")
             pdf_page = pdf.get_page(page - 1)
             bitmap = pdf_page.render(scale=render_scale)
             pil_image = bitmap.to_pil()
+            pdf_page.close()
+            bitmap.close()
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed rendering PDF page: {str(e)}")
+        finally:
+            pdf.close()
 
     if is_image and (prompt_mode == "captcha" or custom_prompt):
         pil_image = ImageOps.expand(pil_image, border=15, fill=(255, 255, 255))

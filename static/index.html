@@ -980,7 +980,7 @@
               <span class="status-badge ${badgeClass}">${badgeText}</span>
             </div>
             <div class="history-meta">
-              <span><i class="fa-regular fa-file"></i> ${j.total_pages}p · ${j.engine.toUpperCase()}</span>
+              <span><i class="fa-regular fa-file"></i> ${j.total_pages}p · ${escHtml(j.engine.toUpperCase())}</span>
               <span>${new Date(j.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
             </div>
             <div class="history-actions" onclick="event.stopPropagation()">
