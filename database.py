@@ -11,7 +11,7 @@ DB_PATH = os.path.join(DATA_DIR, "ocr_jobs.db")
 def init_db():
     """Initializes the SQLite database schema and creates necessary storage directories."""
     os.makedirs(UPLOADS_DIR, exist_ok=True)
-    
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
@@ -30,10 +30,17 @@ def init_db():
             processed_pages INTEGER DEFAULT 0,
             pages_data TEXT DEFAULT '[]',
             error_message TEXT DEFAULT '',
+            page_range TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Migrate existing databases that predate the page_range column
+    try:
+        cursor.execute("ALTER TABLE ocr_jobs ADD COLUMN page_range TEXT DEFAULT ''")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.commit()
     conn.close()
 
@@ -53,7 +60,8 @@ def create_job(
     tiling: bool = True,
     prompt_mode: str = "document",
     custom_prompt: Optional[str] = None,
-    total_pages: int = 1
+    total_pages: int = 1,
+    page_range: str = ""
 ) -> Dict[str, Any]:
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -62,11 +70,11 @@ def create_job(
         INSERT INTO ocr_jobs (
             job_id, filename, file_path, file_type, engine, scale, tiling,
             prompt_mode, custom_prompt, status, total_pages, processed_pages,
-            pages_data, error_message, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, '[]', '', ?, ?)
+            pages_data, error_message, page_range, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, '[]', '', ?, ?, ?)
     """, (
         job_id, filename, file_path, file_type, engine, scale, int(tiling),
-        prompt_mode, custom_prompt or '', total_pages, now, now
+        prompt_mode, custom_prompt or '', total_pages, page_range or '', now, now
     ))
     conn.commit()
     conn.close()
@@ -121,12 +129,25 @@ def mark_job_completed(job_id: str, pages_data: List[Dict[str, Any]]):
     conn = get_db_connection()
     cursor = conn.cursor()
     now = datetime.utcnow().isoformat()
-    total_pages = len(pages_data) if pages_data else 1
+    processed = len([p for p in pages_data if p.get('status') == 'success'])
     cursor.execute("""
         UPDATE ocr_jobs
         SET status = 'completed', processed_pages = ?, pages_data = ?, updated_at = ?
         WHERE job_id = ?
-    """, (total_pages, json.dumps(pages_data), now, job_id))
+    """, (processed, json.dumps(pages_data), now, job_id))
+    conn.commit()
+    conn.close()
+
+def mark_job_paused(job_id: str, pages_data: List[Dict[str, Any]]):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    now = datetime.utcnow().isoformat()
+    processed = len([p for p in pages_data if p.get('status') == 'success'])
+    cursor.execute("""
+        UPDATE ocr_jobs
+        SET status = 'paused', processed_pages = ?, pages_data = ?, updated_at = ?
+        WHERE job_id = ?
+    """, (processed, json.dumps(pages_data), now, job_id))
     conn.commit()
     conn.close()
 
