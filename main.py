@@ -40,8 +40,8 @@ app = FastAPI(
     version="1.1.0"
 )
 
-_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+_ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
+app.mount("/assets", StaticFiles(directory=_ASSETS_DIR), name="assets")
 
 # CORS: restrict to localhost origins only (wildcard + credentials is a spec violation)
 app.add_middleware(

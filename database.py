@@ -129,12 +129,12 @@ def mark_job_completed(job_id: str, pages_data: List[Dict[str, Any]]):
     conn = get_db_connection()
     cursor = conn.cursor()
     now = datetime.utcnow().isoformat()
-    total_pages = len(pages_data) if pages_data else 1
+    processed = len([p for p in pages_data if p.get('status') == 'success'])
     cursor.execute("""
         UPDATE ocr_jobs
         SET status = 'completed', processed_pages = ?, pages_data = ?, updated_at = ?
         WHERE job_id = ?
-    """, (total_pages, json.dumps(pages_data), now, job_id))
+    """, (processed, json.dumps(pages_data), now, job_id))
     conn.commit()
     conn.close()
 
