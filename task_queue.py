@@ -108,113 +108,116 @@ async def process_ocr_job(job_id: str, run_ocr_func, run_unlimited_func, prompts
 
         is_pdf = file_path.lower().endswith(".pdf")
 
-        if is_pdf:
-            pdf = pdfium.PdfDocument(file_path)
-            total_pages = len(pdf)
-        else:
-            total_pages = 1
+        pdf_doc = pdfium.PdfDocument(file_path) if is_pdf else None
+        try:
+            total_pages = len(pdf_doc) if pdf_doc else 1
 
-        pages_data = job['pages_data'] if isinstance(job['pages_data'], list) else []
-        already_completed_pages = {p.get('page') for p in pages_data if p.get('status') == 'success'}
+            pages_data = job['pages_data'] if isinstance(job['pages_data'], list) else []
+            already_completed_pages = {p.get('page') for p in pages_data if p.get('status') == 'success'}
 
-        selected_pages = _parse_page_range(page_range, total_pages)
+            selected_pages = _parse_page_range(page_range, total_pages)
 
-        for i in range(total_pages):
-            page_num = i + 1
+            for i in range(total_pages):
+                page_num = i + 1
 
-            if page_num not in selected_pages:
-                continue
+                if page_num not in selected_pages:
+                    continue
 
-            # Check for pause request before each page
-            if job_id in _paused_jobs:
-                _paused_jobs.discard(job_id)
-                print(f"[TaskQueue] ⏸️ Job {job_id} paused before page {page_num}.")
-                database.mark_job_paused(job_id, pages_data)
-                return
+                # Check for pause request before each page
+                if job_id in _paused_jobs:
+                    _paused_jobs.discard(job_id)
+                    print(f"[TaskQueue] ⏸️ Job {job_id} paused before page {page_num}.")
+                    database.mark_job_paused(job_id, pages_data)
+                    return
 
-            if page_num in already_completed_pages:
-                print(f"[TaskQueue] Job {job_id}: Page {page_num} already processed. Skipping.")
-                continue
+                if page_num in already_completed_pages:
+                    print(f"[TaskQueue] Job {job_id}: Page {page_num} already processed. Skipping.")
+                    continue
 
-            print(f"[TaskQueue] Job {job_id}: Processing page {page_num}/{total_pages}...")
+                print(f"[TaskQueue] Job {job_id}: Processing page {page_num}/{total_pages}...")
 
-            # Render or open page image
-            if is_pdf:
-                pdf_page = pdf.get_page(i)
-                bitmap = pdf_page.render(scale=scale)
-                pil_img = bitmap.to_pil()
-            else:
-                pil_img = Image.open(file_path)
-                if pil_img.mode != "RGB":
-                    pil_img = pil_img.convert("RGB")
+                # Render or open page image
+                if is_pdf:
+                    pdf_page = pdf_doc.get_page(i)
+                    bitmap = pdf_page.render(scale=scale)
+                    pil_img = bitmap.to_pil()
+                    pdf_page.close()
+                    bitmap.close()
+                else:
+                    with Image.open(file_path) as img:
+                        pil_img = img.convert("RGB") if img.mode != "RGB" else img.copy()
 
-            # Captcha preprocessing if needed
-            if not is_pdf and is_captcha:
-                pil_img = ImageOps.expand(pil_img, border=15, fill=(255, 255, 255))
-                w, h = pil_img.size
-                if w < 400:
-                    factor = max(3, 400 // w)
-                    pil_img = pil_img.resize((w * factor, h * factor), Image.LANCZOS)
-                pil_img = ImageEnhance.Contrast(pil_img).enhance(1.8)
-                pil_img = pil_img.filter(ImageFilter.SHARPEN)
+                # Captcha preprocessing if needed
+                if not is_pdf and is_captcha:
+                    pil_img = ImageOps.expand(pil_img, border=15, fill=(255, 255, 255))
+                    w, h = pil_img.size
+                    if w < 400:
+                        factor = max(3, 400 // w)
+                        pil_img = pil_img.resize((w * factor, h * factor), Image.LANCZOS)
+                    pil_img = ImageEnhance.Contrast(pil_img).enhance(1.8)
+                    pil_img = pil_img.filter(ImageFilter.SHARPEN)
 
-            # Retry loop for OCR execution (up to 3 attempts)
-            max_retries = 3
-            page_text = ""
-            page_status = "failed"
-            page_error = ""
+                # Retry loop for OCR execution (up to 3 attempts)
+                max_retries = 3
+                page_text = ""
+                page_status = "failed"
+                page_error = ""
 
-            for attempt in range(1, max_retries + 1):
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        if engine == "unlimited":
+                            page_text = await asyncio.to_thread(
+                                run_unlimited_func, pil_img, prompt, ollama_timeout
+                            )
+                        else:
+                            page_text = await asyncio.to_thread(
+                                run_ocr_func, pil_img, prompt, tiling, ollama_timeout, ocr_options
+                            )
+                        page_status = "success"
+                        page_error = ""
+                        break
+                    except Exception as e:
+                        page_error = str(e)
+                        print(f"[TaskQueue] Job {job_id} Page {page_num} attempt {attempt}/{max_retries} failed: {e}")
+                        if attempt < max_retries:
+                            await asyncio.sleep(2 * attempt)
+
+                page_entry = {
+                    "page": page_num,
+                    "status": page_status,
+                    "text": page_text if page_status == "success" else f"### ❌ Error page {page_num}: {page_error}",
+                    "error": page_error
+                }
+
+                # Update pages_data list (replace existing if any)
+                pages_data = [p for p in pages_data if p.get('page') != page_num]
+                pages_data.append(page_entry)
+                pages_data.sort(key=lambda x: x['page'])
+
+                processed_count = len([p for p in pages_data if p.get('status') == 'success'])
+                database.update_job_progress(job_id, processed_count, pages_data, status="processing")
+
+            # Mark job complete if finished
+            database.mark_job_completed(job_id, pages_data)
+            print(f"[TaskQueue] ✅ Job {job_id} successfully completed!")
+
+            # Auto-export to output path if configured
+            if output_path and os.path.isdir(output_path):
                 try:
-                    if engine == "unlimited":
-                        page_text = await asyncio.to_thread(
-                            run_unlimited_func, pil_img, prompt, ollama_timeout
-                        )
-                    else:
-                        page_text = await asyncio.to_thread(
-                            run_ocr_func, pil_img, prompt, tiling, ollama_timeout, ocr_options
-                        )
-                    page_status = "success"
-                    page_error = ""
-                    break
-                except Exception as e:
-                    page_error = str(e)
-                    print(f"[TaskQueue] Job {job_id} Page {page_num} attempt {attempt}/{max_retries} failed: {e}")
-                    if attempt < max_retries:
-                        await asyncio.sleep(2 * attempt)  # Exponential backoff retry
+                    base_name = os.path.splitext(job['filename'])[0]
+                    out_file = os.path.join(output_path, f"{base_name}_ocr.md")
+                    lines = [f"# OCR Result: {job['filename']}\n"]
+                    for p in sorted(pages_data, key=lambda x: x.get('page', 0)):
+                        lines.append(f"## Page {p.get('page')}\n\n{p.get('text','')}\n\n---\n")
+                    with open(out_file, "w", encoding="utf-8") as f:
+                        f.write("\n".join(lines))
+                    print(f"[TaskQueue] 📁 Auto-exported result to {out_file}")
+                except Exception as _ex:
+                    print(f"[TaskQueue] ⚠️ Auto-export failed: {_ex}")
 
-            page_entry = {
-                "page": page_num,
-                "status": page_status,
-                "text": page_text if page_status == "success" else f"### ❌ Error page {page_num}: {page_error}",
-                "error": page_error
-            }
-
-            # Update pages_data list (replace existing if any)
-            pages_data = [p for p in pages_data if p.get('page') != page_num]
-            pages_data.append(page_entry)
-            pages_data.sort(key=lambda x: x['page'])
-
-            processed_count = len([p for p in pages_data if p.get('status') == 'success'])
-            database.update_job_progress(job_id, processed_count, pages_data, status="processing")
-
-        # Mark job complete if finished
-        database.mark_job_completed(job_id, pages_data)
-        print(f"[TaskQueue] ✅ Job {job_id} successfully completed!")
-
-        # Auto-export to output path if configured
-        if output_path and os.path.isdir(output_path):
-            try:
-                base_name = os.path.splitext(job['filename'])[0]
-                out_file = os.path.join(output_path, f"{base_name}_ocr.md")
-                lines = [f"# OCR Result: {job['filename']}\n"]
-                for p in sorted(pages_data, key=lambda x: x.get('page', 0)):
-                    lines.append(f"## Page {p.get('page')}\n\n{p.get('text','')}\n\n---\n")
-                with open(out_file, "w", encoding="utf-8") as f:
-                    f.write("\n".join(lines))
-                print(f"[TaskQueue] 📁 Auto-exported result to {out_file}")
-            except Exception as _ex:
-                print(f"[TaskQueue] ⚠️ Auto-export failed: {_ex}")
+        finally:
+            if pdf_doc is not None:
+                pdf_doc.close()
 
     except asyncio.CancelledError:
         print(f"[TaskQueue] ⏸️ Job {job_id} was cancelled — marking paused.")
@@ -232,10 +235,10 @@ async def process_ocr_job(job_id: str, run_ocr_func, run_unlimited_func, prompts
     finally:
         _active_tasks.pop(job_id, None)
 
-def resume_interrupted_jobs(run_ocr_func, run_unlimited_func, prompts_dict, ollama_timeout: int = 600, output_path: str = ""):
+async def resume_interrupted_jobs(run_ocr_func, run_unlimited_func, prompts_dict, ollama_timeout: int = 600, output_path: str = ""):
     """
     Scans SQLite DB on startup and dispatches background tasks for any job left in
-    'pending' or 'processing' state.
+    'pending' or 'processing' state. Must be called from an async context (startup event).
     """
     jobs = database.list_jobs(limit=100)
     interrupted = [j for j in jobs if j['status'] in ('pending', 'processing')]
@@ -244,15 +247,15 @@ def resume_interrupted_jobs(run_ocr_func, run_unlimited_func, prompts_dict, olla
         return
 
     print(f"[TaskQueue] 🔄 Resuming {len(interrupted)} pending/interrupted OCR job(s)...")
-    loop = asyncio.get_event_loop()
     for job in interrupted:
-        loop.create_task(
+        asyncio.create_task(
             process_ocr_job(
                 job['job_id'],
                 run_ocr_func,
                 run_unlimited_func,
                 prompts_dict,
                 ollama_timeout,
-                output_path
+                output_path,
+                job.get('page_range', '')
             )
         )

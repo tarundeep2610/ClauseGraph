@@ -11,7 +11,7 @@ DB_PATH = os.path.join(DATA_DIR, "ocr_jobs.db")
 def init_db():
     """Initializes the SQLite database schema and creates necessary storage directories."""
     os.makedirs(UPLOADS_DIR, exist_ok=True)
-    
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
@@ -30,10 +30,17 @@ def init_db():
             processed_pages INTEGER DEFAULT 0,
             pages_data TEXT DEFAULT '[]',
             error_message TEXT DEFAULT '',
+            page_range TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Migrate existing databases that predate the page_range column
+    try:
+        cursor.execute("ALTER TABLE ocr_jobs ADD COLUMN page_range TEXT DEFAULT ''")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.commit()
     conn.close()
 
@@ -53,7 +60,8 @@ def create_job(
     tiling: bool = True,
     prompt_mode: str = "document",
     custom_prompt: Optional[str] = None,
-    total_pages: int = 1
+    total_pages: int = 1,
+    page_range: str = ""
 ) -> Dict[str, Any]:
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -62,11 +70,11 @@ def create_job(
         INSERT INTO ocr_jobs (
             job_id, filename, file_path, file_type, engine, scale, tiling,
             prompt_mode, custom_prompt, status, total_pages, processed_pages,
-            pages_data, error_message, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, '[]', '', ?, ?)
+            pages_data, error_message, page_range, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, '[]', '', ?, ?, ?)
     """, (
         job_id, filename, file_path, file_type, engine, scale, int(tiling),
-        prompt_mode, custom_prompt or '', total_pages, now, now
+        prompt_mode, custom_prompt or '', total_pages, page_range or '', now, now
     ))
     conn.commit()
     conn.close()

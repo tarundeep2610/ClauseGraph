@@ -39,10 +39,10 @@ app = FastAPI(
     version="1.1.0"
 )
 
-# Enable CORS for convenience
+# CORS: restrict to localhost origins only (wildcard + credentials is a spec violation)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -263,7 +263,7 @@ async def startup_event():
     database.init_db()
     _load_custom_prompts()
     settings = _load_settings()
-    task_queue.resume_interrupted_jobs(
+    await task_queue.resume_interrupted_jobs(
         run_ocr_for_image,
         run_unlimited_ocr_for_image,
         PROMPTS,
@@ -357,18 +357,18 @@ def health_check():
 @app.post("/api/jobs")
 async def submit_ocr_job(
     file: UploadFile = File(..., description="PDF or Image file for background OCR processing"),
-    scale: float = Query(None, description="Custom render scale"),
+    scale: float = Query(None, ge=0.1, le=4.0, description="Custom render scale (0.1–4.0)"),
     tiling: bool = Query(True, description="Enable tiling"),
     prompt_mode: str = Query("document", description="Prompt mode"),
     custom_prompt: str = Query(None, description="Custom prompt override"),
     engine: str = Query("unlimited", description="OCR engine ('unlimited' or 'glm')"),
     # GLM-OCR (Ollama) hyperparameters
-    glm_temperature: float = Query(0.0, description="GLM sampling temperature"),
-    glm_num_ctx: int = Query(8192, description="GLM context window tokens"),
-    glm_num_predict: int = Query(2048, description="GLM max output tokens"),
-    glm_repeat_penalty: float = Query(1.2, description="GLM repeat penalty"),
+    glm_temperature: float = Query(0.0, ge=0.0, le=2.0, description="GLM sampling temperature"),
+    glm_num_ctx: int = Query(8192, ge=512, le=32768, description="GLM context window tokens"),
+    glm_num_predict: int = Query(2048, ge=1, le=8192, description="GLM max output tokens"),
+    glm_repeat_penalty: float = Query(1.2, ge=0.5, le=3.0, description="GLM repeat penalty"),
     # Unlimited-OCR hyperparameter
-    unlimited_base_size: int = Query(1024, description="Unlimited-OCR base resolution"),
+    unlimited_base_size: int = Query(1024, ge=128, le=2048, description="Unlimited-OCR base resolution"),
     # Page selection
     page_range: str = Query("", description="Page range to process, e.g. '1-10,25,50-100'. Empty = all pages."),
     username: str = Depends(authenticate_user)
@@ -383,14 +383,19 @@ async def submit_ocr_job(
     if not filename_lower.endswith(supported_extensions):
         raise HTTPException(status_code=400, detail=f"Supported file extensions: {supported_extensions}")
 
-    content = await file.read()
+    MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_MB", "200")) * 1024 * 1024
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"File exceeds {MAX_UPLOAD_BYTES // (1024*1024)} MB upload limit.")
+
     job_id = str(uuid.uuid4())
     is_pdf = filename_lower.endswith(".pdf")
     file_type = "pdf" if is_pdf else "image"
 
-    # Save uploaded file to persistent storage
+    # Save uploaded file to persistent storage — basename strips any path traversal attempts
     database.init_db()
-    saved_filename = f"{job_id}_{filename}"
+    safe_filename = os.path.basename(filename)
+    saved_filename = f"{job_id}_{safe_filename}"
     saved_filepath = os.path.join(database.UPLOADS_DIR, saved_filename)
     with open(saved_filepath, "wb") as f:
         f.write(content)
@@ -409,10 +414,10 @@ async def submit_ocr_job(
 
     render_scale = scale if scale is not None else DEFAULT_RENDER_SCALE
 
-    # Register job in DB
+    # Register job in DB (store original filename for display, safe_filename is the on-disk name)
     job = database.create_job(
         job_id=job_id,
-        filename=filename,
+        filename=safe_filename,
         file_path=saved_filepath,
         file_type=file_type,
         engine=engine,
@@ -420,7 +425,8 @@ async def submit_ocr_job(
         tiling=tiling,
         prompt_mode=prompt_mode,
         custom_prompt=custom_prompt,
-        total_pages=total_pages
+        total_pages=total_pages,
+        page_range=page_range
     )
 
     # Build engine-specific runners with user's hyperparameters baked in
@@ -471,10 +477,11 @@ def stop_all_ocr_jobs(username: str = Depends(authenticate_user)):
     return {"message": f"Requested cancellation of {count} active job(s).", "cancelled": count}
 
 @app.post("/api/shutdown")
-def shutdown_server(username: str = Depends(authenticate_user)):
+async def shutdown_server(username: str = Depends(authenticate_user)):
     """Stop all OCR tasks and shut down the server process to free memory."""
     task_queue.cancel_all_jobs()
-    asyncio.get_event_loop().call_later(0.5, lambda: os.kill(os.getpid(), signal.SIGINT))
+    loop = asyncio.get_running_loop()
+    loop.call_later(0.5, lambda: signal.raise_signal(signal.SIGINT))
     return {"message": "Server is shutting down."}
 
 @app.get("/api/jobs/{job_id}")
@@ -553,7 +560,7 @@ def pause_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
     return {"message": f"Job {job_id} will pause after the current page.", "status": "pausing"}
 
 @app.post("/api/jobs/{job_id}/retry")
-def retry_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
+async def retry_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
     """Retries or resumes a failed or stuck OCR job."""
     job = database.get_job(job_id)
     if not job:
@@ -567,7 +574,8 @@ def retry_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
             run_unlimited_ocr_for_image,
             PROMPTS,
             OCR_TIMEOUT,
-            settings.get("output_path", "")
+            settings.get("output_path", ""),
+            job.get("page_range", "")
         )
     )
 

@@ -621,11 +621,38 @@
 
 <script>
   // ── Auth helper ────────────────────────────────────────────────────────────
-  const _AUTH = 'Basic ' + btoa('admin:admin123');
+  // Credentials are cached by the browser after the initial HTTP Basic challenge
+  // on page load — do NOT hardcode them here.
   function apiFetch(url, opts = {}) {
-    opts.headers = Object.assign({ Authorization: _AUTH }, opts.headers || {});
+    opts.credentials = opts.credentials || 'same-origin';
     const abs = url.startsWith('http') ? url : (window.location.origin + url);
     return fetch(abs, opts);
+  }
+
+  // ── Security helpers ───────────────────────────────────────────────────────
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function sanitizeHtml(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    tmp.querySelectorAll('script,iframe,object,embed,form,base').forEach(el => el.remove());
+    tmp.querySelectorAll('*').forEach(el => {
+      [...el.attributes].forEach(attr => {
+        if (attr.name.startsWith('on') ||
+            attr.value.trim().toLowerCase().startsWith('javascript:') ||
+            attr.value.trim().toLowerCase().startsWith('data:text/html')) {
+          el.removeAttribute(attr.name);
+        }
+      });
+    });
+    return tmp.innerHTML;
   }
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -949,7 +976,7 @@
         html += `
           <div class="history-card ${isActive}" onclick="selectJob('${j.job_id}')">
             <div class="history-header">
-              <span class="history-filename" title="${j.filename}">${j.filename}</span>
+              <span class="history-filename" title="${escHtml(j.filename)}">${escHtml(j.filename)}</span>
               <span class="status-badge ${badgeClass}">${badgeText}</span>
             </div>
             <div class="history-meta">
@@ -1016,14 +1043,14 @@
         if (job.status === 'processing')
           mdEl.innerHTML = `<div style="text-align:center;padding-top:60px;color:var(--accent)"><div class="spinner" style="width:22px;height:22px;margin-bottom:10px;"></div><br>Scanning...</div>`;
         else if (job.status === 'failed')
-          mdEl.innerHTML = `<div style="color:var(--error);padding:18px;">Extraction failed: ${job.error_message}</div>`;
+          mdEl.innerHTML = `<div style="color:var(--error);padding:18px;">Extraction failed: ${escHtml(job.error_message)}</div>`;
         else
           mdEl.innerHTML = `<div style="text-align:center;padding-top:60px;color:var(--muted)">Waiting for first page...</div>`;
         return;
       }
       let md = '';
       pages.forEach(p => { md += `### Page ${p.page}\n\n${p.text||''}\n\n---\n\n`; });
-      mdEl.innerHTML = marked.parse(md);
+      mdEl.innerHTML = sanitizeHtml(marked.parse(md));
     } catch(e) { if (!silent) console.error(e); }
   }
 
