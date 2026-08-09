@@ -1054,8 +1054,8 @@
       }
       let md = '';
       pages.forEach(p => { md += `### Page ${p.page}\n\n${p.text||''}\n\n---\n\n`; });
-      if (_jobMdCache[activeJobId] !== md) {
-        _jobMdCache[activeJobId] = md;
+      if (_jobMdCache[jobId] !== md) {
+        _jobMdCache[jobId] = md;
         mdEl.innerHTML = sanitizeHtml(marked.parse(md));
       }
     } catch(e) { if (!silent) console.error(e); }
@@ -1152,17 +1152,6 @@
   function clearFileSelection() {
     document.getElementById('fileInput').value = '';
     showFileEmpty();
-  }
-
-  async function countPdfPages(file) {
-    try {
-      const buf = await file.arrayBuffer();
-      // Decode as latin1 to safely scan binary PDF bytes
-      const text = new TextDecoder('latin1').decode(new Uint8Array(buf));
-      // /Type /Page (not /Pages which is the catalog)
-      const hits = text.match(/\/Type\s*\/Page[^s]/g);
-      return hits ? hits.length : null;
-    } catch(e) { return null; }
   }
 
   // ── Drag & drop ────────────────────────────────────────────────────────────
