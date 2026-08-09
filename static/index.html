@@ -670,8 +670,7 @@
     document.getElementById('fileInput').addEventListener('change', onFileInputChange);
     await loadPromptsFromServer();
     await loadSettingsFromServer();
-    loadJobsList();
-    startAutoPolling();
+    await loadJobsList();
     startIdleTimer();
     trackUserActivity();
   });

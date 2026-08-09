@@ -272,7 +272,7 @@ def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 
 
         try:
             with contextlib.redirect_stdout(stdout_capture):
-                if timeout:
+                if timeout is not None:
                     _ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
                     _fut = _ex.submit(_run_infer)
                     _ex.shutdown(wait=False)
