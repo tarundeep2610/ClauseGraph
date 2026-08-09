@@ -13,6 +13,7 @@ import urllib.parse
 import requests
 import secrets
 import asyncio
+from contextlib import asynccontextmanager
 import pypdfium2 as pdfium
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query, BackgroundTasks
 from fastapi.responses import HTMLResponse, FileResponse, Response
@@ -37,10 +38,34 @@ except ImportError:
         file=sys.stderr
     )
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    global _idle_watcher_task
+    database.init_db()
+    _load_custom_prompts()
+    settings = _load_settings()
+    await task_queue.resume_interrupted_jobs(
+        run_ocr_for_image,
+        run_unlimited_ocr_for_image,
+        dict(PROMPTS),
+        OCR_TIMEOUT,
+        settings.get("output_path", "")
+    )
+    _idle_watcher_task = asyncio.create_task(_idle_watcher())
+    yield
+    if _idle_watcher_task and not _idle_watcher_task.done():
+        _idle_watcher_task.cancel()
+        try:
+            await _idle_watcher_task
+        except asyncio.CancelledError:
+            pass
+
+
 app = FastAPI(
     title="GLM-OCR Service",
     description="A standalone, production-ready OCR service with fail-safe background persistence.",
-    version="1.1.0"
+    version="1.1.0",
+    lifespan=_lifespan,
 )
 
 _ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
@@ -351,33 +376,6 @@ def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeout: in
 _idle_watcher_task: asyncio.Task | None = None
 
 
-@app.on_event("startup")
-async def startup_event():
-    global _idle_watcher_task
-    database.init_db()
-    _load_custom_prompts()
-    settings = _load_settings()
-    await task_queue.resume_interrupted_jobs(
-        run_ocr_for_image,
-        run_unlimited_ocr_for_image,
-        dict(PROMPTS),
-        OCR_TIMEOUT,
-        settings.get("output_path", "")
-    )
-    _idle_watcher_task = asyncio.create_task(_idle_watcher())
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    global _idle_watcher_task
-    if _idle_watcher_task and not _idle_watcher_task.done():
-        _idle_watcher_task.cancel()
-        try:
-            await _idle_watcher_task
-        except asyncio.CancelledError:
-            pass
-
-
 # ─── SETTINGS & PROMPTS API ───────────────────────────────────────────────────
 
 @app.get("/api/settings")
@@ -458,10 +456,6 @@ def health_check():
     return {
         "status": "healthy",
         "ollama_connection": ollama_status,
-        "config": {
-            "render_scale": DEFAULT_RENDER_SCALE,
-            "ollama_endpoint": OLLAMA_URL
-        }
     }
 
 # ─── FAIL-SAFE PERSISTENT JOB API ENDPOINTS ───────────────────────────────────
