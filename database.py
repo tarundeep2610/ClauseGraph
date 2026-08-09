@@ -1,3 +1,4 @@
+import sys
 import sqlite3
 import json
 import os
@@ -50,7 +51,6 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
     if mode != "wal":
-        import sys
         print(f"[DB] Warning: WAL mode unavailable on this filesystem, using {mode!r}", file=sys.stderr)
     return conn
 
