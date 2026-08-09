@@ -270,7 +270,7 @@ async def startup_event():
     await task_queue.resume_interrupted_jobs(
         run_ocr_for_image,
         run_unlimited_ocr_for_image,
-        PROMPTS,
+        dict(PROMPTS),
         OCR_TIMEOUT,
         settings.get("output_path", "")
     )
@@ -457,7 +457,7 @@ async def submit_ocr_job(
             job_id,
             _glm_runner,
             _unlimited_runner,
-            PROMPTS,
+            dict(PROMPTS),
             OCR_TIMEOUT,
             settings.get("output_path", ""),
             page_range
@@ -579,7 +579,7 @@ async def retry_ocr_job(job_id: str, username: str = Depends(authenticate_user))
             job_id,
             run_ocr_for_image,
             run_unlimited_ocr_for_image,
-            PROMPTS,
+            dict(PROMPTS),
             OCR_TIMEOUT,
             settings.get("output_path", ""),
             job.get("page_range", "")
@@ -683,9 +683,13 @@ async def ocr_single_page(
 
     try:
         if engine == "unlimited":
-            raw_text = run_unlimited_ocr_for_image(pil_image, prompt, OCR_TIMEOUT)
+            raw_text = await asyncio.to_thread(
+                run_unlimited_ocr_for_image, pil_image, prompt, OCR_TIMEOUT
+            )
         else:
-            raw_text = run_ocr_for_image(pil_image, prompt, tiling, OCR_TIMEOUT, options=ocr_options)
+            raw_text = await asyncio.to_thread(
+                run_ocr_for_image, pil_image, prompt, tiling, OCR_TIMEOUT, ocr_options
+            )
             if is_captcha:
                 len_match = re.search(r'\b(\d+)\s+(?:alphanumeric\s+)?char', prompt, re.IGNORECASE)
                 raw_text = clean_captcha_result(raw_text, expected_len=int(len_match.group(1)) if len_match else None)

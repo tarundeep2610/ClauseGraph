@@ -41,7 +41,7 @@ def cancel_all_jobs() -> int:
 
 def has_active_jobs() -> bool:
     """Return True if any OCR task is currently running."""
-    return any(not t.done() for t in _active_tasks.values())
+    return any(not t.done() for t in list(_active_tasks.values()))
 
 def is_job_active(job_id: str) -> bool:
     task = _active_tasks.get(job_id)
