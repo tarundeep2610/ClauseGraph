@@ -147,6 +147,18 @@ def initialize(verbose: bool = True) -> bool:
     if _loaded:
         return True
 
+    # trust_remote_code=True executes Python code downloaded from HuggingFace at load time.
+    # Require an explicit operator opt-in so this never runs silently.
+    if not os.environ.get("UNLIMITED_OCR_ALLOW_REMOTE_CODE"):
+        _load_error = (
+            "Refused to load baidu/Unlimited-OCR: trust_remote_code=True would execute "
+            "arbitrary model-provided Python code. Set UNLIMITED_OCR_ALLOW_REMOTE_CODE=1 "
+            "in the environment to confirm you trust this model's remote code."
+        )
+        if verbose:
+            print(f"[Unlimited-OCR] ❌ {_load_error}", file=sys.stderr)
+        return False
+
     try:
         import torch
         from transformers import AutoModel, AutoTokenizer
