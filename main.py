@@ -287,6 +287,12 @@ def authenticate_user(credentials: HTTPBasicCredentials = Depends(security)):
 _ollama_model_ready: bool = False
 
 
+def _reset_ollama_model_ready():
+    """Call when Ollama returns a model-not-found error so the next request re-checks."""
+    global _ollama_model_ready
+    _ollama_model_ready = False
+
+
 def ensure_ollama_model_on_demand():
     """Pulls glm-ocr in Ollama ONLY when a user actively runs GLM-OCR and the model is not yet pulled."""
     global _ollama_model_ready
@@ -327,6 +333,7 @@ def run_ocr_for_image(pil_image, prompt: str, tiling: bool, timeout: int, option
         }
         response = requests.post(OLLAMA_URL, json=payload, timeout=timeout)
         if response.status_code != 200:
+            _reset_ollama_model_ready()
             raise Exception(f"Ollama server returned an error: {response.text}")
         return response.json().get("response", "").strip()
     else:
@@ -352,6 +359,7 @@ def run_ocr_for_image(pil_image, prompt: str, tiling: bool, timeout: int, option
             }
             response = requests.post(OLLAMA_URL, json=payload, timeout=timeout)
             if response.status_code != 200:
+                _reset_ollama_model_ready()
                 raise Exception(f"Ollama server returned an error on section {idx + 1}: {response.text}")
             results.append(response.json().get("response", "").strip())
 
