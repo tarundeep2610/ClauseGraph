@@ -7,6 +7,8 @@ import time
 import signal
 import base64
 import uuid
+import collections
+import urllib.parse
 import requests
 import secrets
 import asyncio
@@ -64,6 +66,29 @@ class _ActivityMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 app.add_middleware(_ActivityMiddleware)
+
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline'; "
+    "font-src https://cdnjs.cloudflare.com; "
+    "img-src 'self' data: blob:; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none'; "
+    "object-src 'none'; "
+    "base-uri 'self'"
+)
+
+class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"] = _CSP
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+
+app.add_middleware(_SecurityHeadersMiddleware)
 
 PROMPTS = {
     "captcha": (
@@ -130,6 +155,37 @@ def _save_custom_prompts():
     os.makedirs(_DATA_DIR, exist_ok=True)
     with open(_CUSTOM_PROMPTS_FILE, "w", encoding="utf-8") as f:
         json.dump(PROMPTS, f, indent=2)
+
+
+# ─── Rate limiting ────────────────────────────────────────────────────────────
+_RATE_LIMIT_MAX = int(os.environ.get("JOB_RATE_LIMIT", "10"))
+_RATE_LIMIT_WINDOW = 60  # seconds
+_rate_buckets: dict = {}  # username -> deque of submission timestamps
+
+def _check_rate_limit(username: str):
+    now = time.time()
+    dq = _rate_buckets.setdefault(username, collections.deque())
+    while dq and now - dq[0] > _RATE_LIMIT_WINDOW:
+        dq.popleft()
+    if len(dq) >= _RATE_LIMIT_MAX:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded: max {_RATE_LIMIT_MAX} OCR requests per {_RATE_LIMIT_WINDOW}s.",
+            headers={"Retry-After": str(_RATE_LIMIT_WINDOW)},
+        )
+    dq.append(now)
+
+
+# ─── Content-Disposition helper ───────────────────────────────────────────────
+def _content_disposition(disposition: str, filename: str) -> str:
+    """Return a Content-Disposition header value with RFC 5987 encoded filename."""
+    # Strip control characters to prevent header injection
+    safe = re.sub(r'[\x00-\x1f\x7f]', '', filename)
+    # ASCII fallback: replace non-ASCII with underscore
+    ascii_name = safe.encode('ascii', errors='replace').decode('ascii').replace('?', '_')
+    # RFC 5987 percent-encoded value (allow safe chars through unencoded)
+    encoded = urllib.parse.quote(safe, safe="!#$&+-.^_`|~")
+    return f"{disposition}; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
 
 
 async def _idle_watcher():
@@ -286,6 +342,13 @@ def get_settings(username: str = Depends(authenticate_user)):
 @app.post("/api/settings")
 def save_settings(body: dict, username: str = Depends(authenticate_user)):
     current = _load_settings()
+    if "output_path" in body:
+        op = body["output_path"]
+        if op and not os.path.isdir(op):
+            raise HTTPException(
+                status_code=400,
+                detail=f"output_path must be an existing directory: {op!r}"
+            )
     current.update({k: v for k, v in body.items() if k in ("output_path", "idle_timeout_minutes")})
     _save_settings(current)
     return current
@@ -381,6 +444,8 @@ async def submit_ocr_job(
     Submits a document for fail-safe background processing.
     Returns immediately with job_id. Processing continues even if browser tab is closed.
     """
+    _check_rate_limit(username)
+
     filename = file.filename
     filename_lower = filename.lower()
     supported_extensions = (".pdf", ".png", ".jpg", ".jpeg", ".webp", ".bmp")
@@ -518,7 +583,7 @@ def get_job_uploaded_file(
         path=job['file_path'],
         media_type=content_type,
         filename=filename,
-        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'}
+        headers={"Content-Disposition": _content_disposition(disposition, filename)}
     )
 
 @app.get("/api/jobs/{job_id}/download-result")
@@ -552,7 +617,7 @@ def download_ocr_result(job_id: str, username: str = Depends(authenticate_user))
     return Response(
         content=markdown_content.encode("utf-8"),
         media_type="text/markdown",
-        headers={"Content-Disposition": f'attachment; filename="{out_filename}"'}
+        headers={"Content-Disposition": _content_disposition("attachment", out_filename)}
     )
 
 @app.post("/api/jobs/{job_id}/pause")
@@ -612,6 +677,8 @@ async def ocr_single_page(
     engine: str = Query("glm", pattern="^(unlimited|glm)$"),
     username: str = Depends(authenticate_user)
 ):
+    _check_rate_limit(username)
+
     filename_lower = file.filename.lower()
     supported_extensions = (".pdf", ".png", ".jpg", ".jpeg", ".webp", ".bmp")
     if not filename_lower.endswith(supported_extensions):
