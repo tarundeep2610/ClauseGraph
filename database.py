@@ -48,7 +48,10 @@ def get_db_connection():
     init_db()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+    if mode != "wal":
+        import sys
+        print(f"[DB] Warning: WAL mode unavailable on this filesystem, using {mode!r}", file=sys.stderr)
     return conn
 
 def create_job(
