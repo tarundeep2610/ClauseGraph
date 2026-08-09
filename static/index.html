@@ -669,8 +669,7 @@
     document.getElementById('fileInput').addEventListener('change', onFileInputChange);
     await loadPromptsFromServer();
     await loadSettingsFromServer();
-    loadJobsList();
-    startAutoPolling();
+    await loadJobsList();
     startIdleTimer();
     trackUserActivity();
   });
@@ -993,6 +992,8 @@
       });
       _hasActiveJobs = anyActive;
       document.getElementById('controlBar').className = anyActive ? 'visible' : '';
+      if (anyActive && !pollInterval) startAutoPolling();
+      else if (!anyActive && pollInterval) { clearInterval(pollInterval); pollInterval = null; }
       listEl.innerHTML = html;
       if (!activeJobId && jobs.length) selectJob(jobs[0].job_id);
     } catch(e) { if (!silent) console.error(e); }
