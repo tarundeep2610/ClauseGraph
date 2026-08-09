@@ -1,3 +1,6 @@
+(function () {
+'use strict';
+
 // ── Auth helper ────────────────────────────────────────────────────────────
 // Credentials are cached by the browser after the initial HTTP Basic challenge
 // on page load — do NOT hardcode them here.
@@ -17,6 +20,9 @@ function escHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+const _UNSAFE_PROTO = /^(javascript|data|vbscript):/i;
+const _URL_ATTRS = ['href', 'src', 'action', 'formaction', 'xlink:href'];
+
 function sanitizeHtml(html) {
   const tmp = document.createElement('div');
   tmp.innerHTML = html;
@@ -24,8 +30,7 @@ function sanitizeHtml(html) {
   tmp.querySelectorAll('*').forEach(el => {
     [...el.attributes].forEach(attr => {
       if (attr.name.startsWith('on') ||
-          attr.value.trim().toLowerCase().startsWith('javascript:') ||
-          attr.value.trim().toLowerCase().startsWith('data:text/html')) {
+          (_URL_ATTRS.includes(attr.name) && _UNSAFE_PROTO.test(attr.value.trim()))) {
         el.removeAttribute(attr.name);
       }
     });
@@ -649,3 +654,5 @@ async function exitServer() {
     </div>`;
   setTimeout(() => window.close(), 800);
 }
+
+})();

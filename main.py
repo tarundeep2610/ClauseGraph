@@ -20,6 +20,7 @@ from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.datastructures import MutableHeaders
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 import database
@@ -86,16 +87,14 @@ app.add_middleware(
 
 security = HTTPBasic()
 
-from starlette.datastructures import MutableHeaders
-
 
 class _ActivityMiddleware:
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
+        global _last_activity
         if scope["type"] == "http":
-            global _last_activity
             _last_activity = time.time()
         await self.app(scope, receive, send)
 

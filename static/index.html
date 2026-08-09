@@ -6,7 +6,7 @@
   <title>GLM-OCR & Unlimited-OCR Engine (Fail-Safe Service)</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
         integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous">
-  <script src="/assets/marked.min.js"></script>
+  <script src="/assets/marked.min.js" defer></script>
 
   <style>
     :root {
@@ -322,7 +322,7 @@
     <h1>GLM-OCR &amp; Baidu Unlimited Engine</h1>
     <p class="tagline">Survives browser refresh, tab closes &amp; connection drops.</p>
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;">
-      <div id="idlePill"><i class="fa-solid fa-circle" style="font-size:0.5rem;"></i> Session active — idle timeout: <span id="idleCountdownPill">--:--</span></div>
+      <div id="idlePill"><i class="fa-solid fa-circle" style="font-size:0.5rem;"></i> Session active — idle timeout: --:--</div>
       <button id="exitBtn"><i class="fa-solid fa-power-off"></i> Exit &amp; Free Memory</button>
     </div>
   </header>
