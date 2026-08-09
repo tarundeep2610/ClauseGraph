@@ -38,6 +38,10 @@ except ImportError:
         file=sys.stderr
     )
 
+# _lifespan is defined here so it can be passed to FastAPI() below.
+# It references helpers defined later in this file (_load_settings, run_ocr_for_image, etc.);
+# Python resolves those names at call time (server startup), not at definition time, so
+# there is no forward-reference error at import.
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     global _idle_watcher_task
