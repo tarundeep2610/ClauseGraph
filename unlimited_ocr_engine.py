@@ -312,16 +312,17 @@ def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 
         timing_footer = f"\n\n---\n*⏱️ **Unlimited-OCR Execution Time:** {time_str} ({elapsed_sec:.1f}s)*"
         final_output = cleaned_text + timing_footer
 
-        # Print to stdout and save persistent copies
+        # Print to stdout and optionally save debug copies
         print(f"\n⏱️ [Unlimited-OCR Execution Time]: {time_str} ({elapsed_sec:.2f} seconds)", flush=True)
         print(f"\n==================== [Unlimited-OCR Clean Result] ====================\n{final_output}\n======================================================================\n", flush=True)
-        try:
-            with open("latest_ocr_result.md", "w", encoding="utf-8") as f_out:
-                f_out.write(final_output)
-            with open("latest_ocr_result_raw.md", "w", encoding="utf-8") as f_raw:
-                f_raw.write(result_text)
-        except Exception:
-            pass
+        if os.environ.get("UNLIMITED_OCR_SAVE_DEBUG_FILES"):
+            try:
+                with open("latest_ocr_result.md", "w", encoding="utf-8") as f_out:
+                    f_out.write(final_output)
+                with open("latest_ocr_result_raw.md", "w", encoding="utf-8") as f_raw:
+                    f_raw.write(result_text)
+            except Exception:
+                pass
 
     return final_output
 
