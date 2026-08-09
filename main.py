@@ -128,22 +128,38 @@ _DEFAULT_PROMPTS = {k: v for k, v in PROMPTS.items()}
 
 _last_activity = time.time()
 
+_settings_cache: dict = {}
+_settings_cache_ts: float = 0.0
+_SETTINGS_TTL = 5.0
+
 
 def _load_settings() -> dict:
+    global _settings_cache, _settings_cache_ts
+    now = time.time()
+    if _settings_cache and now - _settings_cache_ts < _SETTINGS_TTL:
+        return dict(_settings_cache)
     defaults = {"output_path": "", "idle_timeout_minutes": 15}
     try:
         if os.path.exists(_SETTINGS_FILE):
             with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
-                return {**defaults, **json.load(f)}
+                result = {**defaults, **json.load(f)}
+                _settings_cache = result
+                _settings_cache_ts = now
+                return dict(result)
     except Exception:
         pass
-    return defaults
+    _settings_cache = defaults
+    _settings_cache_ts = now
+    return dict(defaults)
 
 
 def _save_settings(data: dict):
+    global _settings_cache, _settings_cache_ts
     os.makedirs(_DATA_DIR, exist_ok=True)
     with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+    _settings_cache = dict(data)
+    _settings_cache_ts = time.time()
 
 
 def _load_custom_prompts():
@@ -243,18 +259,27 @@ def authenticate_user(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return credentials.username
 
+_ollama_model_ready: bool = False
+
+
 def ensure_ollama_model_on_demand():
     """Pulls glm-ocr in Ollama ONLY when a user actively runs GLM-OCR and the model is not yet pulled."""
+    global _ollama_model_ready
+    if _ollama_model_ready:
+        return
     ollama_base = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
     try:
         tags_resp = requests.get(f"{ollama_base}/api/tags", timeout=3)
         if tags_resp.status_code == 200:
             models = [m.get("name") for m in tags_resp.json().get("models", [])]
-            if not any("glm-ocr" in m for m in models):
+            if any("glm-ocr" in m for m in models):
+                _ollama_model_ready = True
+            else:
                 print("[Service] 📥 On-demand GLM-OCR request received. Pulling 'glm-ocr' model in Ollama...")
                 pull_resp = requests.post(f"{ollama_base}/api/pull", json={"name": "glm-ocr", "stream": False}, timeout=300)
                 if pull_resp.status_code == 200:
                     print("[Service] ✅ 'glm-ocr' model successfully pulled into Ollama!")
+                    _ollama_model_ready = True
     except Exception as e:
         print(f"[Service] On-demand Ollama model check note: {e}")
 
@@ -320,7 +345,7 @@ def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeout: in
     if not _UNLIMITED_OCR_AVAILABLE or unlimited_ocr_engine is None:
         raise Exception("unlimited_ocr_engine is not installed.")
     effective_prompt = "document parsing." if len(prompt) > 80 else prompt
-    return unlimited_ocr_engine.run_ocr(pil_image, prompt=effective_prompt, base_size=base_size)
+    return unlimited_ocr_engine.run_ocr(pil_image, prompt=effective_prompt, base_size=base_size, timeout=timeout)
 
 
 @app.on_event("startup")

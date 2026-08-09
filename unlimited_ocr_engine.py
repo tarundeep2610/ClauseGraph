@@ -218,7 +218,7 @@ def get_load_error() -> str | None:
 # Inference
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 1024) -> str:
+def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 1024, timeout: int | None = None) -> str:
     """
     Run Baidu Unlimited-OCR on a PIL Image and return the extracted text as a string.
 
@@ -226,6 +226,8 @@ def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 
         pil_image: A PIL Image (RGB mode preferred).
         prompt:    The prompt sent to the model. Defaults to DOCUMENT_PROMPT.
         base_size: Resolution fed to the model (512/768/1024/2048). Higher = more detail, slower.
+        timeout:   Seconds to wait for inference before raising TimeoutError (None = no limit).
+                   The inference thread cannot be killed; timeout only raises in the caller.
 
     Returns:
         Extracted text string, or an error message prefixed with "### ❌".
@@ -253,20 +255,33 @@ def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 
 
         stdout_capture = io.StringIO()
         import time
+        import contextlib
+        import concurrent.futures
         start_time = time.time()
 
+        def _run_infer():
+            _model.infer(
+                _tokenizer,
+                prompt=f"<image>{prompt}",
+                image_file=img_path,
+                output_path=out_dir,
+                base_size=base_size,
+                image_size=base_size,
+                crop_mode=False,   # preserve document structure (no cropping)
+            )
+
         try:
-            import contextlib
             with contextlib.redirect_stdout(stdout_capture):
-                _model.infer(
-                    _tokenizer,
-                    prompt=f"<image>{prompt}",
-                    image_file=img_path,
-                    output_path=out_dir,
-                    base_size=base_size,
-                    image_size=base_size,
-                    crop_mode=False,   # preserve document structure (no cropping)
-                )
+                if timeout:
+                    _ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                    _fut = _ex.submit(_run_infer)
+                    _ex.shutdown(wait=False)
+                    try:
+                        _fut.result(timeout=timeout)
+                    except concurrent.futures.TimeoutError:
+                        raise TimeoutError(f"Unlimited-OCR inference timed out after {timeout}s.")
+                else:
+                    _run_infer()
         except Exception as e:
             tb = traceback.format_exc()
             return f"### ❌ Unlimited-OCR inference failed\n```\n{tb}\n```"
