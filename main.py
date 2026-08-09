@@ -7,6 +7,7 @@ import time
 import signal
 import base64
 import uuid
+import math
 import collections
 import urllib.parse
 import requests
@@ -86,6 +87,8 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()"
+        response.headers["Cache-Control"] = "no-store"
         return response
 
 app.add_middleware(_SecurityHeadersMiddleware)
@@ -159,7 +162,7 @@ def _save_custom_prompts():
 
 # ─── Rate limiting ────────────────────────────────────────────────────────────
 _RATE_LIMIT_MAX = int(os.environ.get("JOB_RATE_LIMIT", "10"))
-_RATE_LIMIT_WINDOW = 60  # seconds
+_RATE_LIMIT_WINDOW = int(os.environ.get("JOB_RATE_LIMIT_WINDOW_SECONDS", "60"))
 _rate_buckets: dict = {}  # username -> deque of submission timestamps
 
 def _check_rate_limit(username: str):
@@ -168,10 +171,11 @@ def _check_rate_limit(username: str):
     while dq and now - dq[0] > _RATE_LIMIT_WINDOW:
         dq.popleft()
     if len(dq) >= _RATE_LIMIT_MAX:
+        retry_after = max(1, math.ceil(dq[0] + _RATE_LIMIT_WINDOW - now))
         raise HTTPException(
             status_code=429,
             detail=f"Rate limit exceeded: max {_RATE_LIMIT_MAX} OCR requests per {_RATE_LIMIT_WINDOW}s.",
-            headers={"Retry-After": str(_RATE_LIMIT_WINDOW)},
+            headers={"Retry-After": str(retry_after)},
         )
     dq.append(now)
 
@@ -182,7 +186,7 @@ def _content_disposition(disposition: str, filename: str) -> str:
     # Strip control characters to prevent header injection
     safe = re.sub(r'[\x00-\x1f\x7f]', '', filename)
     # ASCII fallback: replace non-ASCII with underscore
-    ascii_name = safe.encode('ascii', errors='replace').decode('ascii').replace('?', '_')
+    ascii_name = safe.encode('ascii', errors='replace').decode('ascii').replace('?', '_').replace('"', '_')
     # RFC 5987 percent-encoded value (allow safe chars through unencoded)
     encoded = urllib.parse.quote(safe, safe="!#$&+-.^_`|~")
     return f"{disposition}; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
@@ -582,7 +586,6 @@ def get_job_uploaded_file(
     return FileResponse(
         path=job['file_path'],
         media_type=content_type,
-        filename=filename,
         headers={"Content-Disposition": _content_disposition(disposition, filename)}
     )
 
@@ -634,6 +637,7 @@ def pause_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
 @app.post("/api/jobs/{job_id}/retry")
 async def retry_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
     """Retries or resumes a failed or stuck OCR job."""
+    _check_rate_limit(username)
     job = database.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -703,26 +707,29 @@ async def ocr_single_page(
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"Invalid Image file: {str(e)}")
     else:
-        try:
-            pdf = pdfium.PdfDocument(content)
-        except Exception as e:
-            raise HTTPException(status_code=422, detail=f"Invalid PDF file: {str(e)}")
+        def _render_pdf():
+            try:
+                pdf = pdfium.PdfDocument(content)
+            except Exception as e:
+                raise HTTPException(status_code=422, detail=f"Invalid PDF file: {str(e)}")
+            try:
+                n = len(pdf)
+                if page > n:
+                    raise HTTPException(status_code=400, detail=f"Requested page {page} out of {n}.")
+                pdf_page = pdf.get_page(page - 1)
+                bitmap = pdf_page.render(scale=render_scale)
+                img = bitmap.to_pil()
+                pdf_page.close()
+                bitmap.close()
+                return img, n
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed rendering PDF page: {str(e)}")
+            finally:
+                pdf.close()
 
-        try:
-            num_pages = len(pdf)
-            if page > num_pages:
-                raise HTTPException(status_code=400, detail=f"Requested page {page} out of {num_pages}.")
-            pdf_page = pdf.get_page(page - 1)
-            bitmap = pdf_page.render(scale=render_scale)
-            pil_image = bitmap.to_pil()
-            pdf_page.close()
-            bitmap.close()
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed rendering PDF page: {str(e)}")
-        finally:
-            pdf.close()
+        pil_image, num_pages = await asyncio.to_thread(_render_pdf)
 
     if is_image and (prompt_mode == "captcha" or custom_prompt):
         pil_image = ImageOps.expand(pil_image, border=15, fill=(255, 255, 255))
