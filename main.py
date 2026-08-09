@@ -88,7 +88,8 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()"
-        response.headers["Cache-Control"] = "no-store"
+        if not request.url.path.startswith("/assets/"):
+            response.headers["Cache-Control"] = "no-store"
         return response
 
 app.add_middleware(_SecurityHeadersMiddleware)
