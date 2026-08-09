@@ -86,20 +86,24 @@ app.add_middleware(
 
 security = HTTPBasic()
 
-from fastapi import Request
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.datastructures import MutableHeaders
 
-class _ActivityMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        global _last_activity
-        _last_activity = time.time()
-        return await call_next(request)
+
+class _ActivityMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            global _last_activity
+            _last_activity = time.time()
+        await self.app(scope, receive, send)
 
 app.add_middleware(_ActivityMiddleware)
 
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline'; "
+    "script-src 'self'; "
     "style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline'; "
     "font-src https://cdnjs.cloudflare.com; "
     "img-src 'self' data: blob:; "
@@ -109,17 +113,30 @@ _CSP = (
     "base-uri 'self'"
 )
 
-class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        response.headers["Content-Security-Policy"] = _CSP
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()"
-        if not request.url.path.startswith("/assets/"):
-            response.headers["Cache-Control"] = "no-store"
-        return response
+class _SecurityHeadersMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+
+        async def _send_with_headers(message):
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers["Content-Security-Policy"] = _CSP
+                headers["X-Content-Type-Options"] = "nosniff"
+                headers["X-Frame-Options"] = "DENY"
+                headers["Referrer-Policy"] = "no-referrer"
+                headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()"
+                if not path.startswith("/assets/"):
+                    headers["Cache-Control"] = "no-store"
+            await send(message)
+
+        await self.app(scope, receive, _send_with_headers)
 
 app.add_middleware(_SecurityHeadersMiddleware)
 
