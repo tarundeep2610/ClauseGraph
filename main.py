@@ -356,8 +356,12 @@ def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeout: in
     return unlimited_ocr_engine.run_ocr(pil_image, prompt=effective_prompt, base_size=base_size, timeout=timeout)
 
 
+_idle_watcher_task: asyncio.Task | None = None
+
+
 @app.on_event("startup")
 async def startup_event():
+    global _idle_watcher_task
     database.init_db()
     _load_custom_prompts()
     settings = _load_settings()
@@ -368,7 +372,18 @@ async def startup_event():
         OCR_TIMEOUT,
         settings.get("output_path", "")
     )
-    asyncio.create_task(_idle_watcher())
+    _idle_watcher_task = asyncio.create_task(_idle_watcher())
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global _idle_watcher_task
+    if _idle_watcher_task and not _idle_watcher_task.done():
+        _idle_watcher_task.cancel()
+        try:
+            await _idle_watcher_task
+        except asyncio.CancelledError:
+            pass
 
 
 # ─── SETTINGS & PROMPTS API ───────────────────────────────────────────────────
