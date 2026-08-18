@@ -1,6 +1,7 @@
 import os, sys
 
 os.environ["PYTHONUTF8"] = "1"
+os.environ.setdefault("UNLIMITED_OCR_ALLOW_REMOTE_CODE", "1")
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
