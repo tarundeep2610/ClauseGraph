@@ -2,6 +2,8 @@ import sys
 import sqlite3
 import json
 import os
+import secrets
+import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
@@ -42,6 +44,18 @@ def init_db():
         conn.commit()
     except sqlite3.OperationalError:
         pass  # column already exists
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS api_keys (
+            key_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            key_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            revoked_at TIMESTAMP,
+            last_used_at TIMESTAMP
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -182,3 +196,68 @@ def delete_job(job_id: str) -> bool:
     conn.commit()
     conn.close()
     return True
+
+
+# ─── API keys (integration/S2S credentials) ───────────────────────────────────
+
+def create_api_key(name: str, role: str = "user") -> Dict[str, str]:
+    """Creates a new API key. Returns the raw key ONCE — it is never stored or retrievable again."""
+    import hashlib
+    key_id = str(uuid.uuid4())
+    raw_key = secrets.token_urlsafe(32)
+    key_hash = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO api_keys (key_id, name, key_hash, role, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (key_id, name, key_hash, role, datetime.utcnow().isoformat()))
+    conn.commit()
+    conn.close()
+    return {"key_id": key_id, "name": name, "role": role, "raw_key": raw_key}
+
+
+def list_api_keys() -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT key_id, name, role, created_at, revoked_at, last_used_at
+        FROM api_keys ORDER BY created_at DESC
+    """)
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+
+def revoke_api_key(key_id: str) -> bool:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE api_keys SET revoked_at = ? WHERE key_id = ? AND revoked_at IS NULL
+    """, (datetime.utcnow().isoformat(), key_id))
+    conn.commit()
+    changed = cursor.rowcount > 0
+    conn.close()
+    return changed
+
+
+def find_active_api_key_by_hash(key_hash: str) -> Optional[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT key_id, name, key_hash, role FROM api_keys
+        WHERE key_hash = ? AND revoked_at IS NULL
+    """, (key_hash,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def touch_api_key_last_used(key_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE api_keys SET last_used_at = ? WHERE key_id = ?
+    """, (datetime.utcnow().isoformat(), key_id))
+    conn.commit()
+    conn.close()

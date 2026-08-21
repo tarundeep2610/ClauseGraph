@@ -1,40 +1,61 @@
 version: "3.9"
 
 services:
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
+  # The CPU server itself must stay reachable on the public internet (for the
+  # browser UI and integrating projects), so — unlike the GPU box — this
+  # sidecar does NOT restrict glm-ocr-api's public port. Tailscale here exists
+  # only to give glm-ocr-api an egress path to reach the GPU server's
+  # tailnet-only address; the host port mapping below is declared on this
+  # service (not on glm-ocr-api) because it owns the shared network namespace.
+  tailscale:
+    image: tailscale/tailscale:latest
+    hostname: ocr-cpu
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_EXTRA_ARGS=--advertise-tags=tag:ocr-cpu
+      - TS_STATE_DIR=/var/lib/tailscale
     volumes:
-      - ollama_data:/root/.ollama
-    # External ports are not mapped to restrict direct access to Ollama.
-    # It will only be accessible from the internal docker network.
+      - tailscale-state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add: [NET_ADMIN, NET_RAW]
+    ports:
+      # 12006 is this deployment's designated public port for the OCR service
+      # (matching this org's existing per-service port convention). Change the
+      # bind address to 127.0.0.1 instead if you're fronting this with your
+      # own reverse proxy/TLS terminator rather than exposing it directly.
+      - "12006:8000"
+    restart: unless-stopped
 
   glm-ocr-api:
+    image: ocr-cpu-glm-api:latest
     build: .
-    container_name: glm-ocr-api
+    network_mode: "service:tailscale"
+    depends_on: [tailscale]
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - OCR_USER=admin
-      - OCR_PASS=admin123  # Set a secure password in production/hosting
       - RENDER_SCALE=1.5
       - OCR_TIMEOUT_SECONDS=600
       - DATA_DIR=/app/data
-      # HuggingFace cache — model downloads persist in the hf_cache volume
-      - HF_HOME=/root/.cache/huggingface
-    depends_on:
-      - ollama
-    ports:
-      - "127.0.0.1:3001:8000"
+      # GPU server — reached over the tailnet, see DEPLOYMENT.md
+      - GPU_OCR_BASE_URL=${GPU_OCR_BASE_URL:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - GPU_OCR_SHARED_SECRET=${GPU_OCR_SHARED_SECRET:-}
+      - GPU_OCR_CONNECT_TIMEOUT_SECONDS=${GPU_OCR_CONNECT_TIMEOUT_SECONDS:-10}
+      - GPU_OCR_POLL_INTERVAL_SECONDS=${GPU_OCR_POLL_INTERVAL_SECONDS:-3}
+      - GPU_OCR_POLL_TIMEOUT_SECONDS=${GPU_OCR_POLL_TIMEOUT_SECONDS:-600}
+      - OCR_LOCAL_ENGINE=${OCR_LOCAL_ENGINE:-false}
+      # AuthNexus SSO — see DEPLOYMENT.md for how to obtain these
+      - AUTH_AUTHORITY=${AUTH_AUTHORITY:-}
+      - PROJECT_ID=${PROJECT_ID:-}
+      - ORG_ID=${ORG_ID:-}
+      - CLIENT_ID=${CLIENT_ID:-}
+      - DEV_MODE=${DEV_MODE:-false}
+      - DEV_SECRET=${DEV_SECRET:-}
     volumes:
-      # Persists the Baidu Unlimited-OCR model (~6-8 GB) across container restarts
-      - hf_cache:/root/.cache/huggingface
       # Persists SQLite database and uploaded document files across container restarts
       - ocr_data:/app/data
 
 volumes:
-  ollama_data:
-  hf_cache:
+  tailscale-state:
   ocr_data:

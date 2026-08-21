@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Node / frontend
+node_modules/
+
 # C extensions
 *.so
 
@@ -220,3 +223,14 @@ __marimo__/
 # Runtime data
 data/
 *.db
+
+# Build artifacts / bundled images
+*.tar
+*.tar.gz
+
+# Generated OCR output (not source)
+latest_ocr_result.md
+latest_ocr_result_raw.md
+
+# Claude Code local IDE config (machine-specific)
+.claude/

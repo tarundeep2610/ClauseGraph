@@ -1,0 +1,14 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+.pytest_cache
+.venv
+.venv_test
+tests/
+data/
+frontend/node_modules
+frontend/dist
+gpu-ocr-service/
+.env
+*.md
