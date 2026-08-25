@@ -181,7 +181,7 @@ def initialize(verbose: bool = True) -> bool:
             print(f"[Unlimited-OCR] ❌ Import error: {_load_error}", file=sys.stderr)
         return False
 
-    device_map = "cuda" if _GPU_AVAILABLE else "cpu"
+    target_device = "cuda" if _GPU_AVAILABLE else "cpu"
     model_dtype = torch.bfloat16 if _GPU_AVAILABLE else torch.float32
 
     if verbose:
@@ -197,14 +197,22 @@ def initialize(verbose: bool = True) -> bool:
             trust_remote_code=True,
         )
 
+        # NOTE: deliberately NOT using device_map= here. Passing device_map
+        # triggers HuggingFace/accelerate's memory-efficient loading path,
+        # which initializes the model on a placeholder "meta" device before
+        # materializing real weights. This model's remote code has at least
+        # one buffer (model.vision_model.embeddings.position_ids) that isn't
+        # present in the saved checkpoint, so accelerate has no data to
+        # materialize it from — "Cannot copy out of meta tensor; no data!".
+        # Loading normally then moving the whole model with .to() afterward
+        # avoids the meta-tensor path entirely.
         _model = AutoModel.from_pretrained(
             MODEL_ID,
             revision=MODEL_REVISION,
             trust_remote_code=True,
             use_safetensors=True,
             dtype=model_dtype,
-            device_map=device_map,
-        ).eval()
+        ).to(target_device).eval()
 
         _loaded = True
         if verbose:

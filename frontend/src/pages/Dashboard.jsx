@@ -237,11 +237,38 @@ export default function Dashboard() {
     if (activeJobId === jobId) setActiveJobId(null);
     loadJobsList();
   }
+  function _filenameFromContentDisposition(header, fallback) {
+    if (!header) return fallback;
+    const match = /filename="?([^";]+)"?/i.exec(header);
+    return match ? match[1] : fallback;
+  }
+
+  async function _downloadViaAuthedFetch(url, fallbackFilename) {
+    // window.open()/plain navigation never carries the Authorization header
+    // apiFetch attaches, so authenticated downloads have to go through a
+    // real fetch and be saved from the resulting blob instead.
+    const resp = await apiFetch(url);
+    if (!resp.ok) {
+      alert(`Download failed: ${resp.status} ${resp.statusText}`);
+      return;
+    }
+    const blob = await resp.blob();
+    const filename = _filenameFromContentDisposition(resp.headers.get('Content-Disposition'), fallbackFilename);
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  }
+
   function handleDownloadFile(jobId) {
-    window.open(`/api/jobs/${jobId}/file?download=true`, '_blank');
+    _downloadViaAuthedFetch(`/api/jobs/${jobId}/file?download=true`, `${jobId}`);
   }
   function handleDownloadResult(jobId) {
-    window.open(`/api/jobs/${jobId}/download-result`, '_blank');
+    _downloadViaAuthedFetch(`/api/jobs/${jobId}/download-result`, `${jobId}_ocr_result.md`);
   }
   async function handleStopAll() {
     if (!confirm('Stop all running OCR extractions? Pages extracted so far are preserved.')) return;

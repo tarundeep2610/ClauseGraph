@@ -5,7 +5,13 @@
 	handle_path /ollama/* {
 		@authorized header X-Gpu-Ocr-Key {$GPU_OCR_SHARED_SECRET}
 		handle @authorized {
-			reverse_proxy localhost:11434
+			# Ollama validates the Host header and rejects anything that doesn't
+			# look local (a DNS-rebinding protection) — Caddy forwards the
+			# original client Host header by default, which Ollama then
+			# rejects with 403. Rewrite it to match what Ollama expects.
+			reverse_proxy localhost:11434 {
+				header_up Host localhost:11434
+			}
 		}
 		handle {
 			respond "Invalid or missing shared secret." 401
