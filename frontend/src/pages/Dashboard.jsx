@@ -31,6 +31,7 @@ export default function Dashboard() {
 
   const [file, setFile] = useState(null);
   const [localPreviewUrl, setLocalPreviewUrl] = useState(null);
+  const [remoteFileUrl, setRemoteFileUrl] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   const [prompts, setPrompts] = useState({});
@@ -164,6 +165,49 @@ export default function Dashboard() {
     if (!resp.ok) return;
     setJobDetails(await resp.json());
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!activeJobId) {
+      setRemoteFileUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+
+    (async () => {
+      try {
+        const resp = await apiFetch(`/api/jobs/${activeJobId}/file`);
+        if (cancelled) return;
+        if (!resp.ok) {
+          setRemoteFileUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return null;
+          });
+          return;
+        }
+        const blob = await resp.blob();
+        if (cancelled) return;
+        const url = URL.createObjectURL(blob);
+        setRemoteFileUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+      } catch (e) {
+        if (cancelled) return;
+        setRemoteFileUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return null;
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeJobId]);
 
   // ── File selection ──────────────────────────────────────────────────────
   function handleFileSelected(f) {
@@ -315,7 +359,7 @@ export default function Dashboard() {
     if (resp.ok) setSettings((s) => ({ ...s, idle_timeout_minutes: mins }));
   }
 
-  const pdfSrc = file ? localPreviewUrl : (activeJobId ? `/api/jobs/${activeJobId}/file` : null);
+  const pdfSrc = file ? localPreviewUrl : remoteFileUrl;
   const pdfStatusLabel = file ? `${file.name} (local preview)` : (jobDetails ? `${jobDetails.filename} (${jobDetails.total_pages}p)` : 'No document selected');
 
   return (

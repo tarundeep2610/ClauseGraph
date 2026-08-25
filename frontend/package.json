@@ -10,19 +10,20 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "dompurify": "^3.1.6",
+    "marked": "^13.0.3",
+    "oidc-client-ts": "^3.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2",
-    "oidc-client-ts": "^3.1.0",
-    "marked": "^13.0.3",
-    "dompurify": "^3.1.6"
+    "react-router-dom": "^6.26.2"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.4.6",
-    "vitest": "^2.1.1",
-    "@testing-library/react": "^16.0.1",
     "@testing-library/jest-dom": "^6.5.0",
-    "jsdom": "^25.0.1"
+    "@testing-library/react": "^16.0.1",
+    "@vitejs/plugin-react": "^4.3.1",
+    "@vitest/ui": "^2.1.9",
+    "jsdom": "^25.0.1",
+    "vite": "^5.4.6",
+    "vitest": "^2.1.1"
   }
 }
