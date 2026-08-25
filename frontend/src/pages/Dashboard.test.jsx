@@ -322,4 +322,78 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
       expect(iframe.getAttribute('src')).toBe('about:blank');
     });
   });
+
+  it('6. Sidebar wrapper carries the "sidebar" class (layout/scroll fix depends on it)', async () => {
+    render(<Dashboard />);
+    await waitFor(() => {
+      expect(document.querySelector('.sidebar')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('Dashboard — settings persistence (localStorage)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    apiFetch.mockImplementation(async (url) => {
+      if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
+      if (url === '/api/jobs') return { ok: true, json: async () => [] };
+      return { ok: false };
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('restores engine and view mode from a previously persisted settings blob', async () => {
+    localStorage.setItem(
+      'ocr-ui-settings',
+      JSON.stringify({ form: { engine: 'glm', unlimitedBaseSize: '2048' }, viewMode: 'pdf' })
+    );
+
+    render(<Dashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('engine-select').value).toBe('glm');
+    });
+    expect(screen.getByRole('button', { name: /PDF Only/i })).toHaveClass('active');
+  });
+
+  it('persists a form change to localStorage', async () => {
+    render(<Dashboard />);
+
+    const engineSelect = await screen.findByTestId('engine-select');
+    fireEvent.change(engineSelect, { target: { value: 'glm' } });
+
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem('ocr-ui-settings'));
+      expect(stored.form.engine).toBe('glm');
+    });
+  });
+
+  it('never persists customPrompt or pageRange (per-document/session state, not a user preference)', async () => {
+    render(<Dashboard />);
+
+    const engineSelect = await screen.findByTestId('engine-select');
+    fireEvent.change(engineSelect, { target: { value: 'glm' } });
+
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem('ocr-ui-settings'));
+      expect(stored.form).not.toHaveProperty('customPrompt');
+      expect(stored.form).not.toHaveProperty('pageRange');
+    });
+  });
+
+  it('ignores unrecognized/legacy stored keys instead of crashing', async () => {
+    localStorage.setItem(
+      'ocr-ui-settings',
+      JSON.stringify({ form: { engine: 'not-a-real-engine', bogusKey: 'x' } })
+    );
+
+    expect(() => render(<Dashboard />)).not.toThrow();
+    await waitFor(() => {
+      expect(screen.getByTestId('engine-select')).toBeInTheDocument();
+    });
+  });
 });

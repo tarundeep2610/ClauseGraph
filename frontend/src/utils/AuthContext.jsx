@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { getUser, getRole } from './authService';
+import { getUser, getRole, logout } from './authService';
 
 const AuthContext = createContext(null);
 
@@ -20,7 +20,7 @@ export function AuthProvider({ children }) {
   const isAdmin = role === 'admin';
 
   return (
-    <AuthContext.Provider value={{ user, loading, role, isAdmin, refresh }}>
+    <AuthContext.Provider value={{ user, loading, role, isAdmin, refresh, logout }}>
       {children}
     </AuthContext.Provider>
   );

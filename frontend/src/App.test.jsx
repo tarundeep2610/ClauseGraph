@@ -8,6 +8,7 @@ vi.mock('./utils/authService', () => ({
   getUser: vi.fn().mockResolvedValue(null),
   getRole: () => 'user',
   login: async () => { signinRedirectMock(); },
+  logout: vi.fn(),
   userManager: { signinRedirect: signinRedirectMock, signinRedirectCallback: vi.fn() },
 }));
 

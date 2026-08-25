@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../utils/api';
 import { useAuth } from '../utils/AuthContext';
+import { loadPersistedSettings, savePersistedSettings } from '../utils/persistedSettings';
 import Header from '../components/Header';
 import IdleBanner from '../components/IdleBanner';
 import ControlBar from '../components/ControlBar';
@@ -26,7 +27,11 @@ const DEFAULT_FORM = {
 export default function Dashboard() {
   const { isAdmin } = useAuth();
 
-  const [form, setForm] = useState(DEFAULT_FORM);
+  const [form, setForm] = useState(() => {
+    const persisted = loadPersistedSettings().form || {};
+    const { customPrompt, pageRange, ...persistedRest } = persisted;
+    return { ...DEFAULT_FORM, ...persistedRest };
+  });
   const updateForm = useCallback((patch) => setForm((f) => ({ ...f, ...patch })), []);
 
   const [file, setFile] = useState(null);
@@ -41,7 +46,12 @@ export default function Dashboard() {
   const [jobs, setJobs] = useState([]);
   const [activeJobId, setActiveJobId] = useState(null);
   const [jobDetails, setJobDetails] = useState(null);
-  const [viewMode, setViewMode] = useState('split');
+  const [viewMode, setViewMode] = useState(() => loadPersistedSettings().viewMode || 'split');
+
+  useEffect(() => {
+    const { customPrompt, pageRange, ...formToPersist } = form;
+    savePersistedSettings({ form: formToPersist, viewMode });
+  }, [form, viewMode]);
 
   const pollRef = useRef(null);
   const lastUserActionRef = useRef(Date.now());
@@ -369,7 +379,7 @@ export default function Dashboard() {
       <ControlBar visible={hasActiveJobs} onPauseCurrent={() => activeJobId && handlePause(activeJobId)} onStopAll={handleStopAll} />
 
       <div className="dashboard">
-        <div>
+        <div className="sidebar">
           <UploadPanel
             file={file}
             onFileSelected={handleFileSelected}
