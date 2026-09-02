@@ -22,6 +22,10 @@ const DEFAULT_FORM = {
   glmNumPredict: '2048',
   glmRepeatPenalty: 1.2,
   unlimitedBaseSize: '1024',
+  processingMode: 'single',
+  batchSize: '5',
+  enableOverlap: true,
+  escalateBeforeFlagging: true,
 };
 
 export default function Dashboard() {
@@ -47,11 +51,12 @@ export default function Dashboard() {
   const [activeJobId, setActiveJobId] = useState(null);
   const [jobDetails, setJobDetails] = useState(null);
   const [viewMode, setViewMode] = useState(() => loadPersistedSettings().viewMode || 'split');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => loadPersistedSettings().sidebarCollapsed || false);
 
   useEffect(() => {
     const { customPrompt, pageRange, ...formToPersist } = form;
-    savePersistedSettings({ form: formToPersist, viewMode });
-  }, [form, viewMode]);
+    savePersistedSettings({ form: formToPersist, viewMode, sidebarCollapsed });
+  }, [form, viewMode, sidebarCollapsed]);
 
   const pollRef = useRef(null);
   const lastUserActionRef = useRef(Date.now());
@@ -253,7 +258,13 @@ export default function Dashboard() {
     } else {
       params.set('tiling', 'false');
       params.set('unlimited_base_size', form.unlimitedBaseSize);
+      params.set('processing_mode', form.processingMode || 'single');
+      if (form.processingMode === 'batch') {
+        params.set('chunk_size', form.batchSize || '5');
+        params.set('enable_overlap', form.enableOverlap === false ? 'false' : 'true');
+      }
     }
+    params.set('escalate_before_flagging', form.escalateBeforeFlagging === false ? 'false' : 'true');
 
     const body = new FormData();
     body.append('file', file);
@@ -378,7 +389,7 @@ export default function Dashboard() {
       <IdleBanner visible={idleBanner.visible} expired={idleBanner.expired} message={idleBanner.message} onKeepAlive={handleKeepAlive} />
       <ControlBar visible={hasActiveJobs} onPauseCurrent={() => activeJobId && handlePause(activeJobId)} onStopAll={handleStopAll} />
 
-      <div className="dashboard">
+      <div className={`dashboard${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
         <div className="sidebar">
           <UploadPanel
             file={file}
@@ -424,6 +435,8 @@ export default function Dashboard() {
           onResume={() => activeJobId && handleRetry(activeJobId)}
           onDownloadPdf={() => activeJobId && handleDownloadFile(activeJobId)}
           onDownloadResult={() => activeJobId && handleDownloadResult(activeJobId)}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
         />
       </div>
     </div>

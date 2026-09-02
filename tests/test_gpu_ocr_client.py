@@ -34,6 +34,55 @@ class TestUnlimitedOcrHappyPath:
             assert result == "hello world"
 
 
+class TestUnlimitedOcrMulti:
+    @pytest.mark.asyncio
+    async def test_submit_multi_sends_image_b64s_not_image_b64(self):
+        with respx.mock:
+            route = respx.post("https://gpu.example.test/api/v1/jobs").mock(
+                return_value=httpx.Response(202, json={"job_id": "batch-1"})
+            )
+            respx.get("https://gpu.example.test/api/v1/jobs/batch-1").mock(
+                return_value=httpx.Response(200, json={"status": "done", "result": "page1\n---\npage2", "error": None})
+            )
+            result = await goc.run_unlimited_ocr_multi([_tiny_image(), _tiny_image()], "Multi page parsing.", timeout=5)
+            assert result == "page1\n---\npage2"
+            sent_payload = __import__("json").loads(route.calls[0].request.content)
+            assert "image_b64s" in sent_payload
+            assert len(sent_payload["image_b64s"]) == 2
+            assert "image_b64" not in sent_payload or sent_payload.get("image_b64") is None
+
+
+class TestGlmOcrWithLogprobs:
+    @pytest.mark.asyncio
+    async def test_requests_logprobs_and_returns_them(self):
+        with respx.mock:
+            respx.get("http://localhost:11434/api/tags").mock(
+                return_value=httpx.Response(200, json={"models": [{"name": "glm-ocr"}]})
+            )
+            gen_route = respx.post("http://localhost:11434/api/generate").mock(
+                return_value=httpx.Response(200, json={"response": "hello", "logprobs": [{"token": "he", "logprob": -0.1}]})
+            )
+            text, logprobs = await goc.run_glm_ocr_with_logprobs(_tiny_image(), "prompt", timeout=5)
+            assert text == "hello"
+            assert logprobs == [{"token": "he", "logprob": -0.1}]
+            sent_payload = __import__("json").loads(gen_route.calls[0].request.content)
+            assert sent_payload["logprobs"] is True
+
+    @pytest.mark.asyncio
+    async def test_run_glm_ocr_without_tiling_does_not_request_logprobs(self):
+        with respx.mock:
+            respx.get("http://localhost:11434/api/tags").mock(
+                return_value=httpx.Response(200, json={"models": [{"name": "glm-ocr"}]})
+            )
+            gen_route = respx.post("http://localhost:11434/api/generate").mock(
+                return_value=httpx.Response(200, json={"response": "hello"})
+            )
+            result = await goc.run_glm_ocr(_tiny_image(), "prompt", tiling=False, timeout=5)
+            assert result == "hello"
+            sent_payload = __import__("json").loads(gen_route.calls[0].request.content)
+            assert "logprobs" not in sent_payload
+
+
 class TestUnlimitedOcrFailureModes:
     @pytest.mark.asyncio
     async def test_connection_error_raises_unreachable(self):

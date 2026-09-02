@@ -59,6 +59,20 @@ async def submit_unlimited_job(image_bytes: bytes, prompt: str, base_size: int, 
         "base_size": base_size,
         "timeout": timeout,
     }
+    return await _submit_job(payload)
+
+
+async def submit_unlimited_multi_job(images_bytes: list, prompt: str, timeout: int) -> str:
+    payload = {
+        "engine": "unlimited",
+        "image_b64s": [base64.b64encode(b).decode("ascii") for b in images_bytes],
+        "prompt": prompt,
+        "timeout": timeout,
+    }
+    return await _submit_job(payload)
+
+
+async def _submit_job(payload: dict) -> str:
     try:
         async with httpx.AsyncClient(timeout=config.GPU_OCR_CONNECT_TIMEOUT_SECONDS) as client:
             resp = await client.post(
@@ -113,10 +127,30 @@ async def run_unlimited_ocr(pil_image, prompt: str, timeout: int, base_size: int
     return await poll_until_done(job_id, poll_timeout)
 
 
+async def run_unlimited_ocr_multi(pil_images: list, prompt: str, timeout: int) -> str:
+    """Batch-mode counterpart to run_unlimited_ocr() — submits several page images
+    as one infer_multi() job. No base_size param: multi-page mode only supports
+    base resolution (image_size=1024, fixed server-side) per Baidu's documentation
+    — not configurable here, unlike single-page run_unlimited_ocr(). UNVERIFIED
+    PENDING S-6, see unlimited_ocr_engine.run_ocr_multi()."""
+    images_bytes = []
+    for pil_image in pil_images:
+        if pil_image.mode != "RGB":
+            pil_image = pil_image.convert("RGB")
+        buf = io.BytesIO()
+        pil_image.save(buf, format="JPEG", quality=85)
+        images_bytes.append(buf.getvalue())
+    job_id = await submit_unlimited_multi_job(images_bytes, prompt, timeout)
+    poll_timeout = max(timeout, config.GPU_OCR_POLL_TIMEOUT_SECONDS)
+    return await poll_until_done(job_id, poll_timeout)
+
+
 # ─── GLM (direct call to the Caddy-fronted Ollama on the GPU box) ─────────────
 
-async def _ollama_generate(image_b64: str, prompt: str, options: dict, timeout: int) -> str:
+async def _ollama_generate(image_b64: str, prompt: str, options: dict, timeout: int, want_logprobs: bool = False):
     payload = {"model": "glm-ocr", "prompt": prompt, "images": [image_b64], "stream": False, "options": options}
+    if want_logprobs:
+        payload["logprobs"] = True
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
@@ -129,7 +163,11 @@ async def _ollama_generate(image_b64: str, prompt: str, options: dict, timeout: 
         raise GPUServiceAuthError("Ollama proxy rejected the shared secret.")
     if resp.status_code != 200:
         raise GPUServiceJobFailed(f"Ollama returned an error: {resp.text}")
-    return resp.json().get("response", "").strip()
+    data = resp.json()
+    text = data.get("response", "").strip()
+    if want_logprobs:
+        return text, data.get("logprobs")
+    return text
 
 
 async def ensure_ollama_model_ready() -> None:
@@ -148,6 +186,23 @@ async def ensure_ollama_model_ready() -> None:
             )
     except httpx.RequestError:
         pass  # best-effort — the subsequent generate call will surface a clearer error
+
+
+async def run_glm_ocr_with_logprobs(pil_image, prompt: str, timeout: int, options: dict | None = None):
+    """S-6 verification / future token_confidence wiring: requests real per-token
+    log-probabilities from Ollama's /api/generate alongside the text. Kept separate
+    from run_glm_ocr() (which stays untouched and returns plain text) since this is
+    unverified for vision/multimodal calls and gated behind OCR_TOKEN_CONFIDENCE_ENABLED
+    — not part of the main pipeline until S-6 confirms it works and the deployed
+    Ollama version supports it. Returns (text, logprobs_or_none). No tiling support:
+    merging per-slice logprobs isn't worth the complexity for a still-unverified signal."""
+    default_options = {"num_ctx": 8192, "temperature": 0.0, "num_predict": 2048, "repeat_penalty": 1.2}
+    resolved_options = options if options is not None else default_options
+    await ensure_ollama_model_ready()
+    buf = io.BytesIO()
+    pil_image.save(buf, format="JPEG", quality=85)
+    img_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+    return await _ollama_generate(img_b64, prompt, resolved_options, timeout, want_logprobs=True)
 
 
 async def run_glm_ocr(pil_image, prompt: str, tiling: bool, timeout: int, options: dict | None = None) -> str:

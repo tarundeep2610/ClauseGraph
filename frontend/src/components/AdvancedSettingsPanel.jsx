@@ -122,6 +122,76 @@ export default function AdvancedSettingsPanel({
             </div>
           )}
 
+          {form.engine === 'unlimited' && (
+            <div data-testid="batch-mode-params">
+              <div className="form-group">
+                <label>Page Processing</label>
+                <select
+                  value={form.processingMode || 'single'}
+                  onChange={(e) => updateForm({ processingMode: e.target.value })}
+                >
+                  <option value="single">Single page at a time (default, proven)</option>
+                  <option value="batch">Batch (multi-page, shares model context per chunk)</option>
+                </select>
+                <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
+                  Batch mode processes several pages together so the model retains context
+                  across them — trades some per-page resolution for that context. Still
+                  being validated; single-page is the recommended default.
+                </p>
+              </div>
+              {form.processingMode === 'batch' && (
+                <div className="form-group">
+                  <label>Batch / Chunk Size (pages)</label>
+                  <input
+                    type="number"
+                    min="2"
+                    max="20"
+                    value={form.batchSize || '5'}
+                    onChange={(e) => updateForm({ batchSize: e.target.value })}
+                    data-testid="batch-size-input"
+                  />
+                  <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
+                    Pages per batch call; consecutive batches share one page for context continuity.
+                  </p>
+                </div>
+              )}
+              {form.processingMode === 'batch' && (
+                <div className="form-group">
+                  <label className="check-row" style={{ textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={form.enableOverlap !== false}
+                      onChange={(e) => updateForm({ enableOverlap: e.target.checked })}
+                      data-testid="enable-overlap-checkbox"
+                    />
+                    Overlap pages between batches
+                  </label>
+                  <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
+                    Shares one boundary page between consecutive batches for context continuity, and
+                    enables table-continuation merging on export. Turning this off also disables
+                    export-time table stitching, since there's no shared page to compare.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="form-group">
+            <label className="check-row" style={{ textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem' }}>
+              <input
+                type="checkbox"
+                checked={form.escalateBeforeFlagging !== false}
+                onChange={(e) => updateForm({ escalateBeforeFlagging: e.target.checked })}
+                data-testid="escalate-before-flagging-checkbox"
+              />
+              Auto-escalate low-confidence pages before flagging for review
+            </label>
+            <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
+              When a page scores low confidence, retry it once with stronger settings before
+              marking it for human review. Applies to both engines.
+            </p>
+          </div>
+
           <div className="form-group">
             <label>PDF Render Scale</label>
             <select value={form.scale} onChange={(e) => updateForm({ scale: e.target.value })}>

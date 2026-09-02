@@ -329,6 +329,24 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
       expect(document.querySelector('.sidebar')).toBeInTheDocument();
     });
   });
+
+  it('7. Clicking the sidebar toggle adds/removes the "sidebar-collapsed" class on .dashboard', async () => {
+    render(<Dashboard />);
+    await waitFor(() => {
+      expect(document.querySelector('.dashboard')).toBeInTheDocument();
+    });
+    expect(document.querySelector('.dashboard').className).not.toContain('sidebar-collapsed');
+
+    fireEvent.click(screen.getByTestId('sidebar-toggle-btn'));
+    await waitFor(() => {
+      expect(document.querySelector('.dashboard').className).toContain('sidebar-collapsed');
+    });
+
+    fireEvent.click(screen.getByTestId('sidebar-toggle-btn'));
+    await waitFor(() => {
+      expect(document.querySelector('.dashboard').className).not.toContain('sidebar-collapsed');
+    });
+  });
 });
 
 describe('Dashboard — settings persistence (localStorage)', () => {
@@ -394,6 +412,28 @@ describe('Dashboard — settings persistence (localStorage)', () => {
     expect(() => render(<Dashboard />)).not.toThrow();
     await waitFor(() => {
       expect(screen.getByTestId('engine-select')).toBeInTheDocument();
+    });
+  });
+
+  it('restores a persisted collapsed sidebar on mount', async () => {
+    localStorage.setItem('ocr-ui-settings', JSON.stringify({ sidebarCollapsed: true }));
+
+    render(<Dashboard />);
+
+    await waitFor(() => {
+      expect(document.querySelector('.dashboard').className).toContain('sidebar-collapsed');
+    });
+  });
+
+  it('persists sidebarCollapsed to localStorage when the toggle is clicked', async () => {
+    render(<Dashboard />);
+    await screen.findByTestId('sidebar-toggle-btn');
+
+    fireEvent.click(screen.getByTestId('sidebar-toggle-btn'));
+
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem('ocr-ui-settings'));
+      expect(stored.sidebarCollapsed).toBe(true);
     });
   });
 });

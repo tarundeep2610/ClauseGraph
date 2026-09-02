@@ -16,6 +16,7 @@ import sys
 import glob
 import tempfile
 import textwrap
+import threading
 import traceback
 from pathlib import Path
 from PIL import Image
@@ -127,6 +128,12 @@ _model = None
 _tokenizer = None
 _load_error: str | None = None
 _loaded: bool = False
+_load_lock = threading.Lock()
+# The model object is process-wide shared state; a vision-LLM's trust_remote_code
+# generation call cannot be assumed safe to invoke concurrently from two threads on
+# one shared instance. Serialize actual inference the same way pdfium access is
+# serialized on the CPU-service side.
+_inference_lock = threading.Lock()
 
 # Default OCR prompts that match what the GLM-OCR service uses
 DEFAULT_PROMPT = (
@@ -156,74 +163,78 @@ def initialize(verbose: bool = True) -> bool:
     if _loaded:
         return True
 
-    # trust_remote_code=True executes Python code downloaded from HuggingFace at load time.
-    # Require an explicit operator opt-in so this never runs silently.
-    if not os.environ.get("UNLIMITED_OCR_ALLOW_REMOTE_CODE"):
-        _load_error = (
-            "Refused to load baidu/Unlimited-OCR: trust_remote_code=True would execute "
-            "arbitrary model-provided Python code. Set UNLIMITED_OCR_ALLOW_REMOTE_CODE=1 "
-            "in the environment to confirm you trust this model's remote code."
-        )
+    with _load_lock:
+        if _loaded:  # someone else finished loading while we were waiting on the lock
+            return True
+
+        # trust_remote_code=True executes Python code downloaded from HuggingFace at load time.
+        # Require an explicit operator opt-in so this never runs silently.
+        if not os.environ.get("UNLIMITED_OCR_ALLOW_REMOTE_CODE"):
+            _load_error = (
+                "Refused to load baidu/Unlimited-OCR: trust_remote_code=True would execute "
+                "arbitrary model-provided Python code. Set UNLIMITED_OCR_ALLOW_REMOTE_CODE=1 "
+                "in the environment to confirm you trust this model's remote code."
+            )
+            if verbose:
+                print(f"[Unlimited-OCR] ❌ {_load_error}", file=sys.stderr)
+            return False
+
+        try:
+            import torch
+            from transformers import AutoModel, AutoTokenizer
+        except ImportError as e:
+            _load_error = (
+                f"Missing required packages: {e}\n\n"
+                "Please install dependencies:\n"
+                "  pip install -r requirements_unlimited_ocr.txt"
+            )
+            if verbose:
+                print(f"[Unlimited-OCR] ❌ Import error: {_load_error}", file=sys.stderr)
+            return False
+
+        target_device = "cuda" if _GPU_AVAILABLE else "cpu"
+        model_dtype = torch.bfloat16 if _GPU_AVAILABLE else torch.float32
+
         if verbose:
-            print(f"[Unlimited-OCR] ❌ {_load_error}", file=sys.stderr)
-        return False
+            print("[Unlimited-OCR] 📥 Loading model from HuggingFace (this may take a while on first run)...")
+            print(f"[Unlimited-OCR]    Model: {MODEL_ID} (revision={MODEL_REVISION})")
+            print(f"[Unlimited-OCR]    Device: {'CUDA GPU' if _GPU_AVAILABLE else 'CPU (no CUDA GPU detected)'}")
+            print(f"[Unlimited-OCR]    dtype: {model_dtype}")
 
-    try:
-        import torch
-        from transformers import AutoModel, AutoTokenizer
-    except ImportError as e:
-        _load_error = (
-            f"Missing required packages: {e}\n\n"
-            "Please install dependencies:\n"
-            "  pip install -r requirements_unlimited_ocr.txt"
-        )
-        if verbose:
-            print(f"[Unlimited-OCR] ❌ Import error: {_load_error}", file=sys.stderr)
-        return False
+        try:
+            _tokenizer = AutoTokenizer.from_pretrained(
+                MODEL_ID,
+                revision=MODEL_REVISION,
+                trust_remote_code=True,
+            )
 
-    target_device = "cuda" if _GPU_AVAILABLE else "cpu"
-    model_dtype = torch.bfloat16 if _GPU_AVAILABLE else torch.float32
+            # NOTE: deliberately NOT using device_map= here. Passing device_map
+            # triggers HuggingFace/accelerate's memory-efficient loading path,
+            # which initializes the model on a placeholder "meta" device before
+            # materializing real weights. This model's remote code has at least
+            # one buffer (model.vision_model.embeddings.position_ids) that isn't
+            # present in the saved checkpoint, so accelerate has no data to
+            # materialize it from — "Cannot copy out of meta tensor; no data!".
+            # Loading normally then moving the whole model with .to() afterward
+            # avoids the meta-tensor path entirely.
+            _model = AutoModel.from_pretrained(
+                MODEL_ID,
+                revision=MODEL_REVISION,
+                trust_remote_code=True,
+                use_safetensors=True,
+                dtype=model_dtype,
+            ).to(target_device).eval()
 
-    if verbose:
-        print("[Unlimited-OCR] 📥 Loading model from HuggingFace (this may take a while on first run)...")
-        print(f"[Unlimited-OCR]    Model: {MODEL_ID} (revision={MODEL_REVISION})")
-        print(f"[Unlimited-OCR]    Device: {'CUDA GPU' if _GPU_AVAILABLE else 'CPU (no CUDA GPU detected)'}")
-        print(f"[Unlimited-OCR]    dtype: {model_dtype}")
+            _loaded = True
+            if verbose:
+                print("[Unlimited-OCR] ✅ Model loaded and ready.")
+            return True
 
-    try:
-        _tokenizer = AutoTokenizer.from_pretrained(
-            MODEL_ID,
-            revision=MODEL_REVISION,
-            trust_remote_code=True,
-        )
-
-        # NOTE: deliberately NOT using device_map= here. Passing device_map
-        # triggers HuggingFace/accelerate's memory-efficient loading path,
-        # which initializes the model on a placeholder "meta" device before
-        # materializing real weights. This model's remote code has at least
-        # one buffer (model.vision_model.embeddings.position_ids) that isn't
-        # present in the saved checkpoint, so accelerate has no data to
-        # materialize it from — "Cannot copy out of meta tensor; no data!".
-        # Loading normally then moving the whole model with .to() afterward
-        # avoids the meta-tensor path entirely.
-        _model = AutoModel.from_pretrained(
-            MODEL_ID,
-            revision=MODEL_REVISION,
-            trust_remote_code=True,
-            use_safetensors=True,
-            dtype=model_dtype,
-        ).to(target_device).eval()
-
-        _loaded = True
-        if verbose:
-            print("[Unlimited-OCR] ✅ Model loaded and ready.")
-        return True
-
-    except Exception as e:
-        _load_error = traceback.format_exc()
-        if verbose:
-            print(f"[Unlimited-OCR] ❌ Failed to load model:\n{_load_error}", file=sys.stderr)
-        return False
+        except Exception as e:
+            _load_error = traceback.format_exc()
+            if verbose:
+                print(f"[Unlimited-OCR] ❌ Failed to load model:\n{_load_error}", file=sys.stderr)
+            return False
 
 
 def is_loaded() -> bool:
@@ -282,15 +293,19 @@ def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 
         start_time = time.time()
 
         def _run_infer():
-            _model.infer(
-                _tokenizer,
-                prompt=f"<image>{prompt}",
-                image_file=img_path,
-                output_path=out_dir,
-                base_size=base_size,
-                image_size=base_size,
-                crop_mode=False,   # preserve document structure (no cropping)
-            )
+            # The model object is shared process-wide; serialize actual generation
+            # calls so two concurrent requests can never interleave on it (see
+            # _inference_lock's definition above).
+            with _inference_lock:
+                _model.infer(
+                    _tokenizer,
+                    prompt=f"<image>{prompt}",
+                    image_file=img_path,
+                    output_path=out_dir,
+                    base_size=base_size,
+                    image_size=base_size,
+                    crop_mode=False,   # preserve document structure (no cropping)
+                )
 
         try:
             with contextlib.redirect_stdout(stdout_capture):
@@ -345,6 +360,108 @@ def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 
                     f_raw.write(result_text)
             except Exception:
                 pass
+
+    return final_output
+
+
+MULTI_PAGE_PROMPT = "Multi page parsing."
+
+
+def run_ocr_multi(pil_images: list, prompt: str | None = None, timeout: int | None = None) -> str:
+    """
+    Batch-mode counterpart to run_ocr() — calls the model's documented
+    `infer_multi()` API so several page images share one generation context.
+
+    UNVERIFIED PENDING S-6 (see the project plan): the exact page-delimiting
+    format of infer_multi()'s combined return text hasn't been confirmed against
+    real output yet, so the caller (task_queue._split_batch_output) uses a
+    best-effort heuristic splitter. Multi-page mode also only supports "base"
+    resolution per Baidu's documentation, not the higher-fidelity "gundam"
+    cropping mode single-page run_ocr() can use — that resolution trade-off is
+    exactly why the escalation ladder's combined-recovery step exists.
+
+    Args:
+        pil_images: list of PIL Images (RGB mode preferred), in page order.
+        prompt:     defaults to MULTI_PAGE_PROMPT.
+        timeout:    seconds to wait before raising TimeoutError (None = no limit).
+
+    Returns:
+        The model's combined text output across all pages, or an error message
+        prefixed with "### ❌" (same failure-mode contract as run_ocr()).
+    """
+    if not _loaded:
+        print("[Unlimited-OCR] 📥 First multi-page OCR request — loading model now...")
+        initialize(verbose=True)
+    if not _loaded:
+        error = _load_error or "Model failed to load."
+        return f"### ❌ Unlimited-OCR not available\n{error}"
+
+    prompt = prompt or MULTI_PAGE_PROMPT
+
+    with tempfile.TemporaryDirectory(prefix="unlimited_ocr_multi_") as tmp_dir:
+        image_paths = []
+        for i, pil_image in enumerate(pil_images):
+            if pil_image.mode != "RGB":
+                pil_image = pil_image.convert("RGB")
+            img_path = os.path.join(tmp_dir, f"input_page_{i}.jpg")
+            pil_image.save(img_path, format="JPEG", quality=85)
+            image_paths.append(img_path)
+
+        out_dir = os.path.join(tmp_dir, "output")
+        os.makedirs(out_dir, exist_ok=True)
+
+        stdout_capture = io.StringIO()
+        import time
+        import contextlib
+        import concurrent.futures
+        start_time = time.time()
+
+        def _run_infer_multi():
+            with _inference_lock:
+                _model.infer_multi(
+                    _tokenizer,
+                    prompt=f"<image>{prompt}",
+                    image_files=image_paths,
+                    output_path=out_dir,
+                    image_size=1024,  # multi-page mode only supports base resolution
+                    max_length=32768,
+                    no_repeat_ngram_size=35,
+                    ngram_window=1024,
+                )
+
+        try:
+            with contextlib.redirect_stdout(stdout_capture):
+                if timeout is not None:
+                    _ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                    _fut = _ex.submit(_run_infer_multi)
+                    _ex.shutdown(wait=False)
+                    try:
+                        _fut.result(timeout=timeout)
+                    except concurrent.futures.TimeoutError:
+                        raise TimeoutError(f"Unlimited-OCR multi-page inference timed out after {timeout}s.")
+                else:
+                    _run_infer_multi()
+        except Exception:
+            tb = traceback.format_exc()
+            return f"### ❌ Unlimited-OCR inference failed\n```\n{tb}\n```"
+
+        elapsed_sec = time.time() - start_time
+        result_text = _collect_output(out_dir)
+        captured_str = stdout_capture.getvalue().strip()
+        if ("unexpected output files" in result_text or not result_text.strip()) and captured_str:
+            clean_lines = [
+                line for line in captured_str.splitlines()
+                if not line.startswith("The attention mask")
+                and not line.startswith("Setting `pad_token_id`")
+                and not line.startswith("A new version")
+            ]
+            result_text = "\n".join(clean_lines).strip()
+
+        cleaned_text = clean_detection_tags(result_text)
+        timing_footer = f"\n\n---\n*⏱️ **Unlimited-OCR Multi-Page Execution Time:** {elapsed_sec:.1f}s ({len(pil_images)} pages)*"
+        final_output = cleaned_text + timing_footer
+
+        print(f"\n⏱️ [Unlimited-OCR Multi-Page Execution Time]: {elapsed_sec:.2f}s for {len(pil_images)} pages", flush=True)
 
     return final_output
 

@@ -7,6 +7,13 @@ services:
   # only to give glm-ocr-api an egress path to reach the GPU server's
   # tailnet-only address; the host port mapping below is declared on this
   # service (not on glm-ocr-api) because it owns the shared network namespace.
+  #
+  # LOCAL TEST ONLY — this whole service is commented out below because the
+  # TS_AUTHKEY in .env is the same one already consumed by the real prod
+  # node, so a second (local) tailscale login just hangs on NeedsLogin.
+  # glm-ocr-api is decoupled from it further down for local testing. Restore
+  # both this service and glm-ocr-api's network_mode/depends_on before
+  # deploying to prod.
   tailscale:
     image: tailscale/tailscale:latest
     hostname: ocr-cpu
@@ -29,8 +36,13 @@ services:
   glm-ocr-api:
     image: ocr-cpu-glm-api:latest
     build: .
+    # LOCAL TEST ONLY — network_mode/depends_on on tailscale removed and the
+    # port published directly instead, since tailscale is disabled above.
+    # Restore before deploying to prod.
     network_mode: "service:tailscale"
     depends_on: [tailscale]
+    # ports:
+    #   - "12006:8000"
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1

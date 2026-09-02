@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import time
@@ -28,6 +29,22 @@ import main as main_module  # noqa: E402  (import after env vars are set)
 def _prevent_real_shutdown(monkeypatch):
     """POST /api/shutdown schedules a real SIGINT — never let that actually fire in tests."""
     monkeypatch.setattr(main_module.signal, "raise_signal", lambda *_a, **_k: None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_task_queue_async_primitives():
+    """task_queue.py holds a few module-level asyncio.Lock/Semaphore objects,
+    created once at import time. Each binds permanently to whichever event loop
+    first uses it — but pytest-asyncio (asyncio_mode=strict) gives every async
+    test its own fresh event loop, so any test after the first one to actually
+    exercise these (e.g. via _render_page) fails with "bound to a different
+    event loop". Reassigning fresh objects before each test avoids that; a
+    freshly-constructed Lock/Semaphore doesn't bind to a loop until first used,
+    so this is safe even for non-async tests."""
+    import task_queue
+    task_queue._gpu_semaphore = asyncio.Semaphore(max(1, config.OCR_JOB_CONCURRENCY))
+    task_queue._escalation_share_semaphore = asyncio.Semaphore(max(1, config.OCR_ESCALATION_CONCURRENCY_SHARE))
+    task_queue._render_lock = asyncio.Lock()
 
 
 @pytest.fixture()

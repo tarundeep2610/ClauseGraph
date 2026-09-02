@@ -16,6 +16,7 @@ import sys
 import glob
 import tempfile
 import textwrap
+import threading
 import traceback
 from pathlib import Path
 from PIL import Image
@@ -118,6 +119,8 @@ _model = None
 _tokenizer = None
 _load_error: str | None = None
 _loaded: bool = False
+_load_lock = threading.Lock()
+_inference_lock = threading.Lock()
 
 # Default OCR prompts that match what the GLM-OCR service uses
 DEFAULT_PROMPT = (
@@ -147,61 +150,65 @@ def initialize(verbose: bool = True) -> bool:
     if _loaded:
         return True
 
-    # trust_remote_code=True executes Python code downloaded from HuggingFace at load time.
-    # Require an explicit operator opt-in so this never runs silently.
-    if not os.environ.get("UNLIMITED_OCR_ALLOW_REMOTE_CODE"):
-        _load_error = (
-            "Refused to load baidu/Unlimited-OCR: trust_remote_code=True would execute "
-            "arbitrary model-provided Python code. Set UNLIMITED_OCR_ALLOW_REMOTE_CODE=1 "
-            "in the environment to confirm you trust this model's remote code."
-        )
+    with _load_lock:
+        if _loaded:  # someone else finished loading while we were waiting on the lock
+            return True
+
+        # trust_remote_code=True executes Python code downloaded from HuggingFace at load time.
+        # Require an explicit operator opt-in so this never runs silently.
+        if not os.environ.get("UNLIMITED_OCR_ALLOW_REMOTE_CODE"):
+            _load_error = (
+                "Refused to load baidu/Unlimited-OCR: trust_remote_code=True would execute "
+                "arbitrary model-provided Python code. Set UNLIMITED_OCR_ALLOW_REMOTE_CODE=1 "
+                "in the environment to confirm you trust this model's remote code."
+            )
+            if verbose:
+                print(f"[Unlimited-OCR] ❌ {_load_error}", file=sys.stderr)
+            return False
+
+        try:
+            import torch
+            from transformers import AutoModel, AutoTokenizer
+        except ImportError as e:
+            _load_error = (
+                f"Missing required packages: {e}\n\n"
+                "Please install dependencies:\n"
+                "  pip install -r requirements_unlimited_ocr.txt"
+            )
+            if verbose:
+                print(f"[Unlimited-OCR] ❌ Import error: {_load_error}", file=sys.stderr)
+            return False
+
         if verbose:
-            print(f"[Unlimited-OCR] ❌ {_load_error}", file=sys.stderr)
-        return False
+            print("[Unlimited-OCR] 📥 Loading model from HuggingFace (this may take a while on first run)...")
+            print(f"[Unlimited-OCR]    Model: {MODEL_ID}")
+            print("[Unlimited-OCR]    Device: CPU (no CUDA GPU detected)")
+            print("[Unlimited-OCR]    dtype: float32")
 
-    try:
-        import torch
-        from transformers import AutoModel, AutoTokenizer
-    except ImportError as e:
-        _load_error = (
-            f"Missing required packages: {e}\n\n"
-            "Please install dependencies:\n"
-            "  pip install -r requirements_unlimited_ocr.txt"
-        )
-        if verbose:
-            print(f"[Unlimited-OCR] ❌ Import error: {_load_error}", file=sys.stderr)
-        return False
+        try:
+            _tokenizer = AutoTokenizer.from_pretrained(
+                MODEL_ID,
+                trust_remote_code=True,
+            )
 
-    if verbose:
-        print("[Unlimited-OCR] 📥 Loading model from HuggingFace (this may take a while on first run)...")
-        print(f"[Unlimited-OCR]    Model: {MODEL_ID}")
-        print("[Unlimited-OCR]    Device: CPU (no CUDA GPU detected)")
-        print("[Unlimited-OCR]    dtype: float32")
+            _model = AutoModel.from_pretrained(
+                MODEL_ID,
+                trust_remote_code=True,
+                use_safetensors=True,
+                dtype=torch.float32,     # float32 for CPU — bfloat16 is GPU only
+                device_map="cpu",        # force all tensors onto CPU
+            ).eval()
 
-    try:
-        _tokenizer = AutoTokenizer.from_pretrained(
-            MODEL_ID,
-            trust_remote_code=True,
-        )
+            _loaded = True
+            if verbose:
+                print("[Unlimited-OCR] ✅ Model loaded and ready.")
+            return True
 
-        _model = AutoModel.from_pretrained(
-            MODEL_ID,
-            trust_remote_code=True,
-            use_safetensors=True,
-            dtype=torch.float32,     # float32 for CPU — bfloat16 is GPU only
-            device_map="cpu",        # force all tensors onto CPU
-        ).eval()
-
-        _loaded = True
-        if verbose:
-            print("[Unlimited-OCR] ✅ Model loaded and ready.")
-        return True
-
-    except Exception as e:
-        _load_error = traceback.format_exc()
-        if verbose:
-            print(f"[Unlimited-OCR] ❌ Failed to load model:\n{_load_error}", file=sys.stderr)
-        return False
+        except Exception as e:
+            _load_error = traceback.format_exc()
+            if verbose:
+                print(f"[Unlimited-OCR] ❌ Failed to load model:\n{_load_error}", file=sys.stderr)
+            return False
 
 
 def is_loaded() -> bool:
@@ -260,15 +267,16 @@ def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 
         start_time = time.time()
 
         def _run_infer():
-            _model.infer(
-                _tokenizer,
-                prompt=f"<image>{prompt}",
-                image_file=img_path,
-                output_path=out_dir,
-                base_size=base_size,
-                image_size=base_size,
-                crop_mode=False,   # preserve document structure (no cropping)
-            )
+            with _inference_lock:
+                _model.infer(
+                    _tokenizer,
+                    prompt=f"<image>{prompt}",
+                    image_file=img_path,
+                    output_path=out_dir,
+                    base_size=base_size,
+                    image_size=base_size,
+                    crop_mode=False,   # preserve document structure (no cropping)
+                )
 
         try:
             with contextlib.redirect_stdout(stdout_capture):

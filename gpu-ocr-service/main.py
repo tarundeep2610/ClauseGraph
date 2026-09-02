@@ -42,7 +42,8 @@ def verify_shared_secret(x_gpu_ocr_key: str = Header(None)):
 
 class SubmitJobPayload(BaseModel):
     engine: str = "unlimited"
-    image_b64: str
+    image_b64: str | None = None
+    image_b64s: list[str] | None = None  # batch mode: several page images, one infer_multi() call
     prompt: str | None = None
     base_size: int = 1024
     timeout: int = 600
@@ -58,22 +59,34 @@ def health():
     }
 
 
+def _decode_image(b64: str) -> Image.Image:
+    pil_image = Image.open(io.BytesIO(base64.b64decode(b64)))
+    if pil_image.mode != "RGB":
+        pil_image = pil_image.convert("RGB")
+    return pil_image
+
+
 async def _run_job(job_id: str, payload: SubmitJobPayload):
     async with _inference_semaphore:
         _jobs[job_id]["status"] = "processing"
         try:
-            image_bytes = base64.b64decode(payload.image_b64)
-            pil_image = Image.open(io.BytesIO(image_bytes))
-            if pil_image.mode != "RGB":
-                pil_image = pil_image.convert("RGB")
-
-            result = await asyncio.to_thread(
-                unlimited_ocr_engine.run_ocr,
-                pil_image,
-                payload.prompt,
-                payload.base_size,
-                payload.timeout,
-            )
+            if payload.image_b64s:
+                pil_images = [_decode_image(b) for b in payload.image_b64s]
+                result = await asyncio.to_thread(
+                    unlimited_ocr_engine.run_ocr_multi,
+                    pil_images,
+                    payload.prompt,
+                    payload.timeout,
+                )
+            else:
+                pil_image = _decode_image(payload.image_b64)
+                result = await asyncio.to_thread(
+                    unlimited_ocr_engine.run_ocr,
+                    pil_image,
+                    payload.prompt,
+                    payload.base_size,
+                    payload.timeout,
+                )
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["result"] = result
         except Exception as e:
@@ -87,6 +100,8 @@ async def submit_job(payload: SubmitJobPayload):
         raise HTTPException(status_code=400, detail="This service only serves engine='unlimited'.")
     if not _UNLIMITED_OCR_AVAILABLE:
         raise HTTPException(status_code=503, detail="unlimited_ocr_engine is not available on this host.")
+    if not payload.image_b64 and not payload.image_b64s:
+        raise HTTPException(status_code=400, detail="Provide either image_b64 or image_b64s.")
 
     job_id = str(uuid.uuid4())
     _jobs[job_id] = {"status": "pending", "result": None, "error": None, "created_at": time.time()}

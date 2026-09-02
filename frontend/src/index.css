@@ -63,19 +63,19 @@ h1 {
 }
 @media (max-width: 1024px) { .dashboard { grid-template-columns: 1fr; } }
 
-/* Desktop: the page itself never scrolls — the sidebar, and each PDF/markdown
-   pane, get their own independent scroll region instead. Below this breakpoint
-   the layout stacks into one column and keeps normal whole-page scrolling. */
+.dashboard.sidebar-collapsed { grid-template-columns: 1fr; }
+.dashboard.sidebar-collapsed .sidebar { display: none; }
+
+/* Desktop: the page scrolls normally (not a fixed-height container) — the
+   sidebar and viewer panel are each pinned to a full viewport height, so
+   scrolling down moves the header/banner/toolbar out of view and lets the
+   panes occupy the whole visible window. Each pane keeps its own independent
+   internal scroll region on top of that for its own content. Below this
+   breakpoint the layout stacks into one column and already scrolls normally. */
 @media (min-width: 1025px) {
-  html, body { height: 100%; overflow: hidden; }
+  .sidebar { height: 100vh; overflow-y: auto; padding-right: 4px; }
 
-  .container { height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-
-  .dashboard { flex: 1; min-height: 0; align-items: stretch; }
-
-  .sidebar { height: 100%; min-height: 0; overflow-y: auto; padding-right: 4px; }
-
-  .viewer-panel { height: 100%; min-height: 0; }
+  .viewer-panel { height: 100vh; min-height: 0; }
 
   .dual-viewport { flex: 1; min-height: 0; height: auto; }
 }

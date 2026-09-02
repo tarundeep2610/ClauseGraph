@@ -23,6 +23,9 @@ import config
 import database
 import task_queue
 import gpu_ocr_client
+import chunking
+import confidence
+import seam_stitching
 from auth_deps import Principal, UserRole, require_role
 from auth_router import router as auth_router
 
@@ -53,8 +56,7 @@ async def _lifespan(app: FastAPI):
     _load_custom_prompts()
     settings = _load_settings()
     await task_queue.resume_interrupted_jobs(
-        run_ocr_for_image,
-        run_unlimited_ocr_for_image,
+        _build_runners,
         dict(PROMPTS),
         OCR_TIMEOUT,
         settings.get("output_path", "")
@@ -110,6 +112,7 @@ _CSP = (
     "style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline'; "
     "font-src https://cdnjs.cloudflare.com; "
     "img-src 'self' data: blob:; "
+    "frame-src 'self' blob:; "
     "connect-src 'self'; "
     "frame-ancestors 'none'; "
     "object-src 'none'; "
@@ -187,7 +190,13 @@ def _load_settings() -> dict:
     now = time.time()
     if _settings_cache and now - _settings_cache_ts < _SETTINGS_TTL:
         return dict(_settings_cache)
-    defaults = {"output_path": "", "idle_timeout_minutes": 15}
+    defaults = {
+        "output_path": "", "idle_timeout_minutes": 15,
+        "enable_unlimited_long_prompts": config.ENABLE_UNLIMITED_LONG_PROMPTS,
+        "audit_sample_rate": config.OCR_AUDIT_SAMPLE_RATE,
+        "audit_high_confidence_min": config.OCR_AUDIT_HIGH_CONFIDENCE_MIN,
+        "audit_sample_cap_per_job": config.OCR_AUDIT_SAMPLE_CAP_PER_JOB,
+    }
     try:
         if os.path.exists(_SETTINGS_FILE):
             with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
@@ -297,8 +306,18 @@ async def run_ocr_for_image(pil_image, prompt: str, tiling: bool, timeout: int, 
     return await gpu_ocr_client.run_glm_ocr(pil_image, prompt, tiling, timeout, options)
 
 
-async def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeout: int, base_size: int = 1024) -> str:
-    effective_prompt = "document parsing." if len(prompt) > 80 else prompt
+async def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeout: int, base_size: int = 1024, long_prompts_enabled: bool = False) -> str:
+    # GLM already receives the full prompt unmodified (proven safe in production).
+    # Unlimited-OCR's own default is a short, fixed task-label rather than a sentence
+    # of instructions, so its behavior under a long prompt is unproven — gated behind
+    # a runtime setting rather than removed unconditionally, since this is the
+    # default engine and an unvalidated change here would hit every job immediately.
+    #
+    # `long_prompts_enabled` must be resolved ONCE by the caller (frozen into the
+    # job's engine_params at creation time for job-based callers) — never read live
+    # from settings inside this function, or a PATCH mid-job would split one
+    # document's pages across two different prompt behaviors.
+    effective_prompt = prompt if (long_prompts_enabled or len(prompt) <= 80) else "document parsing."
     if config.OCR_LOCAL_ENGINE:
         # Dev-only fallback: run in-process on this machine without a GPU server.
         if not _UNLIMITED_OCR_AVAILABLE or unlimited_ocr_engine is None:
@@ -307,6 +326,34 @@ async def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeo
             unlimited_ocr_engine.run_ocr, pil_image, effective_prompt, base_size, timeout
         )
     return await gpu_ocr_client.run_unlimited_ocr(pil_image, effective_prompt, timeout, base_size=base_size)
+
+
+def _build_runners(engine_params: dict):
+    """Builds the GLM/Unlimited/batch runner closures from a job's frozen
+    engine_params snapshot — used identically by submit, retry, and resume so
+    retry/resume honor the job's original settings instead of reverting to
+    defaults (an existing bug this fixes)."""
+    glm_opts = {
+        "temperature": engine_params.get("glm_temperature", 0.0),
+        "num_ctx": engine_params.get("glm_num_ctx", 8192),
+        "num_predict": engine_params.get("glm_num_predict", 2048),
+        "repeat_penalty": engine_params.get("glm_repeat_penalty", 1.2),
+    }
+
+    def _glm_runner(pil_image, prompt, _tiling, timeout, captcha_override=None):
+        opts = captcha_override if captcha_override is not None else glm_opts
+        return run_ocr_for_image(pil_image, prompt, _tiling, timeout, opts)
+
+    u_base = engine_params.get("unlimited_base_size", 1024)
+    long_prompts_enabled = engine_params.get("long_prompts_enabled", False)
+
+    def _unlimited_runner(pil_image, prompt, timeout):
+        return run_unlimited_ocr_for_image(pil_image, prompt, timeout, base_size=u_base, long_prompts_enabled=long_prompts_enabled)
+
+    async def _unlimited_multi_runner(pil_images, prompt, timeout):
+        return await gpu_ocr_client.run_unlimited_ocr_multi(pil_images, prompt, timeout)
+
+    return _glm_runner, _unlimited_runner, _unlimited_multi_runner
 
 
 _idle_watcher_task: asyncio.Task | None = None
@@ -328,7 +375,11 @@ def save_settings(body: dict, principal: Principal = Depends(_require_admin)):
                 status_code=400,
                 detail=f"output_path must be an existing directory: {op!r}"
             )
-    current.update({k: v for k, v in body.items() if k in ("output_path", "idle_timeout_minutes")})
+    allowed_keys = (
+        "output_path", "idle_timeout_minutes", "enable_unlimited_long_prompts",
+        "audit_sample_rate", "audit_high_confidence_min", "audit_sample_cap_per_job",
+    )
+    current.update({k: v for k, v in body.items() if k in allowed_keys})
     _save_settings(current)
     return current
 
@@ -397,6 +448,13 @@ async def submit_ocr_job(
     unlimited_base_size: int = Query(1024, ge=128, le=2048, description="Unlimited-OCR base resolution"),
     # Page selection
     page_range: str = Query("", description="Page range to process, e.g. '1-10,25,50-100'. Empty = all pages."),
+    # Chunking / batch mode (unlimited engine only) / escalation / concurrency
+    chunk_size: int = Query(None, ge=2, le=config.OCR_MAX_CHUNK_SIZE, description="Pages per chunk; also the batch size in batch mode"),
+    processing_mode: str = Query(None, pattern="^(batch|single)$", description="Unlimited-OCR only: 'batch' (infer_multi) or 'single' (today's behavior)"),
+    enable_overlap: bool = Query(True, description="Batch mode only: share one boundary page between consecutive infer_multi() calls. Ignored for single-page mode, which never overlaps."),
+    concurrency: int = Query(None, ge=1, le=16, description="Pages/chunks processed in parallel"),
+    escalate_before_flagging: bool = Query(True, description="Auto-escalate a low-confidence page once before flagging for review"),
+    confidence_threshold: float = Query(None, ge=0.0, le=1.0, description="Override the default needs_review threshold for this job"),
     principal: Principal = Depends(_require_user)
 ):
     """
@@ -445,8 +503,32 @@ async def submit_ocr_job(
 
     render_scale = scale if scale is not None else DEFAULT_RENDER_SCALE
 
+    # processing_mode ships defaulting to "single" (today's proven behavior) until
+    # S-5 validates infer_multi()'s batch-size/quality trade-offs on real pages —
+    # only unlimited-engine jobs can use "batch" at all.
+    effective_processing_mode = processing_mode or config.OCR_PROCESSING_MODE_DEFAULT
+    if engine != "unlimited":
+        effective_processing_mode = "single"
+    effective_batch_size = chunk_size or config.OCR_BATCH_SIZE_DEFAULT
+    effective_chunk_size = chunk_size or config.OCR_CHUNK_SIZE
+    effective_concurrency = concurrency or config.OCR_JOB_CONCURRENCY
+
+    # Resolved ONCE here and frozen into engine_params — the worker never re-reads
+    # live settings mid-job, so a later settings PATCH can't split one document's
+    # pages across two different prompt behaviors.
+    settings = _load_settings()
+    engine_params = {
+        "glm_temperature": glm_temperature,
+        "glm_num_ctx": glm_num_ctx,
+        "glm_num_predict": glm_num_predict,
+        "glm_repeat_penalty": glm_repeat_penalty,
+        "unlimited_base_size": unlimited_base_size,
+        "long_prompts_enabled": bool(settings.get("enable_unlimited_long_prompts", config.ENABLE_UNLIMITED_LONG_PROMPTS)),
+        "confidence_threshold": confidence_threshold,
+    }
+
     # Register job in DB (store original filename for display, safe_filename is the on-disk name)
-    job = database.create_job(
+    database.create_job(
         job_id=job_id,
         filename=safe_filename,
         file_path=saved_filepath,
@@ -457,25 +539,18 @@ async def submit_ocr_job(
         prompt_mode=prompt_mode,
         custom_prompt=custom_prompt,
         total_pages=total_pages,
-        page_range=page_range
+        page_range=page_range,
+        chunk_size=effective_chunk_size,
+        concurrency=effective_concurrency,
+        engine_params=engine_params,
+        processing_mode=effective_processing_mode,
+        batch_size=effective_batch_size,
+        enable_overlap=enable_overlap,
+        escalate_before_flagging=escalate_before_flagging,
     )
 
-    # Build engine-specific runners with user's hyperparameters baked in
-    _glm_opts = {
-        "temperature": glm_temperature,
-        "num_ctx": glm_num_ctx,
-        "num_predict": glm_num_predict,
-        "repeat_penalty": glm_repeat_penalty,
-    }
-    def _glm_runner(pil_image, prompt, _tiling, timeout, captcha_override=None):
-        opts = captcha_override if captcha_override is not None else _glm_opts
-        return run_ocr_for_image(pil_image, prompt, _tiling, timeout, opts)
+    _glm_runner, _unlimited_runner, _unlimited_multi_runner = _build_runners(engine_params)
 
-    _u_base = unlimited_base_size
-    def _unlimited_runner(pil_image, prompt, timeout):
-        return run_unlimited_ocr_for_image(pil_image, prompt, timeout, base_size=_u_base)
-
-    settings = _load_settings()
     asyncio.create_task(
         task_queue.process_ocr_job(
             job_id,
@@ -484,7 +559,8 @@ async def submit_ocr_job(
             dict(PROMPTS),
             OCR_TIMEOUT,
             settings.get("output_path", ""),
-            page_range
+            page_range,
+            _unlimited_multi_runner,
         )
     )
 
@@ -515,12 +591,43 @@ async def shutdown_server(principal: Principal = Depends(_require_admin)):
     loop.call_later(0.5, lambda: signal.raise_signal(signal.SIGINT))
     return {"message": "Server is shutting down."}
 
+def _annotate_page_confidence(page: dict) -> dict:
+    conf = page.get("confidence")
+    page["confidence_pct"] = round(conf * 100) if conf is not None else None
+    page["confidence_tier"] = confidence.tier_for_stored_confidence(conf, signals=_safe_json_loads(page.get("signals")))
+    return page
+
+
+def _safe_json_loads(raw):
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {}
+
+
 @app.get("/api/jobs/{job_id}")
-def get_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
+def get_ocr_job(
+    job_id: str,
+    include_pages: bool = Query(True),
+    page_from: int = Query(None, ge=1),
+    page_to: int = Query(None, ge=1),
+    accept_partial: bool = Query(False, description="Return base-pass results even if escalation is still pending"),
+    principal: Principal = Depends(_require_user)
+):
     """Retrieves full details, live progress, and extracted text for a specific job."""
-    job = database.get_job(job_id)
+    job = database.get_job(job_id, include_pages=False)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    if include_pages:
+        pages = database.get_pages(job_id, page_from=page_from, page_to=page_to)
+        job["pages_data"] = [_annotate_page_confidence(p) for p in pages]
+
+    job["chunks"] = chunking.compute_chunks(job["total_pages"], job.get("chunk_size") or config.OCR_CHUNK_SIZE)
+    if job["status"] == "escalating" and not accept_partial:
+        job["_escalation_pending"] = True
     return job
 
 @app.get("/api/jobs/{job_id}/file")
@@ -545,31 +652,60 @@ def get_job_uploaded_file(
     )
 
 @app.get("/api/jobs/{job_id}/download-result")
-def download_ocr_result(job_id: str, principal: Principal = Depends(_require_user)):
+def download_ocr_result(
+    job_id: str,
+    include: str = Query("all", pattern="^(all|clean|review)$", description="'all' (with review banners), 'clean' (flagged pages omitted), or 'review' (only flagged pages)"),
+    clean_tables: bool = Query(False, description="Merge detected table continuations into one table for structured-data consumers, dropping page anchors at the seam"),
+    principal: Principal = Depends(_require_user)
+):
     """Downloads the extracted OCR result text as a formatted Markdown (.md) document."""
-    job = database.get_job(job_id)
+    job = database.get_job(job_id, include_pages=False)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    pages = job.get('pages_data', [])
+    pages = database.get_pages(job_id)
     filename = job['filename']
     base_name = os.path.splitext(filename)[0]
 
-    md_lines = [
+    flagged = [p for p in pages if p.get('needs_review')]
+    if include == "clean":
+        pages = [p for p in pages if not p.get('needs_review')]
+    elif include == "review":
+        pages = flagged
+
+    header_lines = [
         f"# OCR Extraction Report: {filename}",
         f"- **Engine**: {job['engine'].upper()}",
         f"- **Pages**: {job['total_pages']}",
         f"- **Status**: {job['status'].upper()}",
         f"- **Created At**: {job['created_at']}",
-        "\n---\n"
     ]
+    if job['status'] == 'escalating':
+        header_lines.append("- **⚠️ Note**: escalation is still in progress for some pages — this snapshot may improve once it finishes.")
+    if include == "all" and flagged:
+        header_lines.append(f"\n## Review Summary ({len(flagged)} page(s) flagged)\n")
+        for p in flagged:
+            header_lines.append(f"- Page {p['page_num']}: confidence {round((p.get('confidence') or 0) * 100)}% — {p.get('review_reason') or 'flagged'}")
 
-    for p in pages:
-        md_lines.append(f"## Page {p.get('page')}")
-        md_lines.append(p.get('text', ''))
-        md_lines.append("\n---\n")
+    # Stitching follows the job's own overlap setting — single-page mode never has
+    # overlap so it never stitches; batch mode stitches only when it opted in.
+    stitch = job.get('processing_mode') == 'batch' and bool(job.get('enable_overlap', True))
 
-    markdown_content = "\n".join(md_lines)
+    export_pages = [{"page": p["page_num"], "text": p.get("text", "")} for p in pages]
+    body = seam_stitching.render_export(export_pages, clean_tables=clean_tables, stitch=stitch)
+
+    if include == "all":
+        # Banner each flagged page's own block so it's never silently blended in.
+        for p in flagged:
+            marker = f"## Page {p['page_num']}\n\n"
+            banner = (
+                f"## Page {p['page_num']}\n\n> ⚠️ **NEEDS HUMAN REVIEW** — confidence "
+                f"{round((p.get('confidence') or 0) * 100)}% ({p.get('review_reason') or 'flagged'}). "
+                f"This transcript may be incomplete.\n\n"
+            )
+            body = body.replace(marker, banner, 1)
+
+    markdown_content = "\n".join(header_lines) + "\n\n---\n\n" + body
     out_filename = f"{base_name}_ocr_result.md"
 
     return Response(
@@ -598,19 +734,91 @@ async def retry_ocr_job(job_id: str, principal: Principal = Depends(_require_use
         raise HTTPException(status_code=404, detail="Job not found")
 
     settings = _load_settings()
+    glm_runner, unlimited_runner, unlimited_multi_runner = _build_runners(job.get("engine_params") or {})
     asyncio.create_task(
         task_queue.process_ocr_job(
             job_id,
-            run_ocr_for_image,
-            run_unlimited_ocr_for_image,
+            glm_runner,
+            unlimited_runner,
             dict(PROMPTS),
             OCR_TIMEOUT,
             settings.get("output_path", ""),
-            job.get("page_range", "")
+            job.get("page_range", ""),
+            unlimited_multi_runner,
         )
     )
 
     return {"message": f"Job {job_id} retried successfully.", "status": "processing"}
+
+# ─── Human review queue & manual per-page retry ───────────────────────────────
+
+@app.get("/api/jobs/{job_id}/review-pages")
+def get_job_review_pages(job_id: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), principal: Principal = Depends(_require_user)):
+    """Flagged pages for one job, ordered by confidence ascending (worst first)."""
+    if not database.get_job(job_id, include_pages=False):
+        raise HTTPException(status_code=404, detail="Job not found")
+    pages = database.list_review_pages(job_id=job_id, limit=limit, offset=offset)
+    return {"pages": [_annotate_page_confidence(p) for p in pages]}
+
+@app.get("/api/review-queue")
+def get_review_queue(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), principal: Principal = Depends(_require_user)):
+    """Cross-job 'needs human review' queue — backs the review UI. Audit-sampled
+    pages are intentionally indistinguishable here from genuine low-confidence
+    flags (see the confidence-calibration design notes) — review_reason is never
+    surfaced as 'audit_sample' to this endpoint's caller for that reason."""
+    pages = database.list_review_pages(limit=limit, offset=offset)
+    for p in pages:
+        _annotate_page_confidence(p)
+        if p.get("review_reason") == "audit_sample":
+            p["review_reason"] = ""  # blind: never let the reviewer distinguish audit samples from real flags
+    return {"pages": pages}
+
+@app.get("/api/jobs/{job_id}/pages/{page_num}/attempts")
+def get_page_attempts(job_id: str, page_num: int, principal: Principal = Depends(_require_user)):
+    if not database.get_job(job_id, include_pages=False):
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"attempts": database.get_page_attempts(job_id, page_num)}
+
+@app.post("/api/jobs/{job_id}/pages/{page_num}/retry")
+async def retry_ocr_page(
+    job_id: str, page_num: int,
+    escalate: bool = Query(False, description="true = try the other engine instead of the same one"),
+    principal: Principal = Depends(_require_user)
+):
+    """Manual per-page retry — same engine by default, or the other engine with
+    ?escalate=true. Safe to call on an already-completed job (only this page's row
+    changes; the job's overall status is untouched)."""
+    _check_rate_limit(principal.rate_limit_key)
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    engine_params = job.get("engine_params") or {}
+    glm_runner, unlimited_runner, _ = _build_runners(engine_params)
+    prompt = job.get("custom_prompt") or PROMPTS.get(job.get("prompt_mode"), PROMPTS["document"])
+
+    try:
+        updated = await task_queue.retry_single_page(
+            job_id, page_num, job["engine"], glm_runner, unlimited_runner,
+            prompt, job["tiling"], OCR_TIMEOUT, escalate_other_engine=escalate,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Page not found")
+    return _annotate_page_confidence(updated)
+
+@app.post("/api/jobs/{job_id}/pages/{page_num}/confirm-correct")
+def confirm_page_correct(job_id: str, page_num: int, principal: Principal = Depends(_require_user)):
+    """Fast 'nothing wrong here' close-out for a review-queue item — no reason
+    required, so a reviewer who finds nothing wrong can close it out immediately,
+    exactly as fast as if they'd known in advance it was fine."""
+    page = database.get_page(job_id, page_num)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    database.upsert_page(job_id, page_num, status="success", needs_review=0, reviewed_at=__import__("datetime").datetime.utcnow().isoformat())
+    database.refresh_job_page_counts(job_id)
+    return _annotate_page_confidence(database.get_page(job_id, page_num))
 
 @app.delete("/api/jobs/{job_id}")
 async def delete_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
@@ -712,7 +920,8 @@ async def ocr_single_page(
 
     try:
         if engine == "unlimited":
-            raw_text = await run_unlimited_ocr_for_image(pil_image, prompt, OCR_TIMEOUT)
+            _legacy_long_prompts = bool(_load_settings().get("enable_unlimited_long_prompts", config.ENABLE_UNLIMITED_LONG_PROMPTS))
+            raw_text = await run_unlimited_ocr_for_image(pil_image, prompt, OCR_TIMEOUT, long_prompts_enabled=_legacy_long_prompts)
         else:
             raw_text = await run_ocr_for_image(pil_image, prompt, tiling, OCR_TIMEOUT, ocr_options)
             if is_captcha:
