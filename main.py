@@ -427,6 +427,8 @@ async def health_check():
         "status": "healthy",
         "ollama_connection": gpu_health["ollama"],
         "gpu_ocr_service_connection": gpu_health["gpu_ocr_service"],
+        "gpu_model_loaded": gpu_health["model_loaded"],
+        "gpu_active_jobs": gpu_health["active_jobs"],
     }
 
 # ─── FAIL-SAFE PERSISTENT JOB API ENDPOINTS ───────────────────────────────────
@@ -578,15 +580,25 @@ def list_ocr_jobs(limit: int = Query(50, ge=1, le=200), principal: Principal = D
     return database.list_jobs(limit=limit)
 
 @app.post("/api/jobs/stop-all")
-def stop_all_ocr_jobs(principal: Principal = Depends(_require_admin)):
-    """Cancel all currently running OCR tasks and mark them paused."""
+async def stop_all_ocr_jobs(principal: Principal = Depends(_require_admin)):
+    """Cancel all currently running OCR tasks (marking them paused) AND tell
+    the GPU service to abort whatever it's actively computing right now -
+    without this, a cancelled CPU-side task just abandons its in-flight GPU
+    request, which keeps running orphaned (nobody left to read the result)
+    until it times out on its own."""
     count = task_queue.cancel_all_jobs()
-    return {"message": f"Requested cancellation of {count} active job(s).", "cancelled": count}
+    gpu_result = await gpu_ocr_client.cancel_all_gpu_jobs()
+    return {
+        "message": f"Requested cancellation of {count} active job(s).",
+        "cancelled": count,
+        "gpu_cancelled": gpu_result.get("ok", False),
+    }
 
 @app.post("/api/shutdown")
 async def shutdown_server(principal: Principal = Depends(_require_admin)):
     """Stop all OCR tasks and shut down the server process to free memory."""
     task_queue.cancel_all_jobs()
+    await gpu_ocr_client.cancel_all_gpu_jobs()
     loop = asyncio.get_running_loop()
     loop.call_later(0.5, lambda: signal.raise_signal(signal.SIGINT))
     return {"message": "Server is shutting down."}
@@ -620,6 +632,13 @@ def get_ocr_job(
     job = database.get_job(job_id, include_pages=False)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    # ocr_jobs' own processed/succeeded/review/failed counters are only
+    # refreshed at the end of a base/escalation pass (see
+    # refresh_job_page_counts callers in task_queue.py), so they sit stale
+    # (typically 0) for the whole duration of a run - overlay live counts
+    # computed straight from ocr_pages so callers polling this endpoint see
+    # real-time progress instead.
+    job.update(database.get_live_page_counts(job_id))
 
     if include_pages:
         pages = database.get_pages(job_id, page_from=page_from, page_to=page_to)
@@ -807,6 +826,41 @@ async def retry_ocr_page(
     if updated is None:
         raise HTTPException(status_code=404, detail="Page not found")
     return _annotate_page_confidence(updated)
+
+@app.post("/api/jobs/{job_id}/retry-pages")
+async def retry_job_pages(
+    job_id: str,
+    scope: str = Query(..., pattern="^(all|failed|review)$", description="'all' = every page, 'failed' = only hard-failed pages, 'review' = only low-confidence/needs-review pages"),
+    principal: Principal = Depends(_require_user)
+):
+    """Bulk manual retry - re-runs the selected pages at escalation quality
+    (max scale + tiling + 1.5x timeout, keeping whichever result scores
+    higher), same treatment as a single per-page retry. Runs as a background
+    task since this can take a long time across many pages; poll
+    GET /api/jobs/{job_id} for progress same as any other running job."""
+    _check_rate_limit(principal.rate_limit_key)
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if task_queue.is_bulk_retry_active(job_id):
+        raise HTTPException(status_code=409, detail="A bulk retry is already running for this job.")
+    if scope == "all" and task_queue.is_job_active(job_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Wait for the current OCR run to finish before retrying ALL pages — "
+                   "you can still retry just the failed/review pages while it's running.",
+        )
+
+    engine_params = job.get("engine_params") or {}
+    glm_runner, unlimited_runner, _ = _build_runners(engine_params)
+    prompt = job.get("custom_prompt") or PROMPTS.get(job.get("prompt_mode"), PROMPTS["document"])
+
+    asyncio.create_task(
+        task_queue.retry_pages_bulk(
+            job_id, job["engine"], glm_runner, unlimited_runner, prompt, job["tiling"], OCR_TIMEOUT, None, scope,
+        )
+    )
+    return {"message": f"Bulk retry ({scope}) started for job {job_id}.", "status": "escalating"}
 
 @app.post("/api/jobs/{job_id}/pages/{page_num}/confirm-correct")
 def confirm_page_correct(job_id: str, page_num: int, principal: Principal = Depends(_require_user)):

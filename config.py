@@ -19,7 +19,17 @@ GPU_OCR_BASE_URL = os.environ.get("GPU_OCR_BASE_URL", "").rstrip("/")
 GPU_OCR_SHARED_SECRET = os.environ.get("GPU_OCR_SHARED_SECRET", "")
 GPU_OCR_CONNECT_TIMEOUT_SECONDS = float(os.environ.get("GPU_OCR_CONNECT_TIMEOUT_SECONDS", "10"))
 GPU_OCR_POLL_INTERVAL_SECONDS = float(os.environ.get("GPU_OCR_POLL_INTERVAL_SECONDS", "3"))
-GPU_OCR_POLL_TIMEOUT_SECONDS = float(os.environ.get("GPU_OCR_POLL_TIMEOUT_SECONDS", "600"))
+# How long the CPU-side client waits for one page's GPU job before giving up,
+# independent of the per-job `timeout` (OCR_TIMEOUT_SECONDS) sent to the GPU
+# service. The GPU service already enforces `timeout` itself (killing and
+# respawning its worker rather than ever hanging forever - see
+# unlimited_ocr_engine.py), including for calls queued behind another one, so
+# this is deliberately NOT derived from `timeout` (a max(timeout, ...) here
+# previously raced the server's own enforcement and could abandon a call that
+# was still legitimately queued, orphaning it and cascading into a backlog -
+# see the project plan). This is purely a liveness safety net for a truly
+# dead/unreachable GPU service; it should never fire during normal operation.
+GPU_OCR_CLIENT_SAFETY_TIMEOUT_SECONDS = float(os.environ.get("GPU_OCR_CLIENT_SAFETY_TIMEOUT_SECONDS", "1800"))
 OCR_LOCAL_ENGINE = os.environ.get("OCR_LOCAL_ENGINE", "false").strip().lower() == "true"
 
 # ─── Existing OCR service config (relocated from main.py) ────────────────────

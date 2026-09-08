@@ -29,6 +29,20 @@ def test_get_job_includes_confidence_pct_and_tier(client, auth_headers, tmp_path
     assert pages[2]["confidence_tier"] == "needs_review"
 
 
+def test_get_job_returns_live_processed_pages_count_mid_processing(client, auth_headers, tmp_path):
+    # _job_with_pages seeds 3 terminal-status pages but never calls
+    # refresh_job_page_counts - reproduces the reported bug where the
+    # progress readout stays stuck at 0/N for the whole run.
+    job_id = _job_with_pages(tmp_path)
+    resp = client.get(f"/api/jobs/{job_id}", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["processed_pages"] == 3
+    assert body["succeeded_pages"] == 1
+    assert body["review_pages"] == 2
+    assert body["failed_pages"] == 0
+
+
 def test_review_pages_for_one_job(client, auth_headers, tmp_path):
     job_id = _job_with_pages(tmp_path)
     resp = client.get(f"/api/jobs/{job_id}/review-pages", headers=auth_headers)
