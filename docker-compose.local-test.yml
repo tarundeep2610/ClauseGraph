@@ -1,0 +1,52 @@
+version: "3.9"
+
+# LOCAL TEST ONLY — for running the CPU app on a dev machine with no GPU,
+# alongside gpu-ocr-service/docker-compose.local-test.yml running the GPU
+# service in CPU-fallback mode. See run-local-test.ps1 and DEPLOYMENT.md's
+# "Local testing without a GPU" section. The prod file is docker-compose.yml.
+
+services:
+  glm-ocr-api:
+    image: ocr-cpu-glm-api:latest
+    build: .
+    # No tailscale sidecar here: reusing the prod TS_AUTHKEY for a second
+    # (local) node just hangs on NeedsLogin, since that key is already
+    # consumed by the real prod node. The port is published directly
+    # instead, and the GPU service is reached via host.docker.internal
+    # (see .env.local-test) rather than over a tailnet.
+    ports:
+      - "12006:8000"
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - RENDER_SCALE=1.5
+      - OCR_TIMEOUT_SECONDS=600
+      # How many pages this CPU service submits to the GPU service at once.
+      # Kept at 1 here — this box has almost no memory headroom once a
+      # single ~14GB worker is loaded, so even a second concurrent page
+      # attempt is enough to risk an OOM-kill.
+      - OCR_JOB_CONCURRENCY=${OCR_JOB_CONCURRENCY:-1}
+      - DATA_DIR=/app/data
+      - GPU_OCR_BASE_URL=${GPU_OCR_BASE_URL:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - GPU_OCR_SHARED_SECRET=${GPU_OCR_SHARED_SECRET:-}
+      - GPU_OCR_CONNECT_TIMEOUT_SECONDS=${GPU_OCR_CONNECT_TIMEOUT_SECONDS:-10}
+      - GPU_OCR_POLL_INTERVAL_SECONDS=${GPU_OCR_POLL_INTERVAL_SECONDS:-3}
+      # Client-side liveness safety net only (NOT a per-page timeout - that's
+      # OCR_TIMEOUT_SECONDS above, enforced by the GPU service itself). See
+      # config.py's comment for why this must stay decoupled from it.
+      - GPU_OCR_CLIENT_SAFETY_TIMEOUT_SECONDS=${GPU_OCR_CLIENT_SAFETY_TIMEOUT_SECONDS:-1800}
+      - OCR_LOCAL_ENGINE=${OCR_LOCAL_ENGINE:-false}
+      # AuthNexus SSO — see DEPLOYMENT.md for how to obtain these
+      - AUTH_AUTHORITY=${AUTH_AUTHORITY:-}
+      - PROJECT_ID=${PROJECT_ID:-}
+      - ORG_ID=${ORG_ID:-}
+      - CLIENT_ID=${CLIENT_ID:-}
+      - DEV_MODE=${DEV_MODE:-false}
+      - DEV_SECRET=${DEV_SECRET:-}
+    volumes:
+      # Persists SQLite database and uploaded document files across container restarts
+      - ocr_data:/app/data
+
+volumes:
+  ocr_data:

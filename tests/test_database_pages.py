@@ -96,6 +96,25 @@ def test_count_pages_by_status_and_refresh_job_page_counts():
     assert job["processed_pages"] == 3  # success + review + failed, not pending
 
 
+def test_get_live_page_counts_reflects_live_state_without_writing():
+    job_id = _job_id()
+    database.upsert_page(job_id, 1, status="success")
+    database.upsert_page(job_id, 2, status="review", needs_review=1)
+    database.upsert_page(job_id, 3, status="failed")
+    database.upsert_page(job_id, 4, status="pending")
+    # refresh_job_page_counts is deliberately never called here - this is the
+    # exact stale-progress scenario (processed_pages stuck at 0 mid-run).
+
+    counts = database.get_live_page_counts(job_id)
+    assert counts["processed_pages"] == 3
+    assert counts["succeeded_pages"] == 1
+    assert counts["review_pages"] == 1
+    assert counts["failed_pages"] == 1
+
+    job = database.get_job(job_id, include_pages=False)
+    assert job["processed_pages"] == 0, "get_live_page_counts must not write back to ocr_jobs"
+
+
 def test_list_review_pages_orders_by_confidence_ascending():
     job_id = _job_id()
     database.upsert_page(job_id, 1, status="review", needs_review=1, confidence=0.65)

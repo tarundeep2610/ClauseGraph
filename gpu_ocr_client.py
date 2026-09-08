@@ -33,7 +33,7 @@ def _headers() -> dict:
 
 
 async def check_health() -> dict:
-    result = {"ollama": "unreachable", "gpu_ocr_service": "unreachable"}
+    result = {"ollama": "unreachable", "gpu_ocr_service": "unreachable", "model_loaded": False, "active_jobs": None}
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.get(config.OLLAMA_BASE_URL, headers=_headers())
@@ -44,6 +44,10 @@ async def check_health() -> dict:
         async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.get(f"{config.GPU_OCR_BASE_URL}/health")
         result["gpu_ocr_service"] = "online" if resp.status_code == 200 else "offline"
+        if resp.status_code == 200:
+            body = resp.json()
+            result["model_loaded"] = bool(body.get("model_loaded"))
+            result["active_jobs"] = body.get("active_jobs")
     except Exception:
         pass
     return result
@@ -89,6 +93,21 @@ async def _submit_job(payload: dict) -> str:
     return resp.json()["job_id"]
 
 
+async def cancel_all_gpu_jobs() -> dict:
+    """Best-effort request to stop every in-flight job on the GPU service right
+    now (see gpu-ocr-service's POST /api/v1/jobs/cancel-all) - used by the
+    CPU-side "Stop All" action so GPU compute is actually freed instead of
+    running orphaned pages to completion for nobody. Deliberately never
+    raises: the caller's own cancellation (task_queue.cancel_all_jobs()) must
+    proceed regardless of whether the GPU service could be reached."""
+    try:
+        async with httpx.AsyncClient(timeout=config.GPU_OCR_CONNECT_TIMEOUT_SECONDS) as client:
+            resp = await client.post(f"{config.GPU_OCR_BASE_URL}/api/v1/jobs/cancel-all", headers=_headers())
+        return {"ok": resp.status_code < 400, "status_code": resp.status_code}
+    except httpx.RequestError as e:
+        return {"ok": False, "error": str(e)}
+
+
 async def poll_until_done(job_id: str, poll_timeout: float) -> str:
     deadline = time.monotonic() + poll_timeout
     async with httpx.AsyncClient(timeout=config.GPU_OCR_CONNECT_TIMEOUT_SECONDS) as client:
@@ -123,7 +142,14 @@ async def run_unlimited_ocr(pil_image, prompt: str, timeout: int, base_size: int
     buf = io.BytesIO()
     pil_image.save(buf, format="JPEG", quality=85)
     job_id = await submit_unlimited_job(buf.getvalue(), prompt, base_size, timeout)
-    poll_timeout = max(timeout, config.GPU_OCR_POLL_TIMEOUT_SECONDS)
+    # Deliberately NOT derived from `timeout` - the GPU service already
+    # enforces `timeout` itself, including for calls queued behind another
+    # one (it kills and respawns its worker rather than ever hanging
+    # forever). Racing an independent client-side deadline against that only
+    # abandons calls that are still legitimately in progress, orphaning them
+    # and cascading into a backlog. This is purely a liveness safety net for
+    # a genuinely dead/unreachable GPU service - see config.py.
+    poll_timeout = config.GPU_OCR_CLIENT_SAFETY_TIMEOUT_SECONDS
     return await poll_until_done(job_id, poll_timeout)
 
 
@@ -131,8 +157,9 @@ async def run_unlimited_ocr_multi(pil_images: list, prompt: str, timeout: int) -
     """Batch-mode counterpart to run_unlimited_ocr() — submits several page images
     as one infer_multi() job. No base_size param: multi-page mode only supports
     base resolution (image_size=1024, fixed server-side) per Baidu's documentation
-    — not configurable here, unlike single-page run_unlimited_ocr(). UNVERIFIED
-    PENDING S-6, see unlimited_ocr_engine.run_ocr_multi()."""
+    — not configurable here, unlike single-page run_unlimited_ocr(). See
+    unlimited_ocr_engine.run_ocr_multi() for the '<PAGE>'-delimited return-text
+    contract that task_queue._split_batch_output() relies on."""
     images_bytes = []
     for pil_image in pil_images:
         if pil_image.mode != "RGB":
@@ -141,7 +168,14 @@ async def run_unlimited_ocr_multi(pil_images: list, prompt: str, timeout: int) -
         pil_image.save(buf, format="JPEG", quality=85)
         images_bytes.append(buf.getvalue())
     job_id = await submit_unlimited_multi_job(images_bytes, prompt, timeout)
-    poll_timeout = max(timeout, config.GPU_OCR_POLL_TIMEOUT_SECONDS)
+    # Deliberately NOT derived from `timeout` - the GPU service already
+    # enforces `timeout` itself, including for calls queued behind another
+    # one (it kills and respawns its worker rather than ever hanging
+    # forever). Racing an independent client-side deadline against that only
+    # abandons calls that are still legitimately in progress, orphaning them
+    # and cascading into a backlog. This is purely a liveness safety net for
+    # a genuinely dead/unreachable GPU service - see config.py.
+    poll_timeout = config.GPU_OCR_CLIENT_SAFETY_TIMEOUT_SECONDS
     return await poll_until_done(job_id, poll_timeout)
 
 

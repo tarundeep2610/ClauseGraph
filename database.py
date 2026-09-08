@@ -393,12 +393,10 @@ def set_job_status(job_id: str, status: str):
     conn.close()
 
 
-def refresh_job_page_counts(job_id: str):
-    """Recompute the per-status counters and processed_pages on ocr_jobs from the
-    authoritative ocr_pages rows. processed_pages counts terminal statuses (success,
+def _count_pages_by_outcome(cursor, job_id: str) -> dict:
+    """Shared aggregate-counting query behind refresh_job_page_counts and
+    get_live_page_counts. processed_pages counts terminal statuses (success,
     review, failed, skipped) so the progress bar can reach 100% even with failures."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
     counts = {"success": 0, "review": 0, "failed": 0, "skipped": 0}
     cursor.execute("SELECT status, COUNT(*) FROM ocr_pages WHERE job_id = ? GROUP BY status", (job_id,))
     for status, n in cursor.fetchall():
@@ -412,15 +410,44 @@ def refresh_job_page_counts(job_id: str):
     """, (job_id,))
     blank_pages = cursor.fetchone()[0]
     processed = counts["success"] + counts["review"] + counts["failed"] + counts["skipped"]
+    return {
+        "processed_pages": processed,
+        "succeeded_pages": counts["success"],
+        "review_pages": review_pages,
+        "failed_pages": counts["failed"],
+        "blank_pages": blank_pages,
+    }
+
+
+def refresh_job_page_counts(job_id: str):
+    """Recompute the per-status counters and processed_pages on ocr_jobs from the
+    authoritative ocr_pages rows and persist them."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    counts = _count_pages_by_outcome(cursor, job_id)
     now = datetime.utcnow().isoformat()
     cursor.execute("""
         UPDATE ocr_jobs
         SET processed_pages = ?, succeeded_pages = ?, review_pages = ?, failed_pages = ?,
             blank_pages = ?, updated_at = ?
         WHERE job_id = ?
-    """, (processed, counts["success"], review_pages, counts["failed"], blank_pages, now, job_id))
+    """, (counts["processed_pages"], counts["succeeded_pages"], counts["review_pages"],
+          counts["failed_pages"], counts["blank_pages"], now, job_id))
     conn.commit()
     conn.close()
+
+
+def get_live_page_counts(job_id: str) -> dict:
+    """Read-only counterpart to refresh_job_page_counts - computes the same
+    aggregate counts directly from ocr_pages without writing them back, so a
+    poller can see true live progress in between the points where
+    refresh_job_page_counts actually runs (today: only at the end of a base
+    pass, an escalation pass, or a bulk retry - never after each page)."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    counts = _count_pages_by_outcome(cursor, job_id)
+    conn.close()
+    return counts
 
 
 def delete_job(job_id: str) -> bool:

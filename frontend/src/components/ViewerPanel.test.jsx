@@ -63,6 +63,115 @@ describe('ViewerPanel — per-page confidence badges', () => {
   });
 });
 
+describe('ViewerPanel — per-page Retry button', () => {
+  it('shows Retry for failed and review pages, not for success/pending/processing', () => {
+    const job = jobWithPages([
+      { page: 1, text: 'x', status: 'failed', confidence_pct: 0, confidence_tier: 'failed' },
+      { page: 2, text: 'x', status: 'review', confidence_pct: 40, confidence_tier: 'needs_review' },
+      { page: 3, text: 'x', status: 'success', confidence_pct: 95, confidence_tier: 'highly_confident' },
+      { page: 4, text: '', status: 'pending' },
+      { page: 5, text: '', status: 'processing' },
+    ]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} onRetryPage={vi.fn()} retryingPage={null} />);
+    expect(screen.getByTestId('retry-page-1')).toBeInTheDocument();
+    expect(screen.getByTestId('retry-page-2')).toBeInTheDocument();
+    expect(screen.queryByTestId('retry-page-3')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('retry-page-4')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('retry-page-5')).not.toBeInTheDocument();
+  });
+
+  it('calls onRetryPage with that page number when clicked', () => {
+    const onRetryPage = vi.fn();
+    const job = jobWithPages([{ page: 7, text: 'x', status: 'failed', confidence_pct: 0, confidence_tier: 'failed' }]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} onRetryPage={onRetryPage} retryingPage={null} />);
+    fireEvent.click(screen.getByTestId('retry-page-7'));
+    expect(onRetryPage).toHaveBeenCalledWith(7);
+  });
+
+  it('shows "Retrying..." and disables every retry button while one page is mid-retry', () => {
+    const job = jobWithPages([
+      { page: 1, text: 'x', status: 'failed', confidence_pct: 0, confidence_tier: 'failed' },
+      { page: 2, text: 'x', status: 'review', confidence_pct: 40, confidence_tier: 'needs_review' },
+    ]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} onRetryPage={vi.fn()} retryingPage={1} />);
+    expect(screen.getByTestId('retry-page-1')).toHaveTextContent('Retrying...');
+    expect(screen.getByTestId('retry-page-1')).toBeDisabled();
+    expect(screen.getByTestId('retry-page-2')).toBeDisabled();
+  });
+});
+
+describe('ViewerPanel — bulk "Retry Pages" toolbar button + modal', () => {
+  it('clicking the toolbar button opens the retry modal instead of calling onRetryPages directly', () => {
+    const onRetryPages = vi.fn();
+    const job = jobWithPages([{ page: 1, text: 'x', status: 'success', confidence_pct: 95, confidence_tier: 'highly_confident' }]);
+    job.status = 'processing';
+    render(<ViewerPanel {...baseProps} jobDetails={job} onRetryPages={onRetryPages} />);
+    expect(screen.queryByTestId('retry-modal')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('retry-pages-btn'));
+
+    expect(screen.getByTestId('retry-modal')).toBeInTheDocument();
+    expect(onRetryPages).not.toHaveBeenCalled();
+  });
+
+  it('choosing an option in the modal calls onRetryPages with that scope and closes the modal', () => {
+    const onRetryPages = vi.fn();
+    const job = jobWithPages([{ page: 1, text: 'x', status: 'failed', confidence_pct: 0, confidence_tier: 'failed' }]);
+    job.failed_pages = 1;
+    job.review_pages = 0;
+    render(<ViewerPanel {...baseProps} jobDetails={job} onRetryPages={onRetryPages} />);
+    fireEvent.click(screen.getByTestId('retry-pages-btn'));
+
+    fireEvent.click(screen.getByTestId('retry-option-failed'));
+
+    expect(onRetryPages).toHaveBeenCalledWith('failed');
+    expect(screen.queryByTestId('retry-modal')).not.toBeInTheDocument();
+  });
+});
+
+describe('ViewerPanel — loading placeholder while switching jobs', () => {
+  it('shows "Loading document..." when jobDetails is null but a job is selected', () => {
+    render(<ViewerPanel {...baseProps} jobDetails={null} hasSelection={true} />);
+    expect(screen.getByText('Loading document...')).toBeInTheDocument();
+  });
+
+  it('still shows the "select a document" placeholder when nothing is selected at all', () => {
+    render(<ViewerPanel {...baseProps} jobDetails={null} hasSelection={false} />);
+    expect(screen.getByText(/Select a document or upload a new file/)).toBeInTheDocument();
+    expect(screen.queryByText('Loading document...')).not.toBeInTheDocument();
+  });
+
+  it('still shows "Waiting for first page..." for a real job with no pages yet (not "Loading document...")', () => {
+    render(<ViewerPanel {...baseProps} jobDetails={{ status: 'pending', pages_data: [] }} hasSelection={true} />);
+    expect(screen.getByText('Waiting for first page...')).toBeInTheDocument();
+  });
+
+  it('still shows "Scanning..." for a processing job with no pages yet', () => {
+    render(<ViewerPanel {...baseProps} jobDetails={{ status: 'processing', pages_data: [] }} hasSelection={true} />);
+    expect(screen.getByText('Scanning...')).toBeInTheDocument();
+  });
+});
+
+describe('ViewerPanel — completed progress label', () => {
+  it('shows a flat page count when nothing failed', () => {
+    const job = jobWithPages([{ page: 1, text: 'x', status: 'success' }]);
+    job.status = 'completed';
+    job.total_pages = 40;
+    job.failed_pages = 0;
+    render(<ViewerPanel {...baseProps} jobDetails={job} />);
+    expect(screen.getByText('Done (40 pages)')).toBeInTheDocument();
+  });
+
+  it('breaks out passed vs failed counts when some pages failed', () => {
+    const job = jobWithPages([{ page: 1, text: 'x', status: 'failed' }]);
+    job.status = 'completed';
+    job.total_pages = 40;
+    job.failed_pages = 5;
+    render(<ViewerPanel {...baseProps} jobDetails={job} />);
+    expect(screen.getByText('Done (35 passed, 5 failed)')).toBeInTheDocument();
+  });
+});
+
 describe('ViewerPanel — sidebar collapse toggle', () => {
   it('renders the toggle even when there is no selection (it is a layout control, not a document action)', () => {
     render(<ViewerPanel {...baseProps} hasSelection={false} />);

@@ -13,6 +13,11 @@ import context_primer
 import database
 from gpu_ocr_client import GPUServiceAuthError, GPUServiceError
 
+# Shown in place of a raw traceback/engine error string for any page the OCR
+# engine couldn't process - the real detail is kept in the page's `error`
+# column instead of cluttering the exported transcript.
+MANUAL_REVIEW_TEXT = "⚠️ Please review this page manually — the OCR engine could not process it."
+
 # Active background tasks dictionary to prevent duplicate runs
 _active_tasks = {}
 
@@ -232,6 +237,20 @@ async def process_ocr_job(
                 database.init_pages_for_job(job_id, total_pages, selected_pages)
             database.reset_stuck_processing_pages(job_id)
 
+            # On a resume, only genuinely never-attempted ('pending') pages get
+            # picked up automatically - otherwise every resume walks back
+            # through the whole document from page 1, silently redoing
+            # already-completed pages before ever reaching the genuinely
+            # pending ones (claim_page_for_processing's guard only blocks
+            # re-claiming a page that's *currently* processing, not one that's
+            # already done). This deliberately excludes 'failed' pages too -
+            # a resume doesn't auto-retry those, only the existing manual
+            # per-page retry does.
+            already_done_pages = {
+                p["page_num"] for p in database.get_pages(job_id)
+                if p["status"] != "pending"
+            }
+
             local_sem = asyncio.Semaphore(max(1, concurrency))
 
             async def load_image(page_num):
@@ -261,8 +280,15 @@ async def process_ocr_job(
                 final_status = "success" if status == "success" and not score.needs_review else (
                     "review" if status == "success" else "failed"
                 )
+                # A page the engine couldn't process shows one clean, consistent
+                # message instead of a raw traceback/error string in the exported
+                # transcript - the real detail is preserved in the `error` column.
+                stored_text = text
+                if status != "success" or score.signals.get("engine_error_in_output"):
+                    error = error or text or ''
+                    stored_text = MANUAL_REVIEW_TEXT
                 database.upsert_page(
-                    job_id, page_num, status=final_status, text=text, confidence=score.confidence,
+                    job_id, page_num, status=final_status, text=stored_text, confidence=score.confidence,
                     needs_review=int(score.needs_review), review_reason=(score.reasons[0] if score.reasons else ''),
                     signals=__import__("json").dumps(score.signals), attempts=attempts, source=source,
                     error=error or '',
@@ -280,30 +306,46 @@ async def process_ocr_job(
                 if not database.claim_page_for_processing(job_id, page_num):
                     return "skipped"
 
-                pil_img = await load_image(page_num)
-                if not is_pdf and is_captcha:
-                    pil_img = ImageOps.expand(pil_img, border=15, fill=(255, 255, 255))
-                    w, h = pil_img.size
-                    if w < 400:
-                        factor = max(3, 400 // w)
-                        pil_img = pil_img.resize((w * factor, h * factor), Image.LANCZOS)
-                    pil_img = ImageEnhance.Contrast(pil_img).enhance(1.8)
-                    pil_img = pil_img.filter(ImageFilter.SHARPEN)
+                try:
+                    pil_img = await load_image(page_num)
+                    if not is_pdf and is_captcha:
+                        pil_img = ImageOps.expand(pil_img, border=15, fill=(255, 255, 255))
+                        w, h = pil_img.size
+                        if w < 400:
+                            factor = max(3, 400 // w)
+                            pil_img = pil_img.resize((w * factor, h * factor), Image.LANCZOS)
+                        pil_img = ImageEnhance.Contrast(pil_img).enhance(1.8)
+                        pil_img = pil_img.filter(ImageFilter.SHARPEN)
 
-                prev_page = database.get_last_completed_page_before(job_id, page_num, config.OCR_CONTEXT_MAX_GAP)
-                primer = context_primer.build_primer(prev_page['text']) if prev_page else None
-                prompt = build_prompt(page_num, primer)
+                    prev_page = database.get_last_completed_page_before(job_id, page_num, config.OCR_CONTEXT_MAX_GAP)
+                    primer = context_primer.build_primer(prev_page['text']) if prev_page else None
+                    prompt = build_prompt(page_num, primer)
 
-                async with _gpu_slot(is_escalation=False):
-                    text, status, error, attempts, elapsed_s = await _run_single_page_with_retries(
-                        engine, run_ocr_func, run_unlimited_func, pil_img, prompt, tiling, ollama_timeout, ocr_options
+                    async with _gpu_slot(is_escalation=False):
+                        text, status, error, attempts, elapsed_s = await _run_single_page_with_retries(
+                            engine, run_ocr_func, run_unlimited_func, pil_img, prompt, tiling, ollama_timeout, ocr_options
+                        )
+                    await score_and_store(page_num, pil_img, text, status, error, attempts, elapsed_s)
+                    return "done"
+                except Exception as e:
+                    # Anything unexpected here (image rendering, DB writes, confidence
+                    # scoring, ...) must never propagate to asyncio.gather() and take
+                    # the whole job down with a raw traceback - only the OCR call
+                    # itself is already retried/absorbed by _run_single_page_with_retries.
+                    # Fail just this page cleanly and let the worker move on.
+                    print(f"[TaskQueue] ❌ Job {job_id} page {page_num} hit an unexpected error: {e}\n{traceback.format_exc()}")
+                    database.upsert_page(
+                        job_id, page_num, status="failed", text=MANUAL_REVIEW_TEXT,
+                        needs_review=1, error=f"{type(e).__name__}: {e}",
                     )
-                await score_and_store(page_num, pil_img, text, status, error, attempts, elapsed_s)
-                return "done"
+                    return "error"
 
             async def run_chunk_batch_mode(chunk):
                 async with local_sem:
-                    owned = [p for p in range(chunk["owned_start"], chunk["owned_end"] + 1) if p in selected_pages]
+                    owned = [
+                        p for p in range(chunk["owned_start"], chunk["owned_end"] + 1)
+                        if p in selected_pages and p not in already_done_pages
+                    ]
                     if not owned:
                         return
                     if job_id in _paused_jobs:
@@ -311,17 +353,33 @@ async def process_ocr_job(
                     claimed = [p for p in owned if database.claim_page_for_processing(job_id, p)]
                     if not claimed:
                         return
-                    images = [await load_image(p) for p in claimed]
-                    prompt = "<image>Multi page parsing." if not custom_prompt else prompt_base
+                    # No "<image>" prefix here - run_ocr_multi() (gpu-ocr-service) adds
+                    # it exactly once itself; a prefix here would double it up and,
+                    # per the model's 2-part prompt.split('<image>') parsing, silently
+                    # drop the actual instruction text from what the model receives.
+                    prompt = "Multi page parsing." if not custom_prompt else prompt_base
+                    fallback_reason = None
                     try:
+                        # Image loading is inside this try too - a rendering failure
+                        # for any page in the chunk must degrade to the single-page
+                        # fallback below, not raise out and take the whole job down.
+                        images = [await load_image(p) for p in claimed]
                         async with _gpu_slot(is_escalation=False):
                             combined_text = await run_ocr_multi_func(images, prompt, ollama_timeout)
-                        texts = _split_batch_output(combined_text, len(claimed))
-                        for p, img, text in zip(claimed, images, texts):
-                            await score_and_store(p, img, text, "success", "", 1, None, source="batch")
+                        texts, ok = _split_batch_output(combined_text, len(claimed))
+                        if not ok:
+                            fallback_reason = (
+                                f"batch output split mismatch: got {len(texts)} page(s), "
+                                f"expected {len(claimed)}"
+                            )
+                        else:
+                            for p, img, text in zip(claimed, images, texts):
+                                await score_and_store(p, img, text, "success", "", 1, None, source="batch")
                     except Exception as e:
-                        err = f"{type(e).__name__}: {e}"
-                        print(f"[TaskQueue] Job {job_id} batch chunk {chunk['chunk_index']} failed, falling back to single-page: {err}")
+                        fallback_reason = f"{type(e).__name__}: {e}"
+
+                    if fallback_reason is not None:
+                        print(f"[TaskQueue] Job {job_id} batch chunk {chunk['chunk_index']} failed, falling back to single-page: {fallback_reason}")
                         for p in claimed:
                             database.upsert_page(job_id, p, status="pending")  # release claim, let single-page path pick it up
                         for p in claimed:
@@ -337,7 +395,7 @@ async def process_ocr_job(
                 # await), so dispatch order is always non-decreasing regardless of
                 # any individual page's OCR latency.
                 page_queue = asyncio.Queue()
-                for p in sorted(selected_pages):
+                for p in sorted(selected_pages - already_done_pages):
                     page_queue.put_nowait(p)
 
                 async def single_mode_worker():
@@ -408,27 +466,33 @@ async def process_ocr_job(
         database.set_job_status(job_id, "paused")
         raise
     except Exception as outer_e:
-        err_msg = f"Task worker error: {str(outer_e)}\n{traceback.format_exc()}"
-        print(f"[TaskQueue] ❌ Job {job_id} failed completely: {err_msg}")
-        database.mark_job_failed(job_id, err_msg)
+        print(f"[TaskQueue] ❌ Job {job_id} failed completely: {outer_e}\n{traceback.format_exc()}")
+        # Only the short reason reaches the user (see ViewerPanel.jsx, which renders
+        # error_message raw) - the full traceback is preserved in the server logs above.
+        friendly = f"Processing stopped due to an unexpected error: {outer_e}. See server logs for details."
+        database.mark_job_failed(job_id, friendly)
     finally:
         _active_tasks.pop(job_id, None)
 
 
 def _split_batch_output(combined_text: str, expected_pages: int):
-    """Splits infer_multi()'s combined output back into per-page text. The model's
-    exact page-delimiting format in its returned text is UNVERIFIED pending S-6 —
-    this looks for common explicit markers first, then falls back to an even split
-    so the pipeline degrades gracefully rather than crashing on an unexpected format.
-    Must be recalibrated against real infer_multi() output before enabling batch mode."""
+    """Splits infer_multi()'s combined output back into per-page text, mirroring
+    the model's own reference split exactly (see baidu/Unlimited-OCR's
+    modeling_unlimitedocr.py, infer_multi(), save_results branch):
+    `pages = outputs.split('<PAGE>')[1:]` — the model delimits pages with the
+    literal string '<PAGE>' (no guaranteed surrounding newlines), and any text
+    before the first marker is discarded, not attached to page 1.
+
+    Returns (texts, ok): texts is a list of length expected_pages (best-effort;
+    only meaningful when ok is True). ok is False when the number of `<PAGE>`
+    -delimited segments doesn't match expected_pages — the caller must not
+    attribute this text to any specific page in that case."""
     import re
-    markers = re.split(r"\n\s*(?:<page>|---\s*page\s*\d+\s*---|# Page \d+)\s*\n", combined_text or "", flags=re.IGNORECASE)
-    if len(markers) == expected_pages:
-        return [m.strip() for m in markers]
-    # Fallback: can't reliably split — return the full text for the first page and
-    # empty for the rest, which will correctly score as empty/low-confidence and
-    # get escalated to single-page reprocessing rather than silently mis-attributed.
-    return [combined_text or ""] + [""] * (expected_pages - 1)
+    parts = re.split(r"<PAGE>", combined_text or "", flags=re.IGNORECASE)[1:]
+    texts = [p.strip() for p in parts]
+    if len(texts) != expected_pages:
+        return texts, False
+    return texts, True
 
 
 async def _escalate_page(job_id, page_num, engine, run_ocr_func, run_unlimited_func, prompt, tiling, timeout, ocr_options, pdf_doc, is_pdf, file_path, base_scale, score_cfg=None):
@@ -457,7 +521,13 @@ async def _escalate_page(job_id, page_num, engine, run_ocr_func, run_unlimited_f
             job_id, page_num, attempt_no=2, escalation_level="combined_recovery", engine=engine,
             scale=escalated_scale, tiling=1, outcome="failed", error=error,
         )
-        database.upsert_page(job_id, page_num, escalated=1)
+        # "review" matches this page's status going in for the automatic pass
+        # (a no-op there) - but retry_single_page/retry_pages_bulk claim the
+        # page to 'processing' before calling this, and never touch it again
+        # themselves, so a manual retry that hits this branch must still land
+        # on a terminal status here or it's stuck at 'processing' forever
+        # (confirmed live: exactly what happened to page 99 after a retry).
+        database.upsert_page(job_id, page_num, status="review", escalated=1)
         return
 
     ink_ratio = await asyncio.to_thread(_compute_ink_ratio, pil_img)
@@ -472,16 +542,31 @@ async def _escalate_page(job_id, page_num, engine, run_ocr_func, run_unlimited_f
 
     if new_score.confidence >= base_score_confidence:
         final_status = "success" if not new_score.needs_review else "review"
+        # The OCR call itself doesn't raise on a timeout/crash - it returns a
+        # formatted "### ❌ ... failed" string instead (see unlimited_ocr_engine.py),
+        # so a repeat failure lands here as a "successful" call whose text IS
+        # the raw error. Swap it for the same friendly placeholder score_and_store
+        # already uses for the base pass, and preserve the real detail in `error`
+        # (which this branch otherwise never touched, leaving a stale value from
+        # whatever attempt came before this one).
+        stored_text = text
+        stored_error = error or ''
+        if new_score.signals.get("engine_error_in_output"):
+            stored_error = error or text or ''
+            stored_text = MANUAL_REVIEW_TEXT
         database.upsert_page(
-            job_id, page_num, status=final_status, text=text, confidence=new_score.confidence,
+            job_id, page_num, status=final_status, text=stored_text, confidence=new_score.confidence,
             needs_review=int(new_score.needs_review),
             review_reason=(new_score.reasons[0] if new_score.reasons else ''),
             signals=__import__("json").dumps(new_score.signals), escalated=1,
+            error=stored_error,
         )
     else:
         # Escalation attempt scored worse than the base pass — keep the base text,
-        # just record that escalation was attempted.
-        database.upsert_page(job_id, page_num, escalated=1)
+        # just record that escalation was attempted. Same reasoning as the
+        # failure branch above: must still write a terminal status, or a
+        # manually-claimed page is stuck at 'processing' forever.
+        database.upsert_page(job_id, page_num, status="review", escalated=1)
 
 
 async def retry_single_page(job_id: str, page_num: int, engine: str, run_ocr_func, run_unlimited_func,
@@ -489,12 +574,15 @@ async def retry_single_page(job_id: str, page_num: int, engine: str, run_ocr_fun
                              escalate_other_engine: bool = False):
     """Manual per-page retry, usable independently of whether the job's main task is
     still running (including on an already-`completed` job — the job's own status is
-    never touched here, only this one page's row)."""
+    never touched here, only this one page's row). Gives the page the same
+    "highest quality possible" treatment as the automatic escalation pass
+    (_escalate_page: max scale + tiling + 1.5x timeout, keeping whichever
+    result - new vs. what was already there - scores higher) rather than a
+    plain re-attempt at the job's original settings."""
     if not database.claim_page_for_processing(job_id, page_num):
         raise RuntimeError(f"Page {page_num} of job {job_id} is currently being processed.")
 
     job = database.get_job(job_id, include_pages=False)
-    page = database.get_page(job_id, page_num)
     file_path = job["file_path"]
     is_pdf = file_path.lower().endswith(".pdf")
     scale = job["scale"]
@@ -503,48 +591,88 @@ async def retry_single_page(job_id: str, page_num: int, engine: str, run_ocr_fun
     if escalate_other_engine:
         retry_engine = "glm" if engine == "unlimited" else "unlimited"
 
-    if is_pdf:
-        pdf_doc = pdfium.PdfDocument(file_path)
-        try:
-            pil_img = await _render_page(pdf_doc, page_num - 1, scale)
-        finally:
-            pdf_doc.close()
-    else:
-        with Image.open(file_path) as img:
-            pil_img = img.convert("RGB") if img.mode != "RGB" else img.copy()
-
-    async with _gpu_slot(is_escalation=True):
-        text, status, error, attempts, elapsed_s = await _run_single_page_with_retries(
-            retry_engine, run_ocr_func, run_unlimited_func, pil_img, prompt, tiling, timeout, ocr_options
+    pdf_doc = pdfium.PdfDocument(file_path) if is_pdf else None
+    try:
+        await _escalate_page(
+            job_id, page_num, retry_engine, run_ocr_func, run_unlimited_func,
+            prompt, tiling, timeout, ocr_options, pdf_doc, is_pdf, file_path, scale,
         )
+    finally:
+        if pdf_doc is not None:
+            pdf_doc.close()
 
-    if status != "success":
-        database.upsert_page(job_id, page_num, status="review", error=error)
-        database.refresh_job_page_counts(job_id)
-        return database.get_page(job_id, page_num)
-
-    ink_ratio = await asyncio.to_thread(_compute_ink_ratio, pil_img)
-    prior_text = page.get("text") if page else None
-    score = confidence.score_page(
-        text, ink_ratio=ink_ratio,
-        escalation_alt_text=prior_text if escalate_other_engine else None,
-    )
-    import json as _json
-    final_status = "success" if not score.needs_review else "review"
-    if escalate_other_engine and prior_text:
-        sim = confidence.text_similarity(text, prior_text)
-        if sim < config.OCR_ENGINE_AGREEMENT_MIN and not score.needs_review:
-            final_status = "review"
-            score.reasons.append("engine_disagreement")
-
-    database.upsert_page(
-        job_id, page_num, status=final_status, text=text, confidence=score.confidence,
-        needs_review=int(final_status == "review"),
-        review_reason=(score.reasons[0] if score.reasons else ''),
-        signals=_json.dumps(score.signals), error='',
-    )
     database.refresh_job_page_counts(job_id)
     return database.get_page(job_id, page_num)
+
+
+_active_bulk_retries: set = set()
+
+
+def is_bulk_retry_active(job_id: str) -> bool:
+    return job_id in _active_bulk_retries
+
+
+async def retry_pages_bulk(job_id: str, engine: str, run_ocr_func, run_unlimited_func,
+                            prompt: str, tiling: bool, timeout: int, ocr_options, scope: str):
+    """Bulk manual retry across many pages at once - same "highest quality
+    possible" treatment as retry_single_page (both delegate to _escalate_page),
+    just looped over every page in scope instead of one. scope="failed" only
+    touches pages that hard-failed (status="failed"); scope="review" only
+    touches low-confidence pages flagged for review (status="review") - both
+    are safe to run alongside an active base pass, since those pages are
+    terminal from its point of view (see the resume-skip logic in
+    process_ocr_job). scope="all" touches every page regardless of status -
+    the caller (main.py) is responsible for not starting this while the job's
+    own base pass is still active, since that would race both over
+    not-yet-attempted pages."""
+    if job_id in _active_bulk_retries:
+        return
+    _active_bulk_retries.add(job_id)
+    try:
+        job = database.get_job(job_id, include_pages=False)
+        if not job:
+            return
+        file_path = job["file_path"]
+        is_pdf = file_path.lower().endswith(".pdf")
+        scale = job["scale"]
+
+        database.reset_stuck_processing_pages(job_id)
+        pages = database.get_pages(job_id)
+        if scope == "failed":
+            target_pages = [p["page_num"] for p in pages if p["status"] == "failed"]
+        elif scope == "review":
+            target_pages = [p["page_num"] for p in pages if p["status"] == "review"]
+        else:
+            target_pages = [p["page_num"] for p in pages]
+        if not target_pages:
+            return
+
+        database.set_job_status(job_id, "escalating")
+        pdf_doc = pdfium.PdfDocument(file_path) if is_pdf else None
+        try:
+            for page_num in target_pages:
+                if job_id in _paused_jobs:
+                    break
+                if not database.claim_page_for_processing(job_id, page_num):
+                    continue
+                await _escalate_page(
+                    job_id, page_num, engine, run_ocr_func, run_unlimited_func,
+                    prompt, tiling, timeout, ocr_options, pdf_doc, is_pdf, file_path, scale,
+                )
+        finally:
+            if pdf_doc is not None:
+                pdf_doc.close()
+
+        if job_id in _paused_jobs:
+            _paused_jobs.discard(job_id)
+            database.refresh_job_page_counts(job_id)
+            database.set_job_status(job_id, "paused")
+            return
+
+        database.refresh_job_page_counts(job_id)
+        database.set_job_status(job_id, "completed")
+    finally:
+        _active_bulk_retries.discard(job_id)
 
 
 async def resume_interrupted_jobs(build_runners_func, prompts_dict, ollama_timeout: int = 600, output_path: str = ""):

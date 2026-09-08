@@ -91,6 +91,20 @@ These are done once for the whole setup, not per-machine.
    cd gpu-ocr-service && pip install -r requirements.txt pytest pytest-asyncio && pytest
    ```
 
+## Local testing without a GPU
+
+To run both stacks on a single dev machine with no GPU (e.g. to test end-to-end before a real rollout), use the dedicated local-test files instead of the prod ones above — the prod `docker-compose.yml`/`.env` files in each directory stay untouched:
+
+- `docker-compose.local-test.yml` (root) — the CPU app, with no tailscale sidecar (reusing the prod `TS_AUTHKEY` for a second local node just hangs on `NeedsLogin`); `glm-ocr-api`'s port is published directly instead.
+- `gpu-ocr-service/docker-compose.local-test.yml` — the GPU service with no GPU device reservation; `unlimited_ocr_engine.py` already detects `torch.cuda.is_available()==False` and falls back to CPU/float32 on its own.
+- `.env.local-test` and `gpu-ocr-service/.env.local-test` — standalone env files for each stack (own copy of secrets — not shared with each other or with the prod `.env` files), pre-tuned for CPU speed (lower concurrency, longer poll timeout, `GPU_OCR_BASE_URL` pointed at `host.docker.internal` instead of the tailnet).
+
+Bring both up with:
+```powershell
+.\run-local-test.ps1
+```
+Then check `http://localhost:12006/` (CPU app) and `http://localhost:11610/health` (GPU service — `model_loaded` flips to `true` once the model finishes loading, which is slow on first run while weights download into the `hf_cache` volume).
+
 ## Creating integration API keys
 
 Once logged in as an `admin`, other projects that need to call this OCR API programmatically get a static key instead of an AuthNexus login:

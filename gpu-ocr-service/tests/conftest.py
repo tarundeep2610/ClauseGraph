@@ -6,9 +6,12 @@ os.environ["GPU_OCR_MAX_CONCURRENT_JOBS"] = "1"
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
+import config
 import main as gpu_main
 
 
@@ -18,6 +21,7 @@ class _FakeUnlimitedEngine:
     def __init__(self):
         self.calls = []
         self.script = []  # list of results or Exceptions to return/raise, one per call
+        self.cancel_calls = 0
 
     def is_loaded(self):
         return True
@@ -29,6 +33,9 @@ class _FakeUnlimitedEngine:
             raise effect
         return effect
 
+    def cancel_current_work(self):
+        self.cancel_calls += 1
+
 
 @pytest.fixture()
 def fake_engine(monkeypatch):
@@ -36,6 +43,28 @@ def fake_engine(monkeypatch):
     monkeypatch.setattr(gpu_main, "_UNLIMITED_OCR_AVAILABLE", True)
     monkeypatch.setattr(gpu_main, "unlimited_ocr_engine", fake)
     return fake
+
+
+@pytest.fixture(autouse=True)
+def _reset_job_state():
+    """_jobs/_job_tasks/_inference_semaphore are plain module globals in
+    main.py, not scoped to any one TestClient/event loop.
+
+    Without this, jobs (and any straggler tasks) from an earlier test leak
+    into the next one, e.g. inflating cancel-all's counted total. Worse,
+    asyncio.Semaphore binds permanently to whichever event loop first awaits
+    it (see asyncio.mixins._LoopBoundMixin) - each test's `client` fixture
+    spins up a fresh TestClient/event loop, so reusing the one semaphore
+    object across tests raises "bound to a different event loop" the moment
+    a later test's job tries to acquire it. Rebuilding it fresh per test
+    sidesteps this entirely; production never hits it since one process only
+    ever has the one long-lived loop."""
+    gpu_main._jobs.clear()
+    gpu_main._job_tasks.clear()
+    gpu_main._inference_semaphore = asyncio.Semaphore(config.GPU_OCR_MAX_CONCURRENT_JOBS)
+    yield
+    gpu_main._jobs.clear()
+    gpu_main._job_tasks.clear()
 
 
 @pytest.fixture()

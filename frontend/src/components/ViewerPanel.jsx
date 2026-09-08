@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { renderMarkdown } from '../utils/markdown';
+import RetryPagesModal from './RetryPagesModal';
 
 // Presentational only — the thresholds themselves live entirely on the backend
 // (confidence.py); this just maps the already-computed tier string to a label/color
@@ -45,15 +47,24 @@ export default function ViewerPanel({
   onDownloadResult,
   sidebarCollapsed,
   onToggleSidebar,
+  onRetryPage,
+  retryingPage,
+  onRetryPages,
 }) {
   const showPdf = viewMode !== 'result';
   const showResult = viewMode !== 'pdf';
+  const [retryModalOpen, setRetryModalOpen] = useState(false);
 
   let progressLabel = 'Ready';
   let progressColor = 'var(--accent)';
   if (jobDetails) {
     if (jobDetails.status === 'processing') progressLabel = `Processing (${jobDetails.processed_pages}/${jobDetails.total_pages} pages)...`;
-    else if (jobDetails.status === 'completed') { progressLabel = `Done (${jobDetails.total_pages} pages)`; progressColor = 'var(--success)'; }
+    else if (jobDetails.status === 'completed') {
+      const failed = jobDetails.failed_pages || 0;
+      const passed = jobDetails.total_pages - failed;
+      progressLabel = failed > 0 ? `Done (${passed} passed, ${failed} failed)` : `Done (${jobDetails.total_pages} pages)`;
+      progressColor = failed > 0 ? 'var(--warning)' : 'var(--success)';
+    }
     else if (jobDetails.status === 'paused') { progressLabel = `Paused (${jobDetails.processed_pages}/${jobDetails.total_pages} pages extracted)`; progressColor = '#67e8f9'; }
     else if (jobDetails.status === 'failed') { progressLabel = 'Failed'; progressColor = 'var(--error)'; }
     else progressLabel = 'Queued...';
@@ -63,7 +74,14 @@ export default function ViewerPanel({
   let resultHtml;
   let pageBlocks = null;
   if (!pages.length) {
-    if (jobDetails?.status === 'processing') {
+    if (!jobDetails && hasSelection) {
+      // A job switch (new upload or selecting a different history entry) has
+      // already updated pdfSrc/hasSelection, but jobDetails is cleared until
+      // the fresh fetch resolves - show a neutral loading state instead of
+      // falling through to "Waiting for first page", which would be
+      // misleading for a job that's actually already completed.
+      resultHtml = '<div style="text-align:center;padding-top:60px;color:var(--muted)">Loading document...</div>';
+    } else if (jobDetails?.status === 'processing') {
       resultHtml = '<div style="text-align:center;padding-top:60px;">Scanning...</div>';
     } else if (jobDetails?.status === 'failed') {
       resultHtml = `<div style="color:var(--error);padding:18px;">Extraction failed: ${jobDetails.error_message || ''}</div>`;
@@ -112,6 +130,7 @@ export default function ViewerPanel({
           <div className="download-group">
             {canPause && <button className="btn btn-sm btn-warn" onClick={onPause}><i className="fa-solid fa-pause" /> Pause</button>}
             {canResume && <button className="btn btn-sm btn-secondary" onClick={onResume}><i className="fa-solid fa-rotate-right" /> Resume</button>}
+            <button className="btn btn-sm btn-secondary" onClick={() => setRetryModalOpen(true)} data-testid="retry-pages-btn"><i className="fa-solid fa-rotate-right" /> Retry Pages</button>
             <button className="btn btn-sm btn-secondary" onClick={onDownloadPdf}><i className="fa-solid fa-file-arrow-down" /> PDF</button>
             <button className="btn btn-sm btn-primary" onClick={onDownloadResult}><i className="fa-solid fa-download" /> Result (.md)</button>
           </div>
@@ -143,6 +162,17 @@ export default function ViewerPanel({
                     <h3 style={{ display: 'flex', alignItems: 'center', margin: '0 0 8px' }}>
                       Page {page}
                       <ConfidenceBadge page={data} />
+                      {(data.status === 'failed' || data.status === 'review') && (
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          style={{ marginLeft: 10 }}
+                          disabled={retryingPage !== null && retryingPage !== undefined}
+                          onClick={() => onRetryPage(page)}
+                          data-testid={`retry-page-${page}`}
+                        >
+                          <i className="fa-solid fa-rotate-right" /> {retryingPage === page ? 'Retrying...' : 'Retry'}
+                        </button>
+                      )}
                     </h3>
                     <div dangerouslySetInnerHTML={{ __html: bodyHtml }} />
                     <hr />
@@ -160,6 +190,17 @@ export default function ViewerPanel({
           </div>
         )}
       </div>
+
+      <RetryPagesModal
+        open={retryModalOpen}
+        onClose={() => setRetryModalOpen(false)}
+        onConfirm={(scope) => { setRetryModalOpen(false); onRetryPages(scope); }}
+        counts={{
+          failed: jobDetails?.failed_pages ?? 0,
+          review: jobDetails?.review_pages ?? 0,
+          total: jobDetails?.total_pages ?? 0,
+        }}
+      />
     </div>
   );
 }
