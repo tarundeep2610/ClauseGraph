@@ -11,6 +11,24 @@ vi.mock('../utils/AuthContext', () => ({
   useAuth: () => ({ isAdmin: false }),
 }));
 
+// PdfCanvasViewer is tested in its own file — here it's stubbed to expose
+// whatever `pdfSrc` Dashboard fed it (enough to tell a remote-job PDF apart
+// from a locally-selected one and to tell "loaded" apart from "nothing
+// yet"), plus a button that fires onPageChange (the same callback the real
+// component calls on prev/next) so Part C1's windowed pages_data fetch
+// (keyed off the page pdf.js is actually showing, reported up through
+// ViewerPanel's onCurrentPageChange) can be exercised without touching
+// real pdf.js/canvas rendering at all.
+vi.mock('../components/PdfCanvasViewer', () => ({
+  default: ({ pdfSrc, onPageChange }) => (
+    <div data-testid="mock-pdf-canvas-viewer" data-pdf-src={pdfSrc || ''}>
+      <button data-testid="mock-go-to-page-40" onClick={() => onPageChange && onPageChange(40)}>
+        go to page 40
+      </button>
+    </div>
+  ),
+}));
+
 describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
   let originalCreateObjectURL;
   let originalRevokeObjectURL;
@@ -60,7 +78,7 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
     global.URL.revokeObjectURL = originalRevokeObjectURL;
   });
 
-  it('1. Happy path: fetches remote PDF via apiFetch and assigns object URL to iframe pdfSrc', async () => {
+  it('1. Happy path: fetches remote PDF via apiFetch and feeds it to PdfCanvasViewer', async () => {
     const jobs = [
       {
         job_id: 'job-101',
@@ -80,7 +98,7 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
       if (url === '/api/jobs') {
         return { ok: true, json: async () => jobs };
       }
-      if (url === '/api/jobs/job-101') {
+      if (url.split('?')[0] === '/api/jobs/job-101') {
         return {
           ok: true,
           json: async () => ({
@@ -108,16 +126,15 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
       expect(screen.getByTestId('history-card')).toBeInTheDocument();
     });
 
-    const iframe = document.querySelector('iframe.pdf-frame');
-    expect(iframe).toBeInTheDocument();
-
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith('/api/jobs/job-101/file');
-      expect(iframe.getAttribute('src')).toBe('blob:fake-url-1');
+      expect(createObjectURLMock).toHaveBeenCalledTimes(1);
     });
 
-    // Ensure raw endpoint is NOT used as iframe src directly
-    expect(iframe.getAttribute('src')).not.toBe('/api/jobs/job-101/file');
+    await waitFor(() => {
+      const viewer = screen.getByTestId('mock-pdf-canvas-viewer');
+      expect(viewer.dataset.pdfSrc).toBe('blob:fake-url-1');
+    });
   });
 
   it('2. Revokes previous blob URL when switching active jobs', async () => {
@@ -178,16 +195,15 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
       expect(screen.getAllByTestId('history-card')).toHaveLength(2);
     });
 
-    const iframe = document.querySelector('iframe.pdf-frame');
     await waitFor(() => {
-      expect(iframe.getAttribute('src')).toBe('blob:fake-url-1');
+      expect(createObjectURLMock).toHaveBeenCalledTimes(1);
     });
 
     const cards = screen.getAllByTestId('history-card');
     fireEvent.click(cards[1]);
 
     await waitFor(() => {
-      expect(iframe.getAttribute('src')).toBe('blob:fake-url-2');
+      expect(createObjectURLMock).toHaveBeenCalledTimes(2);
     });
 
     expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:fake-url-1');
@@ -213,7 +229,7 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
       if (url === '/api/jobs') {
         return { ok: true, json: async () => jobs };
       }
-      if (url === '/api/jobs/job-fail') {
+      if (url.split('?')[0] === '/api/jobs/job-fail') {
         return {
           ok: true,
           json: async () => ({
@@ -242,11 +258,11 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
       expect(screen.getByTestId('history-card')).toBeInTheDocument();
     });
 
-    const iframe = document.querySelector('iframe.pdf-frame');
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith('/api/jobs/job-fail/file');
-      expect(iframe.getAttribute('src')).toBe('about:blank');
     });
+    expect(createObjectURLMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('mock-pdf-canvas-viewer')).not.toBeInTheDocument();
   });
 
   it('4. Local file selection takes precedence over remote job preview', async () => {
@@ -269,7 +285,7 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
       if (url === '/api/jobs') {
         return { ok: true, json: async () => jobs };
       }
-      if (url === '/api/jobs/job-remote') {
+      if (url.split('?')[0] === '/api/jobs/job-remote') {
         return {
           ok: true,
           json: async () => ({
@@ -297,9 +313,9 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
       expect(screen.getByTestId('history-card')).toBeInTheDocument();
     });
 
-    const iframe = document.querySelector('iframe.pdf-frame');
     await waitFor(() => {
-      expect(iframe.getAttribute('src')).toBe('blob:fake-url-1');
+      const viewer = screen.getByTestId('mock-pdf-canvas-viewer');
+      expect(viewer.dataset.pdfSrc).toBe('blob:fake-url-1');
     });
 
     const fileInput = screen.getByTestId('file-input');
@@ -308,19 +324,18 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
     fireEvent.change(fileInput, { target: { files: [localFile] } });
 
     await waitFor(() => {
-      expect(iframe.getAttribute('src')).toBe('blob:fake-url-2');
+      const viewer = screen.getByTestId('mock-pdf-canvas-viewer');
+      expect(viewer.dataset.pdfSrc).toBe('blob:fake-url-2');
     });
   });
 
-  it('5. Renders about:blank when no jobs and no local file are present', async () => {
+  it('5. Shows no document selected when no jobs and no local file are present', async () => {
     render(<Dashboard />);
 
-    const iframe = document.querySelector('iframe.pdf-frame');
-    expect(iframe).toBeInTheDocument();
-
     await waitFor(() => {
-      expect(iframe.getAttribute('src')).toBe('about:blank');
+      expect(screen.getAllByText('No document selected').length).toBeGreaterThan(0);
     });
+    expect(screen.queryByTestId('mock-pdf-canvas-viewer')).not.toBeInTheDocument();
   });
 
   it('6. Sidebar wrapper carries the "sidebar" class (layout/scroll fix depends on it)', async () => {
@@ -523,8 +538,8 @@ describe('Dashboard — jobDetails is cleared immediately on any job switch (reg
     apiFetch.mockImplementation(async (url) => {
       if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
       if (url === '/api/jobs') return { ok: true, json: async () => [jobA, jobB] };
-      if (url === '/api/jobs/job-a') return { ok: true, json: async () => ({ ...jobA, pages_data: [{ page: 1, text: 'Job A text' }] }) };
-      if (url === '/api/jobs/job-b') {
+      if (url.split('?')[0] === '/api/jobs/job-a') return { ok: true, json: async () => ({ ...jobA, pages_data: [{ page: 1, text: 'Job A text' }] }) };
+      if (url.split('?')[0] === '/api/jobs/job-b') {
         await bDetailPromise;
         return { ok: true, json: async () => ({ ...jobB, pages_data: [{ page: 1, text: 'Job B text' }] }) };
       }
@@ -561,11 +576,11 @@ describe('Dashboard — jobDetails is cleared immediately on any job switch (reg
         jobsListCalls += 1;
         return { ok: true, json: async () => (jobsListCalls === 1 ? [oldJob] : [oldJob, { ...oldJob, job_id: 'job-new', filename: 'new.pdf' }]) };
       }
-      if (url === '/api/jobs/job-old') return { ok: true, json: async () => ({ ...oldJob, pages_data: [{ page: 1, text: 'Old job text' }] }) };
+      if (url.split('?')[0] === '/api/jobs/job-old') return { ok: true, json: async () => ({ ...oldJob, pages_data: [{ page: 1, text: 'Old job text' }] }) };
       if (url.startsWith('/api/jobs?') && opts?.method === 'POST') {
         return { ok: true, json: async () => ({ job_id: 'job-new' }) };
       }
-      if (url === '/api/jobs/job-new') {
+      if (url.split('?')[0] === '/api/jobs/job-new') {
         await newDetailPromise;
         return { ok: true, json: async () => ({ job_id: 'job-new', filename: 'new.pdf', status: 'processing', total_pages: 1, processed_pages: 0, pages_data: [] }) };
       }
@@ -611,7 +626,7 @@ describe('Dashboard — per-page and bulk Retry actions', () => {
     apiFetch.mockImplementation(async (url, opts) => {
       if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
       if (url === '/api/jobs') return { ok: true, json: async () => [job] };
-      if (url === '/api/jobs/job-r') return { ok: true, json: async () => job };
+      if (url.split('?')[0] === '/api/jobs/job-r') return { ok: true, json: async () => job };
       if (url === '/api/jobs/job-r/pages/1/retry' && opts?.method === 'POST') {
         return { ok: true, json: async () => ({ page_num: 1, status: 'success', text: 'new retried text', confidence_pct: 95 }) };
       }
@@ -635,7 +650,7 @@ describe('Dashboard — per-page and bulk Retry actions', () => {
     apiFetch.mockImplementation(async (url, opts) => {
       if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
       if (url === '/api/jobs') return { ok: true, json: async () => [job] };
-      if (url === '/api/jobs/job-r') return { ok: true, json: async () => job };
+      if (url.split('?')[0] === '/api/jobs/job-r') return { ok: true, json: async () => job };
       if (url.startsWith('/api/jobs/job-r/retry-pages') && opts?.method === 'POST') {
         seenUrls.push(url);
         return { ok: true, json: async () => ({ status: 'escalating' }) };
@@ -659,7 +674,7 @@ describe('Dashboard — per-page and bulk Retry actions', () => {
     apiFetch.mockImplementation(async (url, opts) => {
       if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
       if (url === '/api/jobs') return { ok: true, json: async () => [job] };
-      if (url === '/api/jobs/job-r') return { ok: true, json: async () => job };
+      if (url.split('?')[0] === '/api/jobs/job-r') return { ok: true, json: async () => job };
       if (url.startsWith('/api/jobs/job-r/retry-pages') && opts?.method === 'POST') {
         seenUrls.push(url);
         return { ok: true, json: async () => ({ status: 'escalating' }) };
@@ -683,7 +698,7 @@ describe('Dashboard — per-page and bulk Retry actions', () => {
     apiFetch.mockImplementation(async (url, opts) => {
       if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
       if (url === '/api/jobs') return { ok: true, json: async () => [job] };
-      if (url === '/api/jobs/job-r') return { ok: true, json: async () => job };
+      if (url.split('?')[0] === '/api/jobs/job-r') return { ok: true, json: async () => job };
       if (url.startsWith('/api/jobs/job-r/retry-pages') && opts?.method === 'POST') {
         seenUrls.push(url);
         return { ok: true, json: async () => ({ status: 'escalating' }) };
@@ -707,7 +722,7 @@ describe('Dashboard — per-page and bulk Retry actions', () => {
     apiFetch.mockImplementation(async (url, opts) => {
       if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
       if (url === '/api/jobs') return { ok: true, json: async () => [job] };
-      if (url === '/api/jobs/job-r') return { ok: true, json: async () => job };
+      if (url.split('?')[0] === '/api/jobs/job-r') return { ok: true, json: async () => job };
       if (url.startsWith('/api/jobs/job-r/retry-pages')) seenUrls.push(url);
       return { ok: false };
     });
@@ -726,7 +741,7 @@ describe('Dashboard — per-page and bulk Retry actions', () => {
     apiFetch.mockImplementation(async (url, opts) => {
       if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
       if (url === '/api/jobs') return { ok: true, json: async () => [job] };
-      if (url === '/api/jobs/job-r') return { ok: true, json: async () => job };
+      if (url.split('?')[0] === '/api/jobs/job-r') return { ok: true, json: async () => job };
       if (url.startsWith('/api/jobs/job-r/retry-pages') && opts?.method === 'POST') {
         return { ok: false, statusText: 'Conflict', json: async () => ({ detail: 'A bulk retry is already running for this job.' }) };
       }
@@ -781,7 +796,7 @@ describe('Dashboard — resuming a job no longer needs a lucky poll to notice it
         // time any of these snapshots are taken.
         return { ok: true, json: async () => [job] };
       }
-      if (url === '/api/jobs/job-resume') {
+      if (url.split('?')[0] === '/api/jobs/job-resume') {
         return { ok: true, json: async () => ({ ...job, pages_data: [] }) };
       }
       return { ok: false };
@@ -822,7 +837,7 @@ describe('Dashboard — resuming a job no longer needs a lucky poll to notice it
         return { ok: true, json: async () => ({}) };
       }
       if (url === '/api/jobs') return { ok: true, json: async () => [job] };
-      if (url === '/api/jobs/job-resume') {
+      if (url.split('?')[0] === '/api/jobs/job-resume') {
         detailCalls += 1;
         const pages = detailCalls < 3
           ? [{ page: 1, text: 'first page text' }, { page: 2, text: 'second page text' }]
@@ -875,10 +890,10 @@ describe('Dashboard — resuming a job no longer needs a lucky poll to notice it
         return { ok: true, json: async () => ({}) };
       }
       if (url === '/api/jobs') return { ok: true, json: async () => jobs };
-      if (url === '/api/jobs/job-active') {
+      if (url.split('?')[0] === '/api/jobs/job-active') {
         return { ok: true, json: async () => ({ ...jobs[0], pages_data: [] }) };
       }
-      if (url === '/api/jobs/job-paused') {
+      if (url.split('?')[0] === '/api/jobs/job-paused') {
         return { ok: true, json: async () => ({ ...jobs[1], pages_data: [] }) };
       }
       return { ok: false };
@@ -905,5 +920,278 @@ describe('Dashboard — resuming a job no longer needs a lucky poll to notice it
       expect(refreshedCards[1].className).toContain('active');
       expect(refreshedCards[0].className).not.toContain('active');
     });
+  });
+});
+
+describe('Dashboard — Rebuild Cross-References button', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('shows "Rebuilding…" right after click and clears once a later poll reports a higher reference_index_version, even though the live reindexing flag is never observed true', async () => {
+    // Reproduces the reported bug: reindex_job() re-parses already-stored
+    // text, so for a small job it can start AND finish between two poll
+    // ticks - the server's reference_index_reindexing flag can go true-then
+    // -false without ever being caught by a poll. The button must still show
+    // real feedback, driven by reference_index_version instead.
+    const baseJob = {
+      job_id: 'job-r', filename: 'r.pdf', status: 'completed',
+      total_pages: 1, processed_pages: 1, engine: 'unlimited', created_at: new Date().toISOString(),
+      pages_data: [{ page: 1, page_num: 1, text: 'Clause 1 text', status: 'success' }],
+    };
+    let version = 3;
+    let fetchesSinceReindex = null; // null until the reindex POST fires
+
+    apiFetch.mockImplementation(async (url, opts) => {
+      if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
+      if (url === '/api/jobs') return { ok: true, json: async () => [baseJob] };
+      if (url === '/api/jobs/job-r/reindex-references' && opts?.method === 'POST') {
+        fetchesSinceReindex = 0;
+        return { ok: true, json: async () => ({ status: 'reindexing' }) };
+      }
+      if (url.split('?')[0] === '/api/jobs/job-r') {
+        if (fetchesSinceReindex !== null) {
+          fetchesSinceReindex += 1;
+          // The rebuild "completes" (version bumps) only from the second
+          // fetch after the click onward - simulating it finishing sometime
+          // before the next 2.5s poll tick, but not on the very same tick
+          // the click's own immediate fetch runs on.
+          if (fetchesSinceReindex >= 2) version = 4;
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            ...baseJob,
+            reference_index_version: version,
+            reference_index_reindexing: false, // never observed live as true
+          }),
+        };
+      }
+      if (url.startsWith('/api/jobs/job-r/references')) {
+        return { ok: true, json: async () => ({ reference_index_version: version, changed_pages: {} }) };
+      }
+      return { ok: false };
+    });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    render(<Dashboard />);
+    await screen.findByTestId('reindex-references-btn');
+
+    fireEvent.click(screen.getByTestId('reindex-references-btn'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); }); // let the POST + its immediate fetchJobDetails resolve
+
+    expect(screen.getByTestId('reindex-references-btn')).toHaveTextContent('Rebuilding…');
+    expect(screen.getByTestId('reindex-references-btn')).toBeDisabled();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500); }); // next poll tick observes the version bump
+
+    await waitFor(() => {
+      expect(screen.getByTestId('reindex-references-btn')).toHaveTextContent('Rebuild Cross-References');
+    });
+    expect(screen.getByTestId('reindex-references-btn')).not.toBeDisabled();
+  });
+});
+
+describe('Dashboard — Part C1: windowed pages_data fetch centered on the current page', () => {
+  let originalCreateObjectURL;
+  let originalRevokeObjectURL;
+
+  beforeEach(() => {
+    originalCreateObjectURL = global.URL.createObjectURL;
+    originalRevokeObjectURL = global.URL.revokeObjectURL;
+    global.URL.createObjectURL = vi.fn(() => 'blob:fake-url');
+    global.URL.revokeObjectURL = vi.fn();
+  });
+
+  afterEach(() => {
+    global.URL.createObjectURL = originalCreateObjectURL;
+    global.URL.revokeObjectURL = originalRevokeObjectURL;
+  });
+
+  it('fetches a window around page 1 on initial load, and re-centers on the page pdf.js reports after navigation', async () => {
+    const job = {
+      job_id: 'job-window', filename: 'doc.pdf', status: 'completed',
+      total_pages: 900, processed_pages: 900, engine: 'unlimited',
+      created_at: new Date().toISOString(),
+    };
+    const seenPageParams = [];
+
+    apiFetch.mockImplementation(async (url) => {
+      if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
+      if (url === '/api/jobs') return { ok: true, json: async () => [job] };
+      if (url === '/api/jobs/job-window/file') {
+        return { ok: true, blob: async () => new Blob(['fake pdf binary'], { type: 'application/pdf' }) };
+      }
+      if (url.split('?')[0] === '/api/jobs/job-window') {
+        const params = new URLSearchParams(url.split('?')[1] || '');
+        seenPageParams.push({ from: params.get('page_from'), to: params.get('page_to') });
+        return { ok: true, json: async () => ({ ...job, pages_data: [] }) };
+      }
+      return { ok: false };
+    });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    render(<Dashboard />);
+    await screen.findByTestId('mock-pdf-canvas-viewer');
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+    // WINDOW = 15, centered on page 1 (the default before any navigation).
+    expect(seenPageParams[0]).toEqual({ from: '1', to: '16' });
+
+    fireEvent.click(screen.getByTestId('mock-go-to-page-40'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500); }); // next poll tick picks up the new page
+
+    const last = seenPageParams[seenPageParams.length - 1];
+    expect(last).toEqual({ from: '25', to: '55' });
+  });
+});
+
+describe('Dashboard — Part C3/C4: reference-triggered chunk view + client-side chunk cache', () => {
+  let originalCreateObjectURL;
+  let originalRevokeObjectURL;
+  let createObjectURLMock;
+  let revokeObjectURLMock;
+
+  beforeEach(() => {
+    let blobIdCounter = 0;
+    originalCreateObjectURL = global.URL.createObjectURL;
+    originalRevokeObjectURL = global.URL.revokeObjectURL;
+    createObjectURLMock = vi.fn(() => `blob:chunk-${++blobIdCounter}`);
+    revokeObjectURLMock = vi.fn();
+    global.URL.createObjectURL = createObjectURLMock;
+    global.URL.revokeObjectURL = revokeObjectURLMock;
+  });
+
+  afterEach(() => {
+    global.URL.createObjectURL = originalCreateObjectURL;
+    global.URL.revokeObjectURL = originalRevokeObjectURL;
+  });
+
+  function annexureCandidate(n, page) {
+    return {
+      anchor_id: `anchor-a-${n}`, collapsed_key: `annexure:a-${n}`, key: `annexure:a-${n}`,
+      page, scope_chain: [], fingerprint: '', snippet: '', truncated: false,
+      continues_on_page: null, scope_provisional: false,
+    };
+  }
+
+  it('fetches the chunk PDF + text in parallel on first click, serves the cache on a repeat click without re-fetching, and returns to the full document on exit', async () => {
+    const job = {
+      job_id: 'job-chunk', filename: 'doc.pdf', status: 'completed',
+      total_pages: 900, processed_pages: 900, engine: 'unlimited',
+      created_at: new Date().toISOString(),
+    };
+    const filePagesCalls = [];
+
+    apiFetch.mockImplementation(async (url) => {
+      if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
+      if (url === '/api/jobs') return { ok: true, json: async () => [job] };
+      if (url === '/api/jobs/job-chunk/file') {
+        return { ok: true, blob: async () => new Blob(['main pdf'], { type: 'application/pdf' }) };
+      }
+      if (url === '/api/jobs/job-chunk/file/pages?start=427&end=446') {
+        filePagesCalls.push(url);
+        return { ok: true, blob: async () => new Blob(['chunk pdf'], { type: 'application/pdf' }) };
+      }
+      if (url === '/api/jobs/job-chunk?page_from=427&page_to=446') {
+        return { ok: true, json: async () => ({ ...job, pages_data: [{ page: 427, text: 'Chunk page text' }] }) };
+      }
+      if (url.split('?')[0] === '/api/jobs/job-chunk') {
+        return { ok: true, json: async () => ({ ...job, reference_index_version: 1, pages_data: [] }) };
+      }
+      if (url.startsWith('/api/jobs/job-chunk/references')) {
+        return {
+          ok: true,
+          json: async () => ({ reference_index_version: 1, changed_pages: { 427: { 'annexure:a-2': [annexureCandidate(2, 427)] } } }),
+        };
+      }
+      if (url === '/api/jobs/job-chunk/scope-ranges') {
+        return { ok: true, json: async () => ({ reference_index_version: 1, ranges: [{ key: 'annexure:a-2', scope_key: '', depth: 0, start_page: 427, end_page: 446 }] }) };
+      }
+      return { ok: false };
+    });
+
+    render(<Dashboard />);
+    await screen.findByTestId('mock-pdf-canvas-viewer');
+    fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
+    await screen.findByText('Annexure A-2');
+
+    fireEvent.click(screen.getByTestId('structure-jump-root/annexure:a-2'));
+
+    await screen.findByTestId('chunk-view-banner');
+    expect(screen.getByTestId('chunk-view-banner')).toHaveTextContent('Annexure A-2');
+    expect(screen.getByTestId('chunk-view-banner')).toHaveTextContent('427');
+    expect(screen.getByTestId('chunk-view-banner')).toHaveTextContent('446');
+    expect(screen.getByTestId('mock-pdf-canvas-viewer').dataset.pdfSrc).toBe('blob:chunk-2');
+    expect(filePagesCalls).toHaveLength(1);
+
+    // Exit back to the full document.
+    fireEvent.click(screen.getByTestId('exit-chunk-btn'));
+    await waitFor(() => expect(screen.queryByTestId('chunk-view-banner')).not.toBeInTheDocument());
+    expect(screen.getByTestId('mock-pdf-canvas-viewer').dataset.pdfSrc).toBe('blob:chunk-1');
+
+    // Selecting the same reference again must be served from cache, not
+    // re-fetched.
+    fireEvent.click(screen.getByTestId('structure-jump-root/annexure:a-2'));
+    await screen.findByTestId('chunk-view-banner');
+    expect(filePagesCalls).toHaveLength(1);
+  });
+
+  it('evicts and revokes the oldest cached chunk once more than the cache bound have been viewed', async () => {
+    const N = 11; // one more than CHUNK_CACHE_MAX (10)
+    const job = {
+      job_id: 'job-cache', filename: 'doc.pdf', status: 'completed',
+      total_pages: 900, processed_pages: 900, engine: 'unlimited',
+      created_at: new Date().toISOString(),
+    };
+    const changed_pages = {};
+    const ranges = [];
+    for (let n = 1; n <= N; n++) {
+      changed_pages[n] = { [`annexure:a-${n}`]: [annexureCandidate(n, n)] };
+      ranges.push({ key: `annexure:a-${n}`, scope_key: '', depth: 0, start_page: n, end_page: n });
+    }
+
+    apiFetch.mockImplementation(async (url) => {
+      if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
+      if (url === '/api/jobs') return { ok: true, json: async () => [job] };
+      if (url === '/api/jobs/job-cache/file') {
+        return { ok: true, blob: async () => new Blob(['main pdf'], { type: 'application/pdf' }) };
+      }
+      const filePagesMatch = /^\/api\/jobs\/job-cache\/file\/pages\?start=(\d+)&end=(\d+)$/.exec(url);
+      if (filePagesMatch) {
+        return { ok: true, blob: async () => new Blob([`chunk pdf ${filePagesMatch[1]}`], { type: 'application/pdf' }) };
+      }
+      if (url.split('?')[0] === '/api/jobs/job-cache') {
+        return { ok: true, json: async () => ({ ...job, reference_index_version: 1, pages_data: [] }) };
+      }
+      if (url.startsWith('/api/jobs/job-cache/references')) {
+        return { ok: true, json: async () => ({ reference_index_version: 1, changed_pages }) };
+      }
+      if (url === '/api/jobs/job-cache/scope-ranges') {
+        return { ok: true, json: async () => ({ reference_index_version: 1, ranges }) };
+      }
+      return { ok: false };
+    });
+
+    render(<Dashboard />);
+    await screen.findByTestId('mock-pdf-canvas-viewer');
+    fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
+    await screen.findByText('Annexure A-1');
+
+    for (let n = 1; n <= N; n++) {
+      fireEvent.click(screen.getByTestId(`structure-jump-root/annexure:a-${n}`));
+      await waitFor(() => expect(screen.getByTestId('chunk-view-banner')).toHaveTextContent(`Annexure A-${n}`));
+    }
+
+    // The first chunk viewed (annexure:a-1, blob "blob:chunk-2" — index 1 is
+    // the main doc's own blob, created first) must have been evicted once
+    // the 11th distinct chunk pushed the cache past its 10-entry bound.
+    expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:chunk-2');
   });
 });

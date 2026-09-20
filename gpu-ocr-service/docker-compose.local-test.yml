@@ -60,6 +60,10 @@ services:
       # log) — force the plain HTTPS downloader instead, which is far more
       # tolerant of flaky connections.
       - HF_HUB_DISABLE_XET=1
+      # TEMPORARY — for the PDF-overlay coordinate-space spike; captures the
+      # raw pre-strip <|det|> tag output to ./latest_ocr_result_raw.md inside
+      # this container (docker exec in to read it). Safe to remove afterwards.
+      - UNLIMITED_OCR_SAVE_DEBUG_FILES=1
     # No GPU reservation — runs on CPU. unlimited_ocr_engine.py already
     # detects torch.cuda.is_available()==False and falls back to CPU/float32.
     volumes:

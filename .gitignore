@@ -6,6 +6,10 @@ __pycache__/
 # Node / frontend
 node_modules/
 
+# Generated at `npm install` time by scripts/copy-pdfjs-assets.mjs — derived
+# from node_modules/pdfjs-dist, not source.
+frontend/public/pdfjs/
+
 # C extensions
 *.so
 

@@ -74,6 +74,28 @@ def test_job_failure_reports_error_and_service_keeps_serving(client, auth_header
     assert resp.status_code == 200
 
 
+def test_job_result_includes_raw_result_from_the_engine(client, auth_headers, fake_engine):
+    """The single-page path calls run_ocr_with_raw() (not run_ocr()) so the
+    model's raw, pre-clean_detection_tags() output reaches the job result —
+    used by reference_index.py's layout-tag confidence signal."""
+    def _fake_run_ocr_with_raw(pil_image, prompt, base_size, timeout, crop_mode=False):
+        return "Annexure A-2", "<|det|>header [1,1,1,1]<|/det|>Annexure A-2"
+
+    fake_engine.run_ocr_with_raw = _fake_run_ocr_with_raw
+    job_id = client.post("/api/v1/jobs", json=_payload(), headers=auth_headers).json()["job_id"]
+
+    deadline = time.time() + 5
+    status = None
+    while time.time() < deadline:
+        status = client.get(f"/api/v1/jobs/{job_id}", headers=auth_headers).json()
+        if status["status"] == "done":
+            break
+        time.sleep(0.05)
+
+    assert status["result"] == "Annexure A-2"
+    assert status["raw_result"] == "<|det|>header [1,1,1,1]<|/det|>Annexure A-2"
+
+
 def test_get_unknown_job_404(client, auth_headers):
     resp = client.get("/api/v1/jobs/does-not-exist", headers=auth_headers)
     assert resp.status_code == 404

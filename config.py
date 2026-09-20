@@ -92,6 +92,34 @@ OCR_AUDIT_CROSS_ENGINE_ENABLED = os.environ.get("OCR_AUDIT_CROSS_ENGINE_ENABLED"
 # main.py's settings mechanism. This constant is only the fallback default. ────
 ENABLE_UNLIMITED_LONG_PROMPTS = os.environ.get("ENABLE_UNLIMITED_LONG_PROMPTS", "false").strip().lower() == "true"
 
+# ─── Unlimited-OCR grounding gate — despite the name (kept for setting-key/
+# DB compatibility with the setting this was first built as), this does NOT
+# prepend a `<|grounding|>` prompt token. Confirmed directly against the
+# model (see the project plan) that the token does nothing useful here —
+# an independent, merged fix in the Docling project found the same plain
+# prompt already produces identical `<|det|>` output, and that adding the
+# token only degrades transcription quality (matching what was observed
+# here too). What this flag actually controls: switching Unlimited-OCR
+# from its "base" config (image_size=base_size, one global view, no
+# per-region output) to its official "gundam" config (image_size=640,
+# per-region crops) — confirmed, via a corrected direct test, to be what
+# actually makes the model emit real `<|det|>type [bbox]<|/det|>content`
+# layout tags (the exact shape reference_index.py's `_DET_TAG_RE`/
+# `parse_layout_blocks()` already parse):
+#   <|det|>header [612, 29, 905, 61]<|/det|>AmneXureA-1
+#   <|det|>text [383, 223, 792, 243]<|/det|>CONTRACT AGREEMENT BETWEEN
+# Getting this into `raw_ocr_text` also required a second, independent fix
+# in unlimited_ocr_engine.py's run_ocr_with_raw() (both copies): the
+# model's own save_results=True output file is already stripped of tags by
+# the vendor's own infer() before it's written — the tags only ever exist
+# in the raw generation stream, which is now what raw_text is sourced from.
+# Off by default: gated the same way as ENABLE_UNLIMITED_LONG_PROMPTS
+# above — runtime-overridable via app_settings; this constant is only the
+# fallback default. Kept opt-in (not a default) because gundam mode changes
+# image preprocessing for every page and has only been verified on one
+# real page so far — timing/quality at scale is still unverified.
+ENABLE_UNLIMITED_GROUNDING = os.environ.get("ENABLE_UNLIMITED_GROUNDING", "false").strip().lower() == "true"
+
 # ─── DB durability/performance ─────────────────────────────────────────────────
 OCR_DB_BUSY_TIMEOUT_MS = int(os.environ.get("OCR_DB_BUSY_TIMEOUT_MS", "5000"))
 OCR_WAL_CHECKPOINT_EVERY_N_PAGES = int(os.environ.get("OCR_WAL_CHECKPOINT_EVERY_N_PAGES", "50"))

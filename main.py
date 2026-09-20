@@ -22,6 +22,7 @@ from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 import config
 import database
 import task_queue
+import reference_index
 import gpu_ocr_client
 import chunking
 import confidence
@@ -83,6 +84,15 @@ _ASSETS_DIR = os.path.join(_FRONTEND_DIST_DIR, "assets")
 if os.path.isdir(_ASSETS_DIR):
     app.mount("/assets", StaticFiles(directory=_ASSETS_DIR), name="assets")
 
+# pdf.js's worker/wasm/cmaps/standard_fonts (copied into frontend/public/pdfjs
+# by scripts/copy-pdfjs-assets.mjs, then passed through verbatim into
+# dist/pdfjs by Vite's public-dir convention) - without this mount, a request
+# to /pdfjs/build/pdf.worker.mjs falls through to the SPA catch-all below and
+# gets index.html back instead of the actual worker module.
+_PDFJS_DIR = os.path.join(_FRONTEND_DIST_DIR, "pdfjs")
+if os.path.isdir(_PDFJS_DIR):
+    app.mount("/pdfjs", StaticFiles(directory=_PDFJS_DIR), name="pdfjs")
+
 app.include_router(auth_router)
 
 # CORS: restrict to localhost origins only (wildcard + credentials is a spec violation)
@@ -113,7 +123,7 @@ _CSP = (
     "font-src https://cdnjs.cloudflare.com; "
     "img-src 'self' data: blob:; "
     "frame-src 'self' blob:; "
-    "connect-src 'self'; "
+    "connect-src 'self' blob:; "
     "frame-ancestors 'none'; "
     "object-src 'none'; "
     "base-uri 'self'"
@@ -193,6 +203,7 @@ def _load_settings() -> dict:
     defaults = {
         "output_path": "", "idle_timeout_minutes": 15,
         "enable_unlimited_long_prompts": config.ENABLE_UNLIMITED_LONG_PROMPTS,
+        "enable_unlimited_grounding": config.ENABLE_UNLIMITED_GROUNDING,
         "audit_sample_rate": config.OCR_AUDIT_SAMPLE_RATE,
         "audit_high_confidence_min": config.OCR_AUDIT_HIGH_CONFIDENCE_MIN,
         "audit_sample_cap_per_job": config.OCR_AUDIT_SAMPLE_CAP_PER_JOB,
@@ -306,7 +317,28 @@ async def run_ocr_for_image(pil_image, prompt: str, tiling: bool, timeout: int, 
     return await gpu_ocr_client.run_glm_ocr(pil_image, prompt, tiling, timeout, options)
 
 
-async def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeout: int, base_size: int = 1024, long_prompts_enabled: bool = False) -> str:
+async def run_unlimited_ocr_for_image(
+    pil_image: Image.Image, prompt: str, timeout: int, base_size: int = 1024,
+    long_prompts_enabled: bool = False, grounding_enabled: bool = False,
+) -> str:
+    text, _raw_text = await run_unlimited_ocr_for_image_with_raw(
+        pil_image, prompt, timeout, base_size=base_size,
+        long_prompts_enabled=long_prompts_enabled, grounding_enabled=grounding_enabled,
+    )
+    return text
+
+
+async def run_unlimited_ocr_for_image_with_raw(
+    pil_image: Image.Image, prompt: str, timeout: int, base_size: int = 1024,
+    long_prompts_enabled: bool = False, grounding_enabled: bool = False,
+) -> "tuple[str, str | None]":
+    """Same contract as run_unlimited_ocr_for_image(), but also returns the
+    model's raw, pre-clean_detection_tags() output (baidu/Unlimited-OCR
+    only — None for any path that never reaches real inference). Used by
+    _build_runners()' job-pipeline closure to feed reference_index.py's
+    layout-tag confidence signal (see the project plan); the ad-hoc
+    single-image OCR endpoint keeps calling the plain
+    run_unlimited_ocr_for_image() above, unaffected by this addition."""
     # GLM already receives the full prompt unmodified (proven safe in production).
     # Unlimited-OCR's own default is a short, fixed task-label rather than a sentence
     # of instructions, so its behavior under a long prompt is unproven — gated behind
@@ -318,14 +350,29 @@ async def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeo
     # from settings inside this function, or a PATCH mid-job would split one
     # document's pages across two different prompt behaviors.
     effective_prompt = prompt if (long_prompts_enabled or len(prompt) <= 80) else "document parsing."
+    # `grounding_enabled` switches Unlimited-OCR into its official "gundam"
+    # config (image_size=640, per-region crops) instead of prepending any
+    # prompt token — confirmed directly (see the project plan) that
+    # crop_mode=True/image_size=640 is what actually makes the model emit
+    # `<|det|>type [bbox]<|/det|>content` layout tags, and that the
+    # `<|grounding|>` special token itself does nothing useful here (an
+    # independent, merged fix in the Docling project found the same plain
+    # prompt already produces identical det-tag output, and that adding the
+    # grounding token only degrades transcription quality — matching what
+    # we observed too). Left off by default: this changes image
+    # preprocessing for every page, only validated on one real page so far.
+    # Same "resolved once, frozen per job" rule as long_prompts_enabled
+    # above.
     if config.OCR_LOCAL_ENGINE:
         # Dev-only fallback: run in-process on this machine without a GPU server.
         if not _UNLIMITED_OCR_AVAILABLE or unlimited_ocr_engine is None:
             raise Exception("unlimited_ocr_engine is not installed.")
         return await asyncio.to_thread(
-            unlimited_ocr_engine.run_ocr, pil_image, effective_prompt, base_size, timeout
+            unlimited_ocr_engine.run_ocr_with_raw, pil_image, effective_prompt, base_size, timeout, grounding_enabled
         )
-    return await gpu_ocr_client.run_unlimited_ocr(pil_image, effective_prompt, timeout, base_size=base_size)
+    return await gpu_ocr_client.run_unlimited_ocr_with_raw(
+        pil_image, effective_prompt, timeout, base_size=base_size, crop_mode=grounding_enabled
+    )
 
 
 def _build_runners(engine_params: dict):
@@ -346,9 +393,24 @@ def _build_runners(engine_params: dict):
 
     u_base = engine_params.get("unlimited_base_size", 1024)
     long_prompts_enabled = engine_params.get("long_prompts_enabled", False)
+    grounding_enabled = engine_params.get("grounding_enabled", False)
 
-    def _unlimited_runner(pil_image, prompt, timeout):
-        return run_unlimited_ocr_for_image(pil_image, prompt, timeout, base_size=u_base, long_prompts_enabled=long_prompts_enabled)
+    async def _unlimited_runner(pil_image, prompt, timeout, raw_capture=None):
+        # raw_capture (optional, a plain dict) is how task_queue.py recovers
+        # the model's raw pre-clean_detection_tags() output without changing
+        # this closure's own return type — it's called as
+        # run_unlimited_func(pil_img, prompt, timeout, raw_capture) from
+        # _run_single_page_with_retries, and every existing test fake for
+        # that call already tolerates an extra positional arg (*rest/
+        # *args, **kwargs), so this is additive, not a breaking signature
+        # change. Still returns a plain string, exactly as before.
+        text, raw_text = await run_unlimited_ocr_for_image_with_raw(
+            pil_image, prompt, timeout, base_size=u_base,
+            long_prompts_enabled=long_prompts_enabled, grounding_enabled=grounding_enabled,
+        )
+        if raw_capture is not None:
+            raw_capture["raw_text"] = raw_text
+        return text
 
     async def _unlimited_multi_runner(pil_images, prompt, timeout):
         return await gpu_ocr_client.run_unlimited_ocr_multi(pil_images, prompt, timeout)
@@ -377,6 +439,7 @@ def save_settings(body: dict, principal: Principal = Depends(_require_admin)):
             )
     allowed_keys = (
         "output_path", "idle_timeout_minutes", "enable_unlimited_long_prompts",
+        "enable_unlimited_grounding",
         "audit_sample_rate", "audit_high_confidence_min", "audit_sample_cap_per_job",
     )
     current.update({k: v for k, v in body.items() if k in allowed_keys})
@@ -526,6 +589,7 @@ async def submit_ocr_job(
         "glm_repeat_penalty": glm_repeat_penalty,
         "unlimited_base_size": unlimited_base_size,
         "long_prompts_enabled": bool(settings.get("enable_unlimited_long_prompts", config.ENABLE_UNLIMITED_LONG_PROMPTS)),
+        "grounding_enabled": bool(settings.get("enable_unlimited_grounding", config.ENABLE_UNLIMITED_GROUNDING)),
         "confidence_threshold": confidence_threshold,
     }
 
@@ -647,7 +711,85 @@ def get_ocr_job(
     job["chunks"] = chunking.compute_chunks(job["total_pages"], job.get("chunk_size") or config.OCR_CHUNK_SIZE)
     if job["status"] == "escalating" and not accept_partial:
         job["_escalation_pending"] = True
+    job["reference_index_reindexing"] = reference_index.is_reindex_active(job_id)
     return job
+
+@app.post("/api/jobs/{job_id}/reindex-references")
+async def reindex_job_references(job_id: str, principal: Principal = Depends(_require_user)):
+    """Rebuilds the cross-reference index for a job from its already-stored
+    page text — for a job OCR'd before this feature existed (so it has zero
+    ocr_reference_targets rows), or to pick up an algorithm change."""
+    _check_rate_limit(principal.rate_limit_key)
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] in ("processing", "escalating"):
+        raise HTTPException(
+            status_code=409,
+            detail="Wait for the current OCR run to finish before rebuilding the cross-reference index.",
+        )
+    if reference_index.is_reindex_active(job_id):
+        raise HTTPException(status_code=409, detail="A reference index rebuild is already running for this job.")
+
+    asyncio.create_task(reference_index.reindex_job(job_id))
+    return {"message": f"Reference index rebuild started for job {job_id}.", "status": "reindexing"}
+
+@app.get("/api/jobs/{job_id}/scope-ranges")
+def get_job_scope_ranges(job_id: str, principal: Principal = Depends(_require_user)):
+    """Part B: for every container that was ever the active structural
+    ancestor on some page, the contiguous physical-page range(s) it spans —
+    derived from each page's persisted end_of_page_scope stack, cached per
+    job until reference_index_version changes. See
+    reference_index.compute_scope_ranges for the exact semantics (a range
+    means "pages where this node is the active ancestor," not "pages its
+    own heading text appears on")."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    ranges = reference_index.compute_scope_ranges(job_id, job["total_pages"])
+    return {
+        "reference_index_version": database.get_reference_index_version(job_id),
+        "ranges": ranges,
+    }
+
+@app.get("/api/jobs/{job_id}/references")
+def get_job_references(
+    job_id: str,
+    since_version: int = Query(0, ge=0),
+    principal: Principal = Depends(_require_user),
+):
+    """Page-delta cross-reference index fetch: returns only the pages whose
+    candidate targets changed since since_version, each with its complete
+    current candidate set (a whole-page replacement, not a per-candidate diff).
+    A page:N self-reference is synthesized for any changed page lacking a
+    stored page:N row of its own — never persisted, computed here only."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    changed_pages = database.get_reference_targets_since(job_id, since_version)
+    for page_num, by_key in changed_pages.items():
+        if not any(k == f"page:{page_num}" for k in by_key):
+            page_row = database.get_page(job_id, page_num)
+            snippet = (page_row.get("text") or "")[:300] if page_row else ""
+            by_key[f"page:{page_num}"] = [{
+                "anchor_id": f"page-block-{page_num}",
+                "snippet": snippet,
+                "truncated": False,
+                "continues_on_page": None,
+                "scope_key": None,
+                "scope_label": f"This document (page {page_num})",
+                "scope_provisional": False,
+                "collapsed_key": f"page:{page_num}",
+                "fingerprint": "",
+                "scope_chain": [],
+                "own_label": None,
+            }]
+
+    return {
+        "reference_index_version": database.get_reference_index_version(job_id),
+        "changed_pages": changed_pages,
+    }
 
 @app.get("/api/jobs/{job_id}/file")
 def get_job_uploaded_file(
@@ -668,6 +810,42 @@ def get_job_uploaded_file(
         path=job['file_path'],
         media_type=content_type,
         headers={"Content-Disposition": _content_disposition(disposition, filename)}
+    )
+
+@app.get("/api/jobs/{job_id}/file/pages")
+def get_job_file_page_range(
+    job_id: str,
+    start: int = Query(..., ge=1),
+    end: int = Query(..., ge=1),
+    principal: Principal = Depends(_require_user),
+):
+    """Part C3: extracts a contiguous page range from the original uploaded
+    PDF into a small standalone PDF — the "chunk" the Structure sidebar
+    fetches instead of the whole (possibly 900+ page) document when a
+    reader jumps to a specific reference."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job or not os.path.exists(job['file_path']):
+        raise HTTPException(status_code=404, detail="File not found")
+    if job['file_type'] != 'pdf':
+        raise HTTPException(status_code=400, detail="Page-range extraction is only supported for PDF jobs")
+    if end < start:
+        raise HTTPException(status_code=400, detail="end must be >= start")
+
+    src = pdfium.PdfDocument(job['file_path'])
+    if end > len(src):
+        raise HTTPException(status_code=400, detail=f"end exceeds document length ({len(src)} pages)")
+
+    out = pdfium.PdfDocument.new()
+    out.import_pages(src, list(range(start - 1, end)))
+    buf = io.BytesIO()
+    out.save(buf)
+    buf.seek(0)
+
+    base_name = os.path.splitext(job['filename'])[0]
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": _content_disposition("inline", f"{base_name}-p{start}-{end}.pdf")}
     )
 
 @app.get("/api/jobs/{job_id}/download-result")
@@ -974,8 +1152,13 @@ async def ocr_single_page(
 
     try:
         if engine == "unlimited":
-            _legacy_long_prompts = bool(_load_settings().get("enable_unlimited_long_prompts", config.ENABLE_UNLIMITED_LONG_PROMPTS))
-            raw_text = await run_unlimited_ocr_for_image(pil_image, prompt, OCR_TIMEOUT, long_prompts_enabled=_legacy_long_prompts)
+            _legacy_settings = _load_settings()
+            _legacy_long_prompts = bool(_legacy_settings.get("enable_unlimited_long_prompts", config.ENABLE_UNLIMITED_LONG_PROMPTS))
+            _legacy_grounding_enabled = bool(_legacy_settings.get("enable_unlimited_grounding", config.ENABLE_UNLIMITED_GROUNDING))
+            raw_text = await run_unlimited_ocr_for_image(
+                pil_image, prompt, OCR_TIMEOUT,
+                long_prompts_enabled=_legacy_long_prompts, grounding_enabled=_legacy_grounding_enabled,
+            )
         else:
             raw_text = await run_ocr_for_image(pil_image, prompt, tiling, OCR_TIMEOUT, ocr_options)
             if is_captcha:

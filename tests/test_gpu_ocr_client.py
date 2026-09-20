@@ -34,6 +34,45 @@ class TestUnlimitedOcrHappyPath:
             assert result == "hello world"
 
 
+class TestUnlimitedOcrWithRaw:
+    """run_unlimited_ocr_with_raw() forwards the GPU service's raw_result
+    field (the model's pre-clean_detection_tags() output) alongside the
+    cleaned result — used by reference_index.py's layout-tag confidence
+    signal. run_unlimited_ocr() itself must stay a plain string (verified by
+    TestUnlimitedOcrHappyPath above, unchanged)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_both_cleaned_and_raw_result(self):
+        with respx.mock:
+            respx.post("https://gpu.example.test/api/v1/jobs").mock(
+                return_value=httpx.Response(202, json={"job_id": "job-raw-1"})
+            )
+            respx.get("https://gpu.example.test/api/v1/jobs/job-raw-1").mock(
+                return_value=httpx.Response(200, json={
+                    "status": "done",
+                    "result": "Annexure A-2",
+                    "raw_result": "<|det|>header [1,1,1,1]<|/det|>Annexure A-2",
+                    "error": None,
+                })
+            )
+            text, raw = await goc.run_unlimited_ocr_with_raw(_tiny_image(), "prompt", timeout=5, base_size=1024)
+            assert text == "Annexure A-2"
+            assert raw == "<|det|>header [1,1,1,1]<|/det|>Annexure A-2"
+
+    @pytest.mark.asyncio
+    async def test_raw_result_is_none_when_the_gpu_service_does_not_send_one(self):
+        with respx.mock:
+            respx.post("https://gpu.example.test/api/v1/jobs").mock(
+                return_value=httpx.Response(202, json={"job_id": "job-raw-2"})
+            )
+            respx.get("https://gpu.example.test/api/v1/jobs/job-raw-2").mock(
+                return_value=httpx.Response(200, json={"status": "done", "result": "plain text", "error": None})
+            )
+            text, raw = await goc.run_unlimited_ocr_with_raw(_tiny_image(), "prompt", timeout=5, base_size=1024)
+            assert text == "plain text"
+            assert raw is None
+
+
 class TestUnlimitedOcrMulti:
     @pytest.mark.asyncio
     async def test_submit_multi_sends_image_b64s_not_image_b64(self):

@@ -55,13 +55,16 @@ async def check_health() -> dict:
 
 # ─── Unlimited-OCR (job-queue API on the GPU box) ─────────────────────────────
 
-async def submit_unlimited_job(image_bytes: bytes, prompt: str, base_size: int, timeout: int) -> str:
+async def submit_unlimited_job(
+    image_bytes: bytes, prompt: str, base_size: int, timeout: int, crop_mode: bool = False,
+) -> str:
     payload = {
         "engine": "unlimited",
         "image_b64": base64.b64encode(image_bytes).decode("ascii"),
         "prompt": prompt,
         "base_size": base_size,
         "timeout": timeout,
+        "crop_mode": crop_mode,
     }
     return await _submit_job(payload)
 
@@ -108,7 +111,12 @@ async def cancel_all_gpu_jobs() -> dict:
         return {"ok": False, "error": str(e)}
 
 
-async def poll_until_done(job_id: str, poll_timeout: float) -> str:
+async def _poll_until_done_full(job_id: str, poll_timeout: float) -> dict:
+    """Same polling loop as poll_until_done(), but returns the full response
+    dict (status/result/raw_result/error) instead of just the "result"
+    field. poll_until_done() is a thin wrapper around this, unchanged for
+    its existing callers/tests; run_unlimited_ocr_with_raw() calls this
+    directly to also recover "raw_result" without a second poll cycle."""
     deadline = time.monotonic() + poll_timeout
     async with httpx.AsyncClient(timeout=config.GPU_OCR_CONNECT_TIMEOUT_SECONDS) as client:
         while True:
@@ -129,11 +137,16 @@ async def poll_until_done(job_id: str, poll_timeout: float) -> str:
             data = resp.json()
             status = data.get("status")
             if status == "done":
-                return data.get("result") or ""
+                return data
             if status == "failed":
                 raise GPUServiceJobFailed(data.get("error") or "GPU OCR job failed with no error detail.")
 
             await asyncio.sleep(config.GPU_OCR_POLL_INTERVAL_SECONDS)
+
+
+async def poll_until_done(job_id: str, poll_timeout: float) -> str:
+    data = await _poll_until_done_full(job_id, poll_timeout)
+    return data.get("result") or ""
 
 
 async def run_unlimited_ocr(pil_image, prompt: str, timeout: int, base_size: int = 1024) -> str:
@@ -151,6 +164,32 @@ async def run_unlimited_ocr(pil_image, prompt: str, timeout: int, base_size: int
     # a genuinely dead/unreachable GPU service - see config.py.
     poll_timeout = config.GPU_OCR_CLIENT_SAFETY_TIMEOUT_SECONDS
     return await poll_until_done(job_id, poll_timeout)
+
+
+async def run_unlimited_ocr_with_raw(
+    pil_image, prompt: str, timeout: int, base_size: int = 1024, crop_mode: bool = False,
+) -> "tuple[str, str | None]":
+    """Same contract as run_unlimited_ocr(), but also returns the GPU
+    service's raw_result field — the model's raw, pre-clean_detection_tags()
+    output (see unlimited_ocr_engine.run_ocr_with_raw()), forwarded through
+    gpu-ocr-service/main.py's job result. None if the GPU service didn't
+    send one (an older/unpatched GPU service instance, or a batch/failure
+    path that never populates it). Deliberately NOT implemented by having
+    run_unlimited_ocr() delegate here (or vice versa) — run_unlimited_ocr()
+    must keep calling the public poll_until_done() unchanged, since an
+    existing test monkeypatches exactly that name.
+
+    crop_mode switches Unlimited-OCR into its "gundam" config
+    (image_size=640, per-region crops) — confirmed (see the project plan)
+    to be what actually makes the model emit <|det|> layout tags."""
+    if pil_image.mode != "RGB":
+        pil_image = pil_image.convert("RGB")
+    buf = io.BytesIO()
+    pil_image.save(buf, format="JPEG", quality=85)
+    job_id = await submit_unlimited_job(buf.getvalue(), prompt, base_size, timeout, crop_mode=crop_mode)
+    poll_timeout = config.GPU_OCR_CLIENT_SAFETY_TIMEOUT_SECONDS
+    data = await _poll_until_done_full(job_id, poll_timeout)
+    return data.get("result") or "", data.get("raw_result")
 
 
 async def run_unlimited_ocr_multi(pil_images: list, prompt: str, timeout: int) -> str:
