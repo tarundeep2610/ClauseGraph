@@ -357,14 +357,21 @@ def _worker_main(request_queue, response_queue, loaded_flag):
             stdout_capture = io.StringIO()
             with contextlib.redirect_stdout(stdout_capture):
                 if kind == "infer":
+                    # crop_mode=True switches to the model's official "gundam"
+                    # config (image_size=640, per-region crops) — confirmed
+                    # directly (see the project plan) to be what actually
+                    # makes the model emit <|det|> layout tags; crop_mode=False
+                    # (image_size=base_size) never produces per-region output
+                    # at all, since nothing splits the page into regions.
+                    _crop_mode = bool(req.get("crop_mode"))
                     _model.infer(
                         _tokenizer,
                         prompt=f"<image>{req['prompt']}",
                         image_file=req["image_path"],
                         output_path=req["output_path"],
                         base_size=req["base_size"],
-                        image_size=req["base_size"],
-                        crop_mode=False,   # preserve document structure (no cropping)
+                        image_size=640 if _crop_mode else req["base_size"],
+                        crop_mode=_crop_mode,
                         # Without this a pathological/blank/atypical page can run
                         # away repeating itself all the way to max_length.
                         no_repeat_ngram_size=35,
@@ -616,7 +623,10 @@ def _call_worker(request: dict, timeout: float | None) -> dict:
 # Inference
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 1024, timeout: int | None = None) -> str:
+def run_ocr(
+    pil_image: Image.Image, prompt: str | None = None, base_size: int = 1024, timeout: int | None = None,
+    crop_mode: bool = False,
+) -> str:
     """
     Run Baidu Unlimited-OCR on a PIL Image and return the extracted text as a string.
 
@@ -629,9 +639,35 @@ def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 
                    process is killed outright (actually freeing GPU memory,
                    unlike giving up on a thread) and a fresh one is started
                    for the next call.
+        crop_mode: False (default) uses the model's "base" config — one
+                   global view of the page, no per-region output. True uses
+                   the "gundam" config (image_size=640, per-region crops) —
+                   confirmed (see the project plan) to be what actually
+                   makes the model emit <|det|> layout tags.
 
     Returns:
         Extracted text string, or an error message prefixed with "### ❌".
+    """
+    final_output, _raw_text = run_ocr_with_raw(pil_image, prompt, base_size, timeout, crop_mode=crop_mode)
+    return final_output
+
+
+def run_ocr_with_raw(
+    pil_image: Image.Image, prompt: str | None = None, base_size: int = 1024, timeout: int | None = None,
+    crop_mode: bool = False,
+) -> "tuple[str, str | None]":
+    """Same contract as run_ocr(), but also returns the raw, pre-
+    clean_detection_tags() text the model actually produced — the
+    `<|det|>type [bbox]<|/det|>content` layout-tagged output, before this
+    module strips it down to plain text. Used by reference_index.py's
+    layout-tag heading-vs-reference confidence signal (see the project
+    plan); `None` on any path that never reaches real inference (worker
+    timeout/crash/cancel) — there is no raw text to return in those cases.
+    run_ocr() itself is a thin wrapper around this and is unchanged for all
+    of its existing callers.
+
+    Returns:
+        (cleaned_text_with_timing_footer, raw_text_or_None)
     """
     prompt = prompt or DOCUMENT_PROMPT
 
@@ -649,7 +685,10 @@ def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 
 
         start_time = time.time()
         response = _call_worker(
-            {"kind": "infer", "image_path": img_path, "output_path": out_dir, "prompt": prompt, "base_size": base_size},
+            {
+                "kind": "infer", "image_path": img_path, "output_path": out_dir,
+                "prompt": prompt, "base_size": base_size, "crop_mode": crop_mode,
+            },
             timeout,
         )
 
@@ -660,7 +699,7 @@ def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 
                 tb = "Cancelled: an explicit Stop All request was received while this call was still queued."
             else:
                 tb = response.get("error") or "Unknown worker error."
-            return f"### ❌ Unlimited-OCR inference failed\n```\n{tb}\n```"
+            return f"### ❌ Unlimited-OCR inference failed\n```\n{tb}\n```", None
 
         elapsed_sec = time.time() - start_time
         mins = int(elapsed_sec // 60)
@@ -674,16 +713,37 @@ def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 
         # whole tempdir to be torn down when the function returns.
         shutil.rmtree(out_dir, ignore_errors=True)
 
-        # If file output was empty or warning, use the worker's captured stdout tokens!
+        # The worker's captured stdout includes the model's own live-streamed
+        # generation trace - the ONLY place <|det|> layout tags ever appear.
+        # save_results=True's own result.md is already stripped of them by
+        # the model's own infer() before it's ever written to disk
+        # (confirmed directly - see the project plan), so _collect_output()
+        # above can never see them. Filtered to drop known noise (loader
+        # warnings, tqdm progress bars, the "===...save results...==="
+        # marker), the captured trace also still works as the existing
+        # last-resort recovery of the cleaned text if the file read itself
+        # failed or came back empty.
         captured_str = (response.get("captured_stdout") or "").strip()
-        if ("unexpected output files" in result_text or not result_text.strip()) and captured_str:
+        filtered_captured = ""
+        if captured_str:
             clean_lines = [
                 line for line in captured_str.splitlines()
                 if not line.startswith("The attention mask")
                 and not line.startswith("Setting `pad_token_id`")
                 and not line.startswith("A new version")
+                and "it/s]" not in line
+                and not line.startswith("===")
             ]
-            result_text = "\n".join(clean_lines).strip()
+            filtered_captured = "\n".join(clean_lines).strip()
+
+        if ("unexpected output files" in result_text or not result_text.strip()) and filtered_captured:
+            result_text = filtered_captured
+
+        # raw_text (this function's second return value) always prefers the
+        # captured generation trace when available - it's the only source
+        # that can ever contain <|det|> tags, regardless of whether the
+        # saved-file read above succeeded.
+        raw_text = filtered_captured or result_text
 
         # Clean detection coordinate tags (<|det|>...<|/det|>) for clean readability
         cleaned_text = clean_detection_tags(result_text)
@@ -700,11 +760,11 @@ def run_ocr(pil_image: Image.Image, prompt: str | None = None, base_size: int = 
                 with open("latest_ocr_result.md", "w", encoding="utf-8") as f_out:
                     f_out.write(final_output)
                 with open("latest_ocr_result_raw.md", "w", encoding="utf-8") as f_raw:
-                    f_raw.write(result_text)
+                    f_raw.write(raw_text)
             except Exception:
                 pass
 
-    return final_output
+    return final_output, raw_text
 
 
 MULTI_PAGE_PROMPT = "Multi page parsing."

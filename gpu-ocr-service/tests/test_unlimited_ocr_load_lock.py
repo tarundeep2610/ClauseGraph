@@ -599,6 +599,82 @@ def test_call_queued_behind_worker_lock_is_cancelled_without_starting_fresh_work
 # the request payload (prompt, image path, output path, base_size) survives
 # the trip through the multiprocessing queue unchanged.
 
+def test_run_ocr_with_raw_returns_the_pre_clean_text_alongside_the_cleaned_result(monkeypatch):
+    """run_ocr_with_raw() (used by gpu-ocr-service/main.py's single-page job
+    path, forwarded to reference_index.py's layout-tag confidence signal)
+    must return the exact pre-clean_detection_tags() text as its second
+    value, while run_ocr() itself (tested separately, above and below)
+    keeps returning a plain string unaffected by this addition."""
+    monkeypatch.setattr(engine, "_worker_main", engine._test_fake_worker_echo)
+    cleaned, raw = engine.run_ocr_with_raw(_make_image(), prompt="p", timeout=10)
+    assert raw is not None
+    assert "FAKE RESULT for infer" in raw
+    # clean_detection_tags() is a no-op on tag-free text (the fake worker's
+    # default result has no <|det|> tags) — only the timing footer differs.
+    assert cleaned.startswith(raw)
+    assert "Execution Time" in cleaned
+
+
+def test_run_ocr_with_raw_sources_raw_text_from_captured_stdout_not_the_saved_file(monkeypatch):
+    """The model's own save_results=True output (result.md, read via
+    _collect_output) is already stripped of <|det|> tags by the vendor's
+    own infer() before it's ever written to disk - confirmed directly
+    against the real model (see the project plan). The only place tags
+    ever appear is the worker's captured stdout (the live generation
+    trace). raw_text must be sourced from that, not from result.md, even
+    though result.md read back successfully (this is not the "file output
+    was empty/broken" fallback case)."""
+    tagged_capture = (
+        "The attention mask and the pad token id were not set. As a consequence...\n"
+        "Setting `pad_token_id` to `eos_token_id`:1 for open-end generation.\n"
+        "<|det|>header [612, 29, 905, 61]<|/det|>AmneXureA-1\n"
+        "<|det|>text [383, 223, 792, 243]<|/det|>CONTRACT AGREEMENT BETWEEN\n"
+        "===============save results:===============\n"
+        "image:   0%|          | 0/2 [00:00<?, ?it/s]image: 100%|##########| 2/2 [00:00<00:00, 2055.53it/s]\n"
+    )
+
+    def _fake_call_worker(request, timeout):
+        out_dir = request["output_path"]
+        os.makedirs(out_dir, exist_ok=True)
+        # The saved file, exactly like the real model's own infer(): clean
+        # text, no det tags at all.
+        with open(os.path.join(out_dir, "result.md"), "w", encoding="utf-8") as f:
+            f.write("AmneXureA-1\nCONTRACT AGREEMENT BETWEEN")
+        return {"ok": True, "loaded": True, "captured_stdout": tagged_capture}
+
+    monkeypatch.setattr(engine, "_call_worker", _fake_call_worker)
+    cleaned, raw = engine.run_ocr_with_raw(_make_image(), prompt="p", timeout=10, crop_mode=True)
+
+    assert "<|det|>" in raw
+    assert "AmneXureA-1" in raw
+    # Noise lines must be filtered out of raw_text too.
+    assert "attention mask" not in raw
+    assert "pad_token_id" not in raw
+    assert "it/s]" not in raw
+    assert "===" not in raw
+    # The cleaned text must stay tag-free, unaffected by this fix.
+    assert "<|det|>" not in cleaned
+
+
+def test_run_ocr_with_raw_falls_back_to_result_text_when_stdout_has_no_useful_content(monkeypatch):
+    """When the worker produced no captured stdout at all (or only noise),
+    raw_text falls back to whatever _collect_output() read - never crashes,
+    never returns something worse than today's behavior."""
+
+    def _fake_call_worker(request, timeout):
+        out_dir = request["output_path"]
+        os.makedirs(out_dir, exist_ok=True)
+        with open(os.path.join(out_dir, "result.md"), "w", encoding="utf-8") as f:
+            f.write("plain clean text, no tags")
+        return {"ok": True, "loaded": True, "captured_stdout": ""}
+
+    monkeypatch.setattr(engine, "_call_worker", _fake_call_worker)
+    cleaned, raw = engine.run_ocr_with_raw(_make_image(), prompt="p", timeout=10)
+
+    assert raw == "plain clean text, no tags"
+    assert cleaned.startswith(raw)
+
+
 def test_run_ocr_output_files_are_read_back_from_the_worker(monkeypatch):
     monkeypatch.setattr(engine, "_worker_main", engine._test_fake_worker_echo)
 

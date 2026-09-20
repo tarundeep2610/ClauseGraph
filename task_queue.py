@@ -11,6 +11,7 @@ import chunking
 import confidence
 import context_primer
 import database
+import reference_index
 from gpu_ocr_client import GPUServiceAuthError, GPUServiceError
 
 # Shown in place of a raw traceback/engine error string for any page the OCR
@@ -34,6 +35,19 @@ _escalation_share_semaphore = asyncio.Semaphore(max(1, config.OCR_ESCALATION_CON
 
 # pypdfium2 is not safe for concurrent access to a single PdfDocument.
 _render_lock = asyncio.Lock()
+
+
+async def _update_reference_index_safe(job_id: str, page_num: int, text: str, total_pages: int, raw_text: str = None):
+    """Recomputes this page's cross-reference targets right after its OCR text is
+    (re)written. Never allowed to take the OCR pipeline down — a detection bug
+    should degrade to "this page's links are stale," not fail the whole job.
+
+    `raw_text` (optional) is this page's raw, pre-clean_detection_tags() OCR
+    output — see reference_index.build_targets_for_page's layout-tag signal."""
+    try:
+        await reference_index.update_reference_index_for_page(job_id, page_num, text or "", total_pages, raw_text=raw_text)
+    except Exception as e:
+        print(f"[TaskQueue] ⚠️ Job {job_id} page {page_num} reference-index update failed (non-fatal): {e}\n{traceback.format_exc()}")
 
 
 @contextlib.asynccontextmanager
@@ -124,9 +138,20 @@ async def _render_page(pdf_doc, index: int, scale: float):
         return await asyncio.to_thread(_do_render)
 
 
-async def _run_single_page_with_retries(engine, run_ocr_func, run_unlimited_func, pil_img, prompt, tiling, timeout, ocr_options, max_retries=3):
+async def _run_single_page_with_retries(
+    engine, run_ocr_func, run_unlimited_func, pil_img, prompt, tiling, timeout, ocr_options, max_retries=3,
+    raw_capture=None,
+):
     """The original transient-failure retry loop, extracted so both the base pass
-    and manual/escalation retries can reuse it. Returns (text, status, error, attempts, elapsed_s)."""
+    and manual/escalation retries can reuse it. Returns (text, status, error, attempts, elapsed_s).
+
+    `raw_capture` (optional, a plain dict the caller owns) recovers the
+    unlimited engine's raw pre-clean_detection_tags() output without
+    changing this function's own return arity — after a successful call,
+    the caller reads `raw_capture.get("raw_text")`. Only ever populated on
+    the "unlimited" engine path; the GLM path has no such concept. Passed
+    as an extra positional arg to run_unlimited_func, which every existing
+    test fake for that call already tolerates (*rest/*args, **kwargs)."""
     text = ""
     status = "failed"
     error = ""
@@ -134,7 +159,7 @@ async def _run_single_page_with_retries(engine, run_ocr_func, run_unlimited_func
     for attempt in range(1, max_retries + 1):
         try:
             if engine == "unlimited":
-                text = await run_unlimited_func(pil_img, prompt, timeout)
+                text = await run_unlimited_func(pil_img, prompt, timeout, raw_capture)
             else:
                 text = await run_ocr_func(pil_img, prompt, tiling, timeout, ocr_options)
             status = "success"
@@ -265,7 +290,7 @@ async def process_ocr_job(
                     p = context_primer.render_primer(p, primer, enabled=True)
                 return p
 
-            async def score_and_store(page_num, pil_img, text, status, error, attempts, elapsed_s, source="single", overlap_alt_text=None):
+            async def score_and_store(page_num, pil_img, text, status, error, attempts, elapsed_s, source="single", overlap_alt_text=None, raw_text=None):
                 if status != "success":
                     score = confidence.score_page(text or f"### ❌ Error page {page_num}: {error}", hard_failure=True, cfg=score_cfg)
                 else:
@@ -291,13 +316,14 @@ async def process_ocr_job(
                     job_id, page_num, status=final_status, text=stored_text, confidence=score.confidence,
                     needs_review=int(score.needs_review), review_reason=(score.reasons[0] if score.reasons else ''),
                     signals=__import__("json").dumps(score.signals), attempts=attempts, source=source,
-                    error=error or '',
+                    error=error or '', raw_ocr_text=raw_text,
                 )
                 database.record_page_attempt(
                     job_id, page_num, attempt_no=1, escalation_level="base", engine=engine, scale=scale,
                     tiling=int(tiling), outcome=final_status, error=error or '', confidence=score.confidence,
                     signals=__import__("json").dumps(score.signals), text_len=len(text or ''), text=None,
                 )
+                await _update_reference_index_safe(job_id, page_num, stored_text, total_pages, raw_text=raw_text)
                 return score, final_status
 
             async def process_single_page(page_num):
@@ -321,11 +347,13 @@ async def process_ocr_job(
                     primer = context_primer.build_primer(prev_page['text']) if prev_page else None
                     prompt = build_prompt(page_num, primer)
 
+                    raw_capture = {}
                     async with _gpu_slot(is_escalation=False):
                         text, status, error, attempts, elapsed_s = await _run_single_page_with_retries(
-                            engine, run_ocr_func, run_unlimited_func, pil_img, prompt, tiling, ollama_timeout, ocr_options
+                            engine, run_ocr_func, run_unlimited_func, pil_img, prompt, tiling, ollama_timeout, ocr_options,
+                            raw_capture=raw_capture,
                         )
-                    await score_and_store(page_num, pil_img, text, status, error, attempts, elapsed_s)
+                    await score_and_store(page_num, pil_img, text, status, error, attempts, elapsed_s, raw_text=raw_capture.get("raw_text"))
                     return "done"
                 except Exception as e:
                     # Anything unexpected here (image rendering, DB writes, confidence
@@ -511,9 +539,11 @@ async def _escalate_page(job_id, page_num, engine, run_ocr_func, run_unlimited_f
         with Image.open(file_path) as img:
             pil_img = img.convert("RGB") if img.mode != "RGB" else img.copy()
 
+    raw_capture = {}
     async with _gpu_slot(is_escalation=True):
         text, status, error, attempts, elapsed_s = await _run_single_page_with_retries(
-            engine, run_ocr_func, run_unlimited_func, pil_img, prompt, True, int(timeout * 1.5), ocr_options
+            engine, run_ocr_func, run_unlimited_func, pil_img, prompt, True, int(timeout * 1.5), ocr_options,
+            raw_capture=raw_capture,
         )
 
     if status != "success":
@@ -559,8 +589,11 @@ async def _escalate_page(job_id, page_num, engine, run_ocr_func, run_unlimited_f
             needs_review=int(new_score.needs_review),
             review_reason=(new_score.reasons[0] if new_score.reasons else ''),
             signals=__import__("json").dumps(new_score.signals), escalated=1,
-            error=stored_error,
+            error=stored_error, raw_ocr_text=raw_capture.get("raw_text"),
         )
+        job_for_total = database.get_job(job_id, include_pages=False)
+        total_pages = (job_for_total or {}).get('total_pages') or page_num
+        await _update_reference_index_safe(job_id, page_num, stored_text, total_pages, raw_text=raw_capture.get("raw_text"))
     else:
         # Escalation attempt scored worse than the base pass — keep the base text,
         # just record that escalation was attempted. Same reasoning as the

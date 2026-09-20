@@ -26,9 +26,11 @@ const baseProps = {
   defaults: { document: 'a prompt' },
   onSavePrompt: vi.fn(),
   onResetPrompt: vi.fn(),
-  settings: { output_path: '', idle_timeout_minutes: 15 },
+  settings: { output_path: '', idle_timeout_minutes: 15, enable_unlimited_long_prompts: false },
   onSaveOutputPath: vi.fn(),
   onSaveIdleTimeout: vi.fn(),
+  onSaveLongPrompts: vi.fn(),
+  onSaveGrounding: vi.fn(),
 };
 
 describe('AdvancedSettingsPanel — role gating', () => {
@@ -128,5 +130,63 @@ describe('AdvancedSettingsPanel — batch mode & escalation controls', () => {
     expect(checkbox.checked).toBe(true);
     checkbox.click();
     expect(updateForm).toHaveBeenCalledWith({ enableOverlap: false });
+  });
+});
+
+describe('AdvancedSettingsPanel — Unlimited-OCR long-prompt toggle', () => {
+  it('is unchecked by default, shown only for admin, and saves on toggle', () => {
+    mockIsAdmin = true;
+    const onSaveLongPrompts = vi.fn();
+    render(<AdvancedSettingsPanel {...baseProps} onSaveLongPrompts={onSaveLongPrompts} />);
+    const checkbox = screen.getByTestId('enable-long-prompts-checkbox');
+    expect(checkbox.checked).toBe(false);
+    checkbox.click();
+    expect(onSaveLongPrompts).toHaveBeenCalledWith(true);
+  });
+
+  it('reflects settings.enable_unlimited_long_prompts=true as checked', () => {
+    mockIsAdmin = true;
+    render(
+      <AdvancedSettingsPanel
+        {...baseProps}
+        settings={{ ...baseProps.settings, enable_unlimited_long_prompts: true }}
+      />
+    );
+    expect(screen.getByTestId('enable-long-prompts-checkbox').checked).toBe(true);
+  });
+
+  it('is hidden for a non-admin user', () => {
+    mockIsAdmin = false;
+    render(<AdvancedSettingsPanel {...baseProps} />);
+    expect(screen.queryByTestId('enable-long-prompts-checkbox')).not.toBeInTheDocument();
+  });
+});
+
+describe('AdvancedSettingsPanel — Unlimited-OCR grounding toggle', () => {
+  it('is unchecked by default, shown only for admin, and saves on toggle', () => {
+    mockIsAdmin = true;
+    const onSaveGrounding = vi.fn();
+    render(<AdvancedSettingsPanel {...baseProps} onSaveGrounding={onSaveGrounding} />);
+    const checkbox = screen.getByTestId('enable-grounding-checkbox');
+    expect(checkbox.checked).toBe(false);
+    checkbox.click();
+    expect(onSaveGrounding).toHaveBeenCalledWith(true);
+  });
+
+  it('reflects settings.enable_unlimited_grounding=true as checked', () => {
+    mockIsAdmin = true;
+    render(
+      <AdvancedSettingsPanel
+        {...baseProps}
+        settings={{ ...baseProps.settings, enable_unlimited_grounding: true }}
+      />
+    );
+    expect(screen.getByTestId('enable-grounding-checkbox').checked).toBe(true);
+  });
+
+  it('is hidden for a non-admin user', () => {
+    mockIsAdmin = false;
+    render(<AdvancedSettingsPanel {...baseProps} />);
+    expect(screen.queryByTestId('enable-grounding-checkbox')).not.toBeInTheDocument();
   });
 });

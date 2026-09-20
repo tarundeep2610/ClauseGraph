@@ -11,12 +11,16 @@ export default function AdvancedSettingsPanel({
   settings,
   onSaveOutputPath,
   onSaveIdleTimeout,
+  onSaveLongPrompts,
+  onSaveGrounding,
 }) {
   const { isAdmin } = useAuth();
   const [open, setOpen] = useState(true);
   const [promptSavedMsg, setPromptSavedMsg] = useState('');
   const [outputSaved, setOutputSaved] = useState(false);
   const [idleSaved, setIdleSaved] = useState(false);
+  const [longPromptsSaved, setLongPromptsSaved] = useState(false);
+  const [groundingSaved, setGroundingSaved] = useState(false);
 
   function flash(setter) {
     setter(true);
@@ -265,6 +269,61 @@ export default function AdvancedSettingsPanel({
                   Results auto-export as .md to this folder on job completion.
                 </p>
                 {outputSaved && <span className="flash-saved"><i className="fa-solid fa-check" /> Saved</span>}
+              </div>
+
+              <hr className="section-divider" />
+              <p className="section-label">Unlimited-OCR</p>
+              <div className="form-group">
+                <label className="check-row" style={{ textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!settings.enable_unlimited_long_prompts}
+                    onChange={(e) => {
+                      onSaveLongPrompts(e.target.checked);
+                      flash(setLongPromptsSaved);
+                    }}
+                    data-testid="enable-long-prompts-checkbox"
+                  />
+                  Send the full Document prompt to Unlimited-OCR
+                </label>
+                <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
+                  When off (default), any prompt over 80 characters — including the full
+                  "Document" prompt above — is silently replaced with a short "document
+                  parsing." label before being sent to Unlimited-OCR. Turn this on to send
+                  the full prompt text unmodified. Applies to new jobs and future retries
+                  created after this is turned on — jobs already in progress keep whatever
+                  was frozen in at their own creation time.
+                </p>
+                {longPromptsSaved && <span className="flash-saved"><i className="fa-solid fa-check" /> Saved</span>}
+              </div>
+
+              <div className="form-group">
+                <label className="check-row" style={{ textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!settings.enable_unlimited_grounding}
+                    onChange={(e) => {
+                      onSaveGrounding(e.target.checked);
+                      flash(setGroundingSaved);
+                    }}
+                    data-testid="enable-grounding-checkbox"
+                  />
+                  Ask Unlimited-OCR for layout/region tags (grounding)
+                </label>
+                <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
+                  When off (default), Unlimited-OCR processes the page as one global
+                  view with no per-region output. Turning this on switches it into its
+                  "gundam" config instead (cropping the page into regions at a different
+                  resolution) — confirmed, via a direct test against the model, to make
+                  it tag each block with its type and bounding box, feeding the
+                  Structure tree's layout-confidence signal. This changes image
+                  preprocessing for every page of new jobs and future retries, and has
+                  only been verified on one real page so far — worth checking output
+                  quality and timing on a few more before relying on it broadly. Jobs
+                  already in progress keep whatever was frozen in at their own creation
+                  time.
+                </p>
+                {groundingSaved && <span className="flash-saved"><i className="fa-solid fa-check" /> Saved</span>}
               </div>
 
               <hr className="section-divider" />

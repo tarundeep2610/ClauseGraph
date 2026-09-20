@@ -71,6 +71,40 @@ class _AlwaysCleanRunner:
         return "This is a perfectly clean page of ordinary transcribed text content here."
 
 
+class _RawCapturingRunner:
+    """Mirrors main.py's real _unlimited_runner contract: the 4th positional
+    arg (raw_capture) is an optional dict this runner populates with the
+    model's raw pre-clean_detection_tags() output, same as production's
+    baidu/Unlimited-OCR path — used to verify task_queue.py actually
+    threads it through to ocr_pages.raw_ocr_text end to end."""
+    def __init__(self, text, raw_text):
+        self.text = text
+        self.raw_text = raw_text
+        self.calls = 0
+
+    async def __call__(self, pil_img, prompt, timeout, raw_capture=None):
+        self.calls += 1
+        if raw_capture is not None:
+            raw_capture["raw_text"] = self.raw_text
+        return self.text
+
+
+@pytest.mark.asyncio
+async def test_raw_ocr_text_is_persisted_alongside_the_cleaned_text(tmp_path):
+    """The layout-tag confidence signal (reference_index.py) depends on
+    ocr_pages.raw_ocr_text being populated from the OCR runner's raw_capture
+    out-param — this is the one thing the additive wiring exists for."""
+    job_id = _make_image_job(tmp_path)
+    raw = "<|det|>header [1,1,1,1]<|/det|>Annexure A-2"
+    runner = _RawCapturingRunner(text="Annexure A-2", raw_text=raw)
+
+    await task_queue.process_ocr_job(job_id, run_ocr_func=None, run_unlimited_func=runner, prompts_dict={"document": "p"})
+
+    page = database.get_page(job_id, 1)
+    assert page["text"] == "Annexure A-2"
+    assert page["raw_ocr_text"] == raw
+
+
 @pytest.mark.asyncio
 async def test_multipage_job_processes_all_pages_across_chunks(tmp_path):
     job_id = _make_multipage_pdf_job(tmp_path, n_pages=6, chunk_size=5)

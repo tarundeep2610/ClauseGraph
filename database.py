@@ -27,6 +27,8 @@ _OCR_JOBS_NEW_COLUMNS = [
     ("failed_pages", "INTEGER DEFAULT 0"),
     ("blank_pages", "INTEGER DEFAULT 0"),
     ("base_pass_completed_at", "TIMESTAMP"),
+    ("reference_index_version", "INTEGER DEFAULT 0"),
+    ("reference_index_frontier", "INTEGER DEFAULT 0"),
 ]
 
 
@@ -146,6 +148,89 @@ def init_db():
         )
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_attempts_job_page ON ocr_page_attempts(job_id, page_num)")
+
+    # Migrate existing databases that predate the end_of_page_scope column.
+    try:
+        cursor.execute("ALTER TABLE ocr_pages ADD COLUMN end_of_page_scope TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
+    # Migrate existing databases that predate the reference_index_touched_version
+    # column. Bumped on every reference-index (re)computation for a page,
+    # regardless of whether it produced any surviving ocr_reference_targets rows —
+    # a page whose candidate count drops to zero (e.g. after a reindex with a
+    # changed algorithm) still needs to show up as "changed" to page-delta
+    # fetches, which a query over ocr_reference_targets alone could never see.
+    try:
+        cursor.execute("ALTER TABLE ocr_pages ADD COLUMN reference_index_touched_version INTEGER DEFAULT 0")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
+    # Migrate existing databases that predate raw_ocr_text — the OCR engine's
+    # raw, pre-clean_detection_tags() output (baidu/Unlimited-OCR only; NULL
+    # for the GLM engine and for any page OCR'd before this capture existed).
+    # Plain text, not JSON — closer to original_text/overlap_alt_text than to
+    # the JSON-encoded columns below. Used only as an input to the reference
+    # index's layout-tag confidence signal; ocr_pages.text (the cleaned
+    # result) is unaffected and unchanged by this column's presence.
+    try:
+        cursor.execute("ALTER TABLE ocr_pages ADD COLUMN raw_ocr_text TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ocr_reference_targets (
+            job_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            page INTEGER NOT NULL,
+            occurrence_index INTEGER NOT NULL,
+            anchor_id TEXT,
+            snippet TEXT DEFAULT '',
+            truncated INTEGER NOT NULL DEFAULT 0,
+            continues_on_page INTEGER,
+            scope_key TEXT,
+            scope_label TEXT,
+            scope_provisional INTEGER NOT NULL DEFAULT 0,
+            collapsed_key TEXT,
+            fingerprint TEXT DEFAULT '',
+            written_at_version INTEGER NOT NULL DEFAULT 0,
+            scope_chain TEXT,
+            subdoc_label TEXT,
+            subdoc_index INTEGER,
+            own_label TEXT,
+            PRIMARY KEY (job_id, key, page, occurrence_index)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ref_targets_collapsed ON ocr_reference_targets(job_id, collapsed_key)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ref_targets_version ON ocr_reference_targets(job_id, page, written_at_version)")
+
+    # Migrate existing databases that predate the structured-ancestor-chain
+    # columns (scope_key/scope_label already existed as a flattened string;
+    # these carry the same information as a JSON list + sub-document metadata,
+    # for future filtering that doesn't require string-parsing scope_key).
+    for _col, _decl in [
+        ("scope_chain", "TEXT"), ("subdoc_label", "TEXT"), ("subdoc_index", "INTEGER"),
+        ("own_label", "TEXT"),
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE ocr_reference_targets ADD COLUMN {_col} {_decl}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
+    # Migrate existing databases that predate heading-vs-reference confidence
+    # tracking. heading_confidence_reasons is JSON-encoded (a list of signal
+    # names, e.g. ["chained_citation", "layout_title"]) — same nullable-JSON
+    # pattern as scope_chain above.
+    for _col, _decl in [("heading_confidence", "TEXT"), ("heading_confidence_reasons", "TEXT")]:
+        try:
+            cursor.execute(f"ALTER TABLE ocr_reference_targets ADD COLUMN {_col} {_decl}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
     conn.commit()
 
@@ -514,7 +599,7 @@ def upsert_page(job_id: str, page_num: int, **fields):
         "chunk_id", "is_boundary", "status", "text", "confidence", "needs_review",
         "review_reason", "signals", "attempts", "escalated", "source",
         "overlap_alt_text", "primer_source_page", "duration_ms", "reviewed_by",
-        "reviewed_at", "original_text", "error",
+        "reviewed_at", "original_text", "error", "raw_ocr_text",
     }
     cols = [k for k in fields if k in allowed]
     if not cols:
@@ -719,3 +804,234 @@ def touch_api_key_last_used(key_id: str):
     """, (datetime.utcnow().isoformat(), key_id))
     conn.commit()
     conn.close()
+
+
+# ─── Reference index (in-document cross-reference navigation) ─────────────────
+
+def get_end_of_page_scope(job_id: str, page_num: int) -> Optional[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT end_of_page_scope FROM ocr_pages WHERE job_id = ? AND page_num = ?",
+        (job_id, page_num),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row or not row[0]:
+        return None
+    try:
+        return json.loads(row[0])
+    except Exception:
+        return None
+
+
+def set_end_of_page_scope(job_id: str, page_num: int, scope: Dict[str, Any]):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    now = datetime.utcnow().isoformat()
+    cursor.execute("""
+        INSERT INTO ocr_pages (job_id, page_num, end_of_page_scope, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(job_id, page_num) DO UPDATE SET
+            end_of_page_scope = excluded.end_of_page_scope,
+            updated_at = excluded.updated_at
+    """, (job_id, page_num, json.dumps(scope), now))
+    conn.commit()
+    conn.close()
+
+
+def get_end_of_page_scope_bulk(job_id: str) -> Dict[int, Optional[Dict[str, Any]]]:
+    """Bulk counterpart to get_end_of_page_scope — one query for every
+    page's persisted end_of_page_scope instead of one query per page (used
+    by reference_index.compute_scope_ranges). A page with no persisted
+    scope yet (not processed, or predates this column) maps to None, same
+    as get_end_of_page_scope's own defensive-JSON contract."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT page_num, end_of_page_scope FROM ocr_pages WHERE job_id = ? ORDER BY page_num",
+        (job_id,),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    result: Dict[int, Optional[Dict[str, Any]]] = {}
+    for page_num, raw in rows:
+        if not raw:
+            result[page_num] = None
+            continue
+        try:
+            result[page_num] = json.loads(raw)
+        except Exception:
+            result[page_num] = None
+    return result
+
+
+def get_reference_index_version(job_id: str) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT reference_index_version FROM ocr_jobs WHERE job_id = ?", (job_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row and row[0] is not None else 0
+
+
+def bump_reference_index_version(job_id: str) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE ocr_jobs SET reference_index_version = reference_index_version + 1
+        WHERE job_id = ?
+    """, (job_id,))
+    cursor.execute("SELECT reference_index_version FROM ocr_jobs WHERE job_id = ?", (job_id,))
+    version = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+    return version
+
+
+def get_reference_index_frontier(job_id: str) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT reference_index_frontier FROM ocr_jobs WHERE job_id = ?", (job_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row and row[0] is not None else 0
+
+
+def set_reference_index_frontier(job_id: str, page_num: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE ocr_jobs SET reference_index_frontier = ? WHERE job_id = ?",
+        (page_num, job_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_reference_targets_for_page(job_id: str, page_num: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM ocr_reference_targets WHERE job_id = ? AND page = ?",
+        (job_id, page_num),
+    )
+    conn.commit()
+    conn.close()
+
+
+def upsert_reference_targets_for_page(job_id: str, page_num: int, targets: List[Dict[str, Any]], version: int):
+    """Delete-then-reinsert (retry-safe): a page's full candidate set always
+    replaces whatever was there before, so a re-processed page can never leave
+    stale rows behind."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM ocr_reference_targets WHERE job_id = ? AND page = ?", (job_id, page_num))
+    for t in targets:
+        cursor.execute("""
+            INSERT INTO ocr_reference_targets (
+                job_id, key, page, occurrence_index, anchor_id, snippet, truncated,
+                continues_on_page, scope_key, scope_label, scope_provisional,
+                collapsed_key, fingerprint, written_at_version,
+                scope_chain, subdoc_label, subdoc_index,
+                heading_confidence, heading_confidence_reasons, own_label
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            job_id, t["key"], page_num, t["occurrence_index"], t.get("anchor_id"),
+            t.get("snippet", ""), int(bool(t.get("truncated"))), t.get("continues_on_page"),
+            t.get("scope_key"), t.get("scope_label"), int(bool(t.get("scope_provisional"))),
+            t.get("collapsed_key"), t.get("fingerprint", ""), version,
+            json.dumps(t.get("scope_chain") or []), t.get("subdoc_label"), t.get("subdoc_index"),
+            t.get("heading_confidence", "high"), json.dumps(t.get("heading_confidence_reasons") or []),
+            t.get("own_label"),
+        ))
+    # Stamped unconditionally, even when `targets` is empty — this is the only
+    # durable signal that this page's index was (re)computed at this version;
+    # a page whose candidate count drops to zero would otherwise leave no
+    # surviving ocr_reference_targets row and vanish from get_reference_targets_since.
+    cursor.execute(
+        "UPDATE ocr_pages SET reference_index_touched_version = ? WHERE job_id = ? AND page_num = ?",
+        (version, job_id, page_num),
+    )
+    conn.commit()
+    conn.close()
+
+
+def has_provisional_reference_targets(job_id: str, page_num: int) -> bool:
+    """True if this page has already been (at least provisionally) processed —
+    used by the cascade to decide whether it can advance past this page without
+    waiting for its OCR text to be freshly re-fetched."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) FROM ocr_reference_targets WHERE job_id = ? AND page = ?",
+        (job_id, page_num),
+    )
+    count = cursor.fetchone()[0]
+    if count > 0:
+        conn.close()
+        return True
+    # A page can legitimately have zero targets (no references on it at all) —
+    # end_of_page_scope being set is what actually proves it was processed.
+    cursor.execute("SELECT end_of_page_scope FROM ocr_pages WHERE job_id = ? AND page_num = ?", (job_id, page_num))
+    row = cursor.fetchone()
+    conn.close()
+    return bool(row and row[0])
+
+
+def get_reference_targets_since(job_id: str, since_version: int) -> Dict[int, Dict[str, List[Dict[str, Any]]]]:
+    """Page-delta fetch: returns {page_num: {key: [candidate, ...]}} for every
+    page with at least one row written at or after since_version + 1 — each
+    page's entry is its *complete current* candidate set (a whole-page
+    replacement on the client), not a per-candidate diff."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # Read from ocr_pages' own touched-version stamp, not a scan over
+    # ocr_reference_targets survivors — a page reprocessed down to zero
+    # candidates still needs to appear here so the client's local index
+    # actually clears that page's now-stale contribution (see
+    # upsert_reference_targets_for_page).
+    cursor.execute("""
+        SELECT page_num FROM ocr_pages
+        WHERE job_id = ? AND reference_index_touched_version > ?
+    """, (job_id, since_version))
+    changed_pages = [r[0] for r in cursor.fetchall()]
+
+    result: Dict[int, Dict[str, List[Dict[str, Any]]]] = {}
+    for page_num in changed_pages:
+        cursor.execute("""
+            SELECT key, occurrence_index, anchor_id, snippet, truncated, continues_on_page,
+                   scope_key, scope_label, scope_provisional, collapsed_key, fingerprint,
+                   scope_chain, subdoc_label, subdoc_index,
+                   heading_confidence, heading_confidence_reasons, own_label
+            FROM ocr_reference_targets WHERE job_id = ? AND page = ?
+            ORDER BY key, occurrence_index
+        """, (job_id, page_num))
+        by_key: Dict[str, List[Dict[str, Any]]] = {}
+        for row in cursor.fetchall():
+            row = dict(row)
+            row["truncated"] = bool(row["truncated"])
+            row["scope_provisional"] = bool(row["scope_provisional"])
+            # scope_chain is NULL on any row written before this column existed
+            # and not yet reindexed — same nullable-JSON situation as
+            # get_end_of_page_scope, handled the same defensive way.
+            raw_chain = row.get("scope_chain")
+            try:
+                row["scope_chain"] = json.loads(raw_chain) if raw_chain else []
+            except Exception:
+                row["scope_chain"] = []
+            # heading_confidence(_reasons) is NULL on any row written before
+            # these columns existed and not yet reindexed — same situation,
+            # same defensive default (a pre-existing row predates this
+            # feature entirely, so "high confidence, no reasons" is the
+            # correct fallback, not an error state).
+            row["heading_confidence"] = row.get("heading_confidence") or "high"
+            raw_reasons = row.get("heading_confidence_reasons")
+            try:
+                row["heading_confidence_reasons"] = json.loads(raw_reasons) if raw_reasons else []
+            except Exception:
+                row["heading_confidence_reasons"] = []
+            by_key.setdefault(row["key"], []).append(row)
+        result[page_num] = by_key
+    conn.close()
+    return result
