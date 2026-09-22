@@ -3,6 +3,7 @@ import uuid
 import pytest
 
 import database
+import main as main_module
 import reference_index
 
 
@@ -109,13 +110,98 @@ def test_reindex_endpoint_starts_a_background_task_for_a_completed_job(client, a
     job_id = _job_with_pages(["Clause 1 text."])
     calls = []
 
-    async def _fake_reindex(job_id_arg):
-        calls.append(job_id_arg)
+    async def _fake_reindex(job_id_arg, force_mode=None, start_page=None):
+        calls.append((job_id_arg, force_mode, start_page))
 
     monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
     resp = client.post(f"/api/jobs/{job_id}/reindex-references", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["status"] == "reindexing"
+
+
+def test_manual_rebuild_with_no_mode_uses_current_setting_not_the_jobs_frozen_one(
+    client, auth_headers, monkeypatch,
+):
+    """Regression: a manual "Rebuild Cross-References" click with no
+    explicit ?mode= is a standalone action, not part of an in-progress OCR
+    run — it must use the CURRENT enable_ai_indexing setting, not whatever
+    (if anything) was frozen into this job's own engine_params at creation
+    time. Confirmed bug: a job created before AI-indexing existed (so its
+    engine_params has no ai_indexing_enabled key at all) still picked "ai"
+    once the setting was turned on and a provider was configured, purely
+    from a plain rebuild click."""
+    job_id = _job_with_pages(["Clause 1 text."])  # engine_params has no ai_indexing_enabled key at all
+    calls = []
+
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None):
+        # Records the argument synchronously, at the moment main.py calls
+        # this to build the coroutine for asyncio.create_task() — NOT
+        # inside the coroutine body, which only runs whenever the event
+        # loop happens to get around to the scheduled task (a real race
+        # against the test's own assertion if relied on instead).
+        calls.append(force_mode)
+        async def _noop():
+            pass
+        return _noop()
+
+    monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
+    monkeypatch.setattr(main_module.ai_indexing, "describe_active_config", lambda: {"provider": "gemini"})
+
+    resp = client.post("/api/settings", json={"enable_ai_indexing": True}, headers=auth_headers)
+    assert resp.status_code == 200
+
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references", headers=auth_headers)
+    assert resp.status_code == 200
+    assert calls == ["ai"]
+
+
+def test_manual_rebuild_falls_back_to_rule_when_no_provider_configured(client, auth_headers, monkeypatch):
+    job_id = _job_with_pages(["Clause 1 text."])
+    calls = []
+
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None):
+        # Records the argument synchronously, at the moment main.py calls
+        # this to build the coroutine for asyncio.create_task() — NOT
+        # inside the coroutine body, which only runs whenever the event
+        # loop happens to get around to the scheduled task (a real race
+        # against the test's own assertion if relied on instead).
+        calls.append(force_mode)
+        async def _noop():
+            pass
+        return _noop()
+
+    monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
+    monkeypatch.setattr(main_module.ai_indexing, "describe_active_config", lambda: None)
+
+    resp = client.post("/api/settings", json={"enable_ai_indexing": True}, headers=auth_headers)
+    assert resp.status_code == 200
+
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references", headers=auth_headers)
+    assert resp.status_code == 200
+    assert calls == ["rule"]
+
+
+def test_explicit_mode_query_param_always_wins_over_current_setting(client, auth_headers, monkeypatch):
+    job_id = _job_with_pages(["Clause 1 text."])
+    calls = []
+
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None):
+        # Records the argument synchronously, at the moment main.py calls
+        # this to build the coroutine for asyncio.create_task() — NOT
+        # inside the coroutine body, which only runs whenever the event
+        # loop happens to get around to the scheduled task (a real race
+        # against the test's own assertion if relied on instead).
+        calls.append(force_mode)
+        async def _noop():
+            pass
+        return _noop()
+
+    monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
+    client.post("/api/settings", json={"enable_ai_indexing": False}, headers=auth_headers)
+
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references?mode=ai", headers=auth_headers)
+    assert resp.status_code == 200
+    assert calls == ["ai"]
 
 
 def test_job_details_response_surfaces_reindexing_flag(client, auth_headers):

@@ -126,3 +126,44 @@ OCR_WAL_CHECKPOINT_EVERY_N_PAGES = int(os.environ.get("OCR_WAL_CHECKPOINT_EVERY_
 
 # ─── Pause drain ───────────────────────────────────────────────────────────────
 OCR_PAUSE_DRAIN_TIMEOUT_SECONDS = int(os.environ.get("OCR_PAUSE_DRAIN_TIMEOUT_SECONDS", "900"))
+
+# ─── AI-assisted document-structure indexing — runtime-overridable via
+# app_settings (ai_indexing_enabled); this is only the fallback default, same
+# pattern as ENABLE_UNLIMITED_GROUNDING above. See ai_indexing/ package and
+# ai_reference_index.py.
+#
+# The provider API key is deliberately NEVER stored anywhere (no DB table,
+# no encryption at rest) — read live from this env var only, same as every
+# other secret in this project (GPU_OCR_SHARED_SECRET, TS_AUTHKEY, ...).
+# AI_INDEX_PROVIDER/MODEL/BASE_URL are one shared config for the whole
+# deployment, not a per-user/per-job credential store. ────────────────────────
+AI_INDEXING_ENABLED = os.environ.get("AI_INDEXING_ENABLED", "false").strip().lower() == "true"
+AI_INDEX_PROVIDER = os.environ.get("AI_INDEX_PROVIDER", "gemini")
+AI_INDEX_MODEL = os.environ.get("AI_INDEX_MODEL", "gemini-2.5-flash")
+AI_INDEX_BASE_URL = os.environ.get("AI_INDEX_BASE_URL", "")
+AI_INDEX_API_KEY = os.environ.get("AI_INDEX_API_KEY", "")
+
+AI_INDEX_CHUNK_PAGES = int(os.environ.get("AI_INDEX_CHUNK_PAGES", "10"))
+AI_INDEX_CHUNK_OVERLAP_PAGES = int(os.environ.get("AI_INDEX_CHUNK_OVERLAP_PAGES", "2"))
+AI_INDEX_CHUNK_CHARS_MAX = int(os.environ.get("AI_INDEX_CHUNK_CHARS_MAX", "60000"))
+AI_INDEX_PAGE_CHARS_MAX = int(os.environ.get("AI_INDEX_PAGE_CHARS_MAX", "12000"))
+if AI_INDEX_CHUNK_PAGES < 1:
+    raise RuntimeError("AI_INDEX_CHUNK_PAGES must be >= 1.")
+
+AI_INDEX_MAX_HEADINGS_PER_CHUNK = int(os.environ.get("AI_INDEX_MAX_HEADINGS_PER_CHUNK", "200"))
+AI_INDEX_CONSECUTIVE_FAILURE_LIMIT = int(os.environ.get("AI_INDEX_CONSECUTIVE_FAILURE_LIMIT", "3"))
+
+AI_INDEX_REQUEST_TIMEOUT_SECONDS = float(os.environ.get("AI_INDEX_REQUEST_TIMEOUT_SECONDS", "180"))
+AI_INDEX_MAX_TRANSPORT_RETRIES = int(os.environ.get("AI_INDEX_MAX_TRANSPORT_RETRIES", "3"))
+AI_INDEX_MAX_OUTPUT_TOKENS = int(os.environ.get("AI_INDEX_MAX_OUTPUT_TOKENS", "8192"))
+AI_INDEX_TEMPERATURE = float(os.environ.get("AI_INDEX_TEMPERATURE", "0.0"))
+# Proactive pacer between chunk dispatches, independent of the per-call
+# transport retry above — avoids a predictable 429 cascade on a long
+# sequential run against a rate-limited provider tier, rather than relying on
+# retries alone to absorb it.
+AI_INDEX_MIN_CHUNK_INTERVAL_SECONDS = float(os.environ.get("AI_INDEX_MIN_CHUNK_INTERVAL_SECONDS", "1.0"))
+
+AI_GEMINI_BASE_URL = os.environ.get(
+    "AI_GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
+AI_ROKKAAI_POLL_INTERVAL_SECONDS = float(os.environ.get("AI_ROKKAAI_POLL_INTERVAL_SECONDS", "3"))
+AI_ROKKAAI_POLL_TIMEOUT_SECONDS = float(os.environ.get("AI_ROKKAAI_POLL_TIMEOUT_SECONDS", "600"))

@@ -13,6 +13,10 @@ export default function AdvancedSettingsPanel({
   onSaveIdleTimeout,
   onSaveLongPrompts,
   onSaveGrounding,
+  onSaveAiIndexing,
+  onSaveAiChunkPages,
+  aiIndexStatus,
+  onTestAiConnection,
 }) {
   const { isAdmin } = useAuth();
   const [open, setOpen] = useState(true);
@@ -21,6 +25,9 @@ export default function AdvancedSettingsPanel({
   const [idleSaved, setIdleSaved] = useState(false);
   const [longPromptsSaved, setLongPromptsSaved] = useState(false);
   const [groundingSaved, setGroundingSaved] = useState(false);
+  const [aiIndexingSaved, setAiIndexingSaved] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState(null);
+  const [aiTesting, setAiTesting] = useState(false);
 
   function flash(setter) {
     setter(true);
@@ -44,6 +51,14 @@ export default function AdvancedSettingsPanel({
 
   function onPromptModeChange(mode) {
     updateForm({ promptMode: mode, customPrompt: prompts[mode] || '' });
+  }
+
+  async function handleTestAiConnection() {
+    setAiTesting(true);
+    setAiTestResult(null);
+    const result = await onTestAiConnection();
+    setAiTestResult(result);
+    setAiTesting(false);
   }
 
   return (
@@ -324,6 +339,76 @@ export default function AdvancedSettingsPanel({
                   time.
                 </p>
                 {groundingSaved && <span className="flash-saved"><i className="fa-solid fa-check" /> Saved</span>}
+              </div>
+
+              <hr className="section-divider" />
+              <p className="section-label">AI Indexing</p>
+              <div className="form-group">
+                <label className="check-row" style={{ textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!settings.enable_ai_indexing}
+                    onChange={(e) => {
+                      onSaveAiIndexing(e.target.checked);
+                      flash(setAiIndexingSaved);
+                    }}
+                    data-testid="enable-ai-indexing-checkbox"
+                  />
+                  Use AI to detect document structure (Gemini / RokkaAI)
+                </label>
+                <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
+                  When on, new jobs run an AI pass (in page batches) to find headings the
+                  rule-based detector's fixed keyword/number vocabulary can't — e.g. a
+                  heading with no family keyword and no number. The rule-based detector
+                  still runs automatically as a per-batch fallback if the AI call fails or
+                  returns something unusable, and requires an active credential below.
+                  Frozen per job at creation time — a change here only affects new jobs.
+                </p>
+                {aiIndexingSaved && <span className="flash-saved"><i className="fa-solid fa-check" /> Saved</span>}
+              </div>
+
+              {!!settings.enable_ai_indexing && (
+                <div className="form-group">
+                  <label>Pages per AI call</label>
+                  <input
+                    type="number" min="1" max="50"
+                    defaultValue={settings.ai_index_chunk_pages || 10}
+                    onBlur={(e) => onSaveAiChunkPages(parseInt(e.target.value, 10) || 10)}
+                  />
+                </div>
+              )}
+
+              <div className="form-group">
+                <label style={{ textTransform: 'none', letterSpacing: 'normal', fontSize: '0.77rem', fontWeight: 600, color: 'var(--muted)' }}>
+                  Provider
+                </label>
+                <p style={{ fontSize: '0.71rem', color: 'var(--muted)' }}>
+                  The provider, model, and API key are configured on the server via environment
+                  variables (<code>AI_INDEX_PROVIDER</code>, <code>AI_INDEX_MODEL</code>,{' '}
+                  <code>AI_INDEX_BASE_URL</code>, <code>AI_INDEX_API_KEY</code>) — never entered
+                  here, and never stored in the database.
+                </p>
+                {aiIndexStatus?.config ? (
+                  <p style={{ fontSize: '0.78rem' }}>
+                    <i className="fa-solid fa-check" style={{ color: 'var(--success)', marginRight: 4 }} />
+                    Configured: <strong>{aiIndexStatus.config.provider}</strong> / {aiIndexStatus.config.model}
+                    {aiIndexStatus.config.base_url && ` (${aiIndexStatus.config.base_url})`} — key ending •••{aiIndexStatus.config.key_hint}
+                  </p>
+                ) : (
+                  <p style={{ fontSize: '0.78rem', color: 'var(--warning)' }}>
+                    <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: 4 }} />
+                    AI_INDEX_API_KEY is not set on the server — new jobs will silently fall back
+                    to the rule-based detector even with the checkbox above on.
+                  </p>
+                )}
+                <button className="btn btn-sm btn-outline" onClick={handleTestAiConnection} disabled={aiTesting} style={{ marginTop: 6 }}>
+                  {aiTesting ? 'Testing…' : 'Test Connection'}
+                </button>
+                {aiTestResult && (
+                  <span style={{ marginLeft: 8, fontSize: '0.78rem', color: aiTestResult.ok ? 'var(--success)' : 'var(--danger)' }}>
+                    {aiTestResult.ok ? 'OK' : (aiTestResult.detail || 'Failed')}
+                  </span>
+                )}
               </div>
 
               <hr className="section-divider" />

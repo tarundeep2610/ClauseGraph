@@ -10,6 +10,7 @@ import math
 import collections
 import urllib.parse
 import asyncio
+from typing import Optional
 from contextlib import asynccontextmanager
 import pypdfium2 as pdfium
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query, BackgroundTasks
@@ -23,6 +24,7 @@ import config
 import database
 import task_queue
 import reference_index
+import ai_indexing
 import gpu_ocr_client
 import chunking
 import confidence
@@ -70,6 +72,7 @@ async def _lifespan(app: FastAPI):
             await _idle_watcher_task
         except asyncio.CancelledError:
             pass
+    await ai_indexing.aclose_all()
 
 
 app = FastAPI(
@@ -204,6 +207,8 @@ def _load_settings() -> dict:
         "output_path": "", "idle_timeout_minutes": 15,
         "enable_unlimited_long_prompts": config.ENABLE_UNLIMITED_LONG_PROMPTS,
         "enable_unlimited_grounding": config.ENABLE_UNLIMITED_GROUNDING,
+        "enable_ai_indexing": config.AI_INDEXING_ENABLED,
+        "ai_index_chunk_pages": config.AI_INDEX_CHUNK_PAGES,
         "audit_sample_rate": config.OCR_AUDIT_SAMPLE_RATE,
         "audit_high_confidence_min": config.OCR_AUDIT_HIGH_CONFIDENCE_MIN,
         "audit_sample_cap_per_job": config.OCR_AUDIT_SAMPLE_CAP_PER_JOB,
@@ -439,7 +444,7 @@ def save_settings(body: dict, principal: Principal = Depends(_require_admin)):
             )
     allowed_keys = (
         "output_path", "idle_timeout_minutes", "enable_unlimited_long_prompts",
-        "enable_unlimited_grounding",
+        "enable_unlimited_grounding", "enable_ai_indexing", "ai_index_chunk_pages",
         "audit_sample_rate", "audit_high_confidence_min", "audit_sample_cap_per_job",
     )
     current.update({k: v for k, v in body.items() if k in allowed_keys})
@@ -592,6 +597,23 @@ async def submit_ocr_job(
         "grounding_enabled": bool(settings.get("enable_unlimited_grounding", config.ENABLE_UNLIMITED_GROUNDING)),
         "confidence_threshold": confidence_threshold,
     }
+    # AI-indexing settings, frozen the same way as everything above — a mid-run
+    # settings change must never split one document's structure across two
+    # incompatible detectors. The API key itself is NEVER frozen here (or
+    # stored anywhere): engine_params is a DB column returned wholesale by
+    # GET /api/jobs/{id}, so a plaintext key here would be a direct
+    # credential leak to every authenticated user. The worker reads it live,
+    # at the moment of each AI call, straight from config.AI_INDEX_API_KEY
+    # (see ai_indexing.resolve_active_config) — only the enabled flag and
+    # provider/model (both non-secret, for audit visibility) are frozen.
+    ai_indexing_wanted = bool(settings.get("enable_ai_indexing", config.AI_INDEXING_ENABLED))
+    ai_config_summary = ai_indexing.describe_active_config() if ai_indexing_wanted else None
+    engine_params.update({
+        "ai_indexing_enabled": ai_indexing_wanted and ai_config_summary is not None,
+        "ai_index_provider": (ai_config_summary or {}).get("provider"),
+        "ai_index_model": (ai_config_summary or {}).get("model"),
+        "ai_index_chunk_pages": int(settings.get("ai_index_chunk_pages", config.AI_INDEX_CHUNK_PAGES)),
+    })
 
     # Register job in DB (store original filename for display, safe_filename is the on-disk name)
     database.create_job(
@@ -715,10 +737,23 @@ def get_ocr_job(
     return job
 
 @app.post("/api/jobs/{job_id}/reindex-references")
-async def reindex_job_references(job_id: str, principal: Principal = Depends(_require_user)):
+async def reindex_job_references(
+    job_id: str, mode: Optional[str] = None, principal: Principal = Depends(_require_user),
+):
     """Rebuilds the cross-reference index for a job from its already-stored
     page text — for a job OCR'd before this feature existed (so it has zero
-    ocr_reference_targets rows), or to pick up an algorithm change."""
+    ocr_reference_targets rows), to pick up an algorithm change, or to pick
+    up a newly-enabled AI-indexing setting on a job whose own frozen
+    engine_params predates it (or never had it on).
+
+    `mode` (optional, "rule" or "ai") forces one detector for this rebuild
+    regardless of anything else — lets a reviewer A/B the two detectors on
+    one job. With no `mode`, a manual rebuild is a standalone action (not
+    part of an in-progress OCR run), so — unlike the auto-trigger right
+    after OCR completes, which must stay tied to the job's own frozen
+    engine_params for run-to-run consistency — it uses the CURRENT
+    enable_ai_indexing setting, not whatever was frozen at this job's
+    original creation time."""
     _check_rate_limit(principal.rate_limit_key)
     job = database.get_job(job_id, include_pages=False)
     if not job:
@@ -730,9 +765,47 @@ async def reindex_job_references(job_id: str, principal: Principal = Depends(_re
         )
     if reference_index.is_reindex_active(job_id):
         raise HTTPException(status_code=409, detail="A reference index rebuild is already running for this job.")
+    if mode not in (None, "rule", "ai"):
+        raise HTTPException(status_code=400, detail="mode must be 'rule' or 'ai'.")
 
-    asyncio.create_task(reference_index.reindex_job(job_id))
+    resolved_mode = mode
+    if resolved_mode is None:
+        current_settings = _load_settings()
+        ai_wanted = bool(current_settings.get("enable_ai_indexing", config.AI_INDEXING_ENABLED))
+        resolved_mode = "ai" if (ai_wanted and ai_indexing.describe_active_config() is not None) else "rule"
+
+    asyncio.create_task(reference_index.reindex_job(job_id, force_mode=resolved_mode))
     return {"message": f"Reference index rebuild started for job {job_id}.", "status": "reindexing"}
+
+
+# ─── AI-indexing provider status (read-only — the API key itself lives only
+# in the server's AI_INDEX_API_KEY env var, never stored or returned here) ──
+
+@app.get("/api/ai-index/status")
+def ai_index_status_endpoint(principal: Principal = Depends(_require_admin)):
+    """Redacted view of the env-configured provider (or None if
+    AI_INDEX_API_KEY isn't set) — lets the settings UI show what's
+    configured without ever exposing the key itself."""
+    return {"config": ai_indexing.describe_active_config(), "providers": ai_indexing.list_providers()}
+
+
+@app.post("/api/ai-index/test")
+async def ai_index_test_endpoint(principal: Principal = Depends(_require_admin)):
+    """A real round-trip call over a synthetic health-check prompt — lets
+    an admin confirm AI_INDEX_API_KEY/PROVIDER/MODEL actually work before
+    relying on them for a real job."""
+    from ai_indexing.redact import redact_secrets
+    try:
+        resolved = ai_indexing.resolve_active_config()
+    except ai_indexing.AIConfigError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        provider = await ai_indexing.get_provider(resolved.provider_config)
+        return await provider.health()
+    except ai_indexing.AIConfigError as e:
+        raise HTTPException(status_code=400, detail=redact_secrets(str(e)))
+    except Exception as e:
+        return {"ok": False, "detail": redact_secrets(str(e))}
 
 @app.get("/api/jobs/{job_id}/scope-ranges")
 def get_job_scope_ranges(job_id: str, principal: Principal = Depends(_require_user)):
@@ -1003,6 +1076,11 @@ async def retry_ocr_page(
         raise HTTPException(status_code=409, detail=str(e))
     if updated is None:
         raise HTTPException(status_code=404, detail="Page not found")
+    # Re-runs AI structure detection starting from this page (bounded,
+    # early-stopping — not a full-document reindex) when the job is
+    # AI-indexed, so a retried page doesn't silently and permanently revert
+    # to a rule-derived provisional row with no re-AI-detection.
+    asyncio.create_task(task_queue.trigger_ai_reindex_safe(job_id, start_page=page_num))
     return _annotate_page_confidence(updated)
 
 @app.post("/api/jobs/{job_id}/retry-pages")

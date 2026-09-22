@@ -38,7 +38,11 @@ function ownLabelOrBareKey(candidate) {
   return idx === -1 ? candidate.key : candidate.key.slice(idx + 1);
 }
 
-const OWN_LABEL_FAMILIES = new Set(['numheading', 'letterheading']);
+// 'subdoc' added so an AI-detected keyword-less/number-less heading (the
+// residual case the rule-based detector can't catch at all — see
+// reference_index.mint_key_for_heading) renders its own real captured text
+// instead of the generic synthetic "Subdoc 3" formatKeyLabel would produce.
+const OWN_LABEL_FAMILIES = new Set(['numheading', 'letterheading', 'subdoc']);
 
 function terminalLabel(candidate) {
   const idx = candidate.key.indexOf(':');
@@ -112,6 +116,9 @@ const REASON_LABELS = {
   non_heading_layout_type: "the OCR model's own layout tag says this is body text, not a heading",
   layout_header: "the OCR model's own layout tag marks this as a header",
   layout_title: "the OCR model's own layout tag marks this as a title",
+  ai_unlocated: "the AI-reported heading text couldn't be matched to this page's real content",
+  ai_unresolved_parent_ref: "the AI's stated parent heading couldn't be resolved; nested by its reported level instead",
+  ai_fuzzy_parent_ref: "the AI's stated parent heading was matched approximately, not exactly",
 };
 
 function reasonsTooltip(reasons) {
@@ -211,6 +218,9 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, rangeIndex, active
                 <i className="fa-regular fa-file-lines" />
                 {lowConfidence && <span className="structure-low-confidence-marker">≈ </span>}
                 Page {leaf.page}
+                {leaf.detection_source === 'ai' && (
+                  <span className="structure-ai-badge" title={`Detected by AI${leaf.detection_model ? ` (${leaf.detection_model})` : ''}`}> AI</span>
+                )}
                 {leaf.scope_provisional && <span className="structure-provisional-hint"> (provisional)</span>}
               </li>
             );

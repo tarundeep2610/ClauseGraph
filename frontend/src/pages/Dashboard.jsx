@@ -47,6 +47,7 @@ export default function Dashboard() {
   const [prompts, setPrompts] = useState({});
   const [defaults, setDefaults] = useState({});
   const [settings, setSettings] = useState({ output_path: '', idle_timeout_minutes: 15 });
+  const [aiIndexStatus, setAiIndexStatus] = useState(null);
 
   const [jobs, setJobs] = useState([]);
   const [activeJobId, setActiveJobId] = useState(null);
@@ -149,6 +150,7 @@ export default function Dashboard() {
         const resp = await apiFetch('/api/settings');
         if (resp.ok) setSettings(await resp.json());
       })();
+      loadAiIndexStatus();
     }
     loadJobsList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -652,6 +654,31 @@ export default function Dashboard() {
     });
     if (resp.ok) setSettings((s) => ({ ...s, enable_unlimited_grounding: enabled }));
   }
+  async function handleSaveAiIndexing(enabled) {
+    const resp = await apiFetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enable_ai_indexing: enabled }),
+    });
+    if (resp.ok) setSettings((s) => ({ ...s, enable_ai_indexing: enabled }));
+  }
+  async function handleSaveAiChunkPages(pages) {
+    const resp = await apiFetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ai_index_chunk_pages: pages }),
+    });
+    if (resp.ok) setSettings((s) => ({ ...s, ai_index_chunk_pages: pages }));
+  }
+  async function loadAiIndexStatus() {
+    const resp = await apiFetch('/api/ai-index/status');
+    if (resp.ok) setAiIndexStatus(await resp.json());
+  }
+  async function handleTestAiConnection() {
+    const resp = await apiFetch('/api/ai-index/test', { method: 'POST' });
+    const data = await resp.json().catch(() => ({ ok: false, detail: 'Request failed' }));
+    return { ok: resp.ok && data.ok, ...data };
+  }
 
   const pdfSrc = file ? localPreviewUrl : remoteFileUrl;
   const pdfStatusLabel = file ? `${file.name} (local preview)` : (jobDetails ? `${jobDetails.filename} (${jobDetails.total_pages}p)` : 'No document selected');
@@ -685,6 +712,10 @@ export default function Dashboard() {
             onSaveIdleTimeout={handleSaveIdleTimeout}
             onSaveLongPrompts={handleSaveLongPrompts}
             onSaveGrounding={handleSaveGrounding}
+            onSaveAiIndexing={handleSaveAiIndexing}
+            onSaveAiChunkPages={handleSaveAiChunkPages}
+            aiIndexStatus={aiIndexStatus}
+            onTestAiConnection={handleTestAiConnection}
           />
           <HistoryPanel
             jobs={jobs}

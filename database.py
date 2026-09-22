@@ -29,6 +29,7 @@ _OCR_JOBS_NEW_COLUMNS = [
     ("base_pass_completed_at", "TIMESTAMP"),
     ("reference_index_version", "INTEGER DEFAULT 0"),
     ("reference_index_frontier", "INTEGER DEFAULT 0"),
+    ("ai_index_report", "TEXT DEFAULT '{}'"),  # JSON: per-chunk status/progress/audit — see ai_reference_index.py
 ]
 
 
@@ -232,6 +233,22 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # column already exists
 
+    # Migrate existing databases that predate AI-indexing audit tracking.
+    # detection_source distinguishes an AI-detected row from a rule-detected
+    # one (defaults to 'rule' on read for every pre-existing row — see the
+    # SELECT below — since that's the literal truth for rows written before
+    # this column existed). start_line_hint is AI-reported and stored for
+    # possible future use only; the page number remains the authoritative
+    # anchor identifier (see ai_indexing/schema.py).
+    for _col, _decl in [
+        ("detection_source", "TEXT"), ("detection_model", "TEXT"), ("start_line_hint", "INTEGER"),
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE ocr_reference_targets ADD COLUMN {_col} {_decl}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
     conn.commit()
 
     _migrate_pages_data_to_ocr_pages(conn)
@@ -376,6 +393,14 @@ def _row_to_job(row: sqlite3.Row, include_pages: bool = True) -> Dict[str, Any]:
         job['engine_params'] = json.loads(job.get('engine_params') or '{}')
     except Exception:
         job['engine_params'] = {}
+    # Must be parsed here alongside engine_params, not left as a raw string —
+    # GET /api/jobs/{id} would otherwise hand the frontend `ai_index_report`
+    # as unparsed JSON text, and a `job.ai_index_report?.status` check would
+    # silently see `undefined` forever instead of erroring visibly.
+    try:
+        job['ai_index_report'] = json.loads(job.get('ai_index_report') or '{}')
+    except Exception:
+        job['ai_index_report'] = {}
     if include_pages:
         pages = get_pages(job['job_id'])
         if pages:
@@ -934,8 +959,9 @@ def upsert_reference_targets_for_page(job_id: str, page_num: int, targets: List[
                 continues_on_page, scope_key, scope_label, scope_provisional,
                 collapsed_key, fingerprint, written_at_version,
                 scope_chain, subdoc_label, subdoc_index,
-                heading_confidence, heading_confidence_reasons, own_label
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                heading_confidence, heading_confidence_reasons, own_label,
+                detection_source, detection_model, start_line_hint
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             job_id, t["key"], page_num, t["occurrence_index"], t.get("anchor_id"),
             t.get("snippet", ""), int(bool(t.get("truncated"))), t.get("continues_on_page"),
@@ -944,6 +970,7 @@ def upsert_reference_targets_for_page(job_id: str, page_num: int, targets: List[
             json.dumps(t.get("scope_chain") or []), t.get("subdoc_label"), t.get("subdoc_index"),
             t.get("heading_confidence", "high"), json.dumps(t.get("heading_confidence_reasons") or []),
             t.get("own_label"),
+            t.get("detection_source", "rule"), t.get("detection_model"), t.get("start_line_hint"),
         ))
     # Stamped unconditionally, even when `targets` is empty — this is the only
     # durable signal that this page's index was (re)computed at this version;
@@ -1003,7 +1030,8 @@ def get_reference_targets_since(job_id: str, since_version: int) -> Dict[int, Di
             SELECT key, occurrence_index, anchor_id, snippet, truncated, continues_on_page,
                    scope_key, scope_label, scope_provisional, collapsed_key, fingerprint,
                    scope_chain, subdoc_label, subdoc_index,
-                   heading_confidence, heading_confidence_reasons, own_label
+                   heading_confidence, heading_confidence_reasons, own_label,
+                   detection_source, detection_model, start_line_hint
             FROM ocr_reference_targets WHERE job_id = ? AND page = ?
             ORDER BY key, occurrence_index
         """, (job_id, page_num))
@@ -1031,7 +1059,53 @@ def get_reference_targets_since(job_id: str, since_version: int) -> Dict[int, Di
                 row["heading_confidence_reasons"] = json.loads(raw_reasons) if raw_reasons else []
             except Exception:
                 row["heading_confidence_reasons"] = []
+            # detection_source is NULL on any row written before this column
+            # existed — 'rule' is the literal truth for those (the AI path
+            # didn't exist yet), not a guess.
+            row["detection_source"] = row.get("detection_source") or "rule"
             by_key.setdefault(row["key"], []).append(row)
         result[page_num] = by_key
     conn.close()
     return result
+
+
+# ─── AI-index run report (progress/audit trail — see ai_reference_index.py).
+# The AI provider's API key itself is never stored here or anywhere else —
+# see ai_indexing/credentials.py, which reads it live from config.AI_INDEX_API_KEY. ─
+
+def get_ai_index_report(job_id: str) -> Dict[str, Any]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT ai_index_report FROM ocr_jobs WHERE job_id = ?", (job_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row or not row[0]:
+        return {}
+    try:
+        return json.loads(row[0])
+    except Exception:
+        return {}
+
+
+def set_ai_index_report(job_id: str, report: Dict[str, Any]) -> None:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE ocr_jobs SET ai_index_report = ? WHERE job_id = ?",
+        (json.dumps(report), job_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_ai_index_report(job_id: str, **fields) -> Dict[str, Any]:
+    """Merges `fields` into the job's existing ai_index_report JSON blob —
+    read-modify-write under get_db_connection()'s own busy-timeout/WAL
+    protection (single connection, single statement pair; the orchestration
+    loop that calls this is itself strictly sequential per job, so there is
+    no concurrent-writer race to protect against beyond what SQLite already
+    serializes)."""
+    report = get_ai_index_report(job_id)
+    report.update(fields)
+    set_ai_index_report(job_id, report)
+    return report

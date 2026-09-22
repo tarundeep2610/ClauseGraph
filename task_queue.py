@@ -50,6 +50,24 @@ async def _update_reference_index_safe(job_id: str, page_num: int, text: str, to
         print(f"[TaskQueue] ⚠️ Job {job_id} page {page_num} reference-index update failed (non-fatal): {e}\n{traceback.format_exc()}")
 
 
+async def trigger_ai_reindex_safe(job_id: str, start_page: "int | None" = None):
+    """Kicks off a full (or, with start_page, a targeted single-page-forward)
+    AI reindex when the job's frozen engine_params opted into it — same
+    defensive shape as _update_reference_index_safe above: an indexing
+    failure must never take the OCR job down. `start_page` is used after a
+    manual page retry (see retry_single_page/bulk retry below) — the live
+    per-page hook above is unconditionally rule-based, so without this a
+    retried page would silently and permanently revert from AI-derived rows
+    back to rule-derived ones with no re-AI-detection."""
+    try:
+        job = database.get_job(job_id, include_pages=False)
+        if not job or not (job.get("engine_params") or {}).get("ai_indexing_enabled"):
+            return
+        await reference_index.reindex_job(job_id, start_page=start_page)
+    except Exception as e:
+        print(f"[TaskQueue] ⚠️ Job {job_id} AI reindex failed (non-fatal): {e}\n{traceback.format_exc()}")
+
+
 @contextlib.asynccontextmanager
 async def _gpu_slot(is_escalation: bool = False):
     if is_escalation:
@@ -64,6 +82,14 @@ async def _gpu_slot(is_escalation: bool = False):
 def pause_job(job_id: str):
     """Request a running job to pause after its current page finishes."""
     _paused_jobs.add(job_id)
+
+
+def is_job_paused(job_id: str) -> bool:
+    """Public read of the pause/cancel signal — used by
+    ai_reference_index.py's AI-reindex loop (which isn't itself an OCR page
+    task) to stop cleanly between chunks, and mid-poll for a provider whose
+    single call can run long, the same way pausing OCR already works."""
+    return job_id in _paused_jobs
 
 
 def cancel_all_jobs() -> int:
@@ -466,6 +492,7 @@ async def process_ocr_job(
 
             database.set_job_status(job_id, "completed")
             print(f"[TaskQueue] ✅ Job {job_id} successfully completed!")
+            asyncio.create_task(trigger_ai_reindex_safe(job_id))
 
             if output_path and os.path.isdir(output_path):
                 try:
@@ -704,6 +731,11 @@ async def retry_pages_bulk(job_id: str, engine: str, run_ocr_func, run_unlimited
 
         database.refresh_job_page_counts(job_id)
         database.set_job_status(job_id, "completed")
+        # Targeted from the earliest retried page — not a full-document
+        # AI reindex — since a bulk retry only ever changes target_pages'
+        # own text; everything before the earliest one is untouched and
+        # its already-persisted scope is still valid as the seed.
+        asyncio.create_task(trigger_ai_reindex_safe(job_id, start_page=min(target_pages)))
     finally:
         _active_bulk_retries.discard(job_id)
 
