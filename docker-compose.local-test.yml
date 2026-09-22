@@ -44,6 +44,11 @@ services:
       - CLIENT_ID=${CLIENT_ID:-}
       - DEV_MODE=${DEV_MODE:-false}
       - DEV_SECRET=${DEV_SECRET:-}
+      # AI-assisted document-structure indexing — see ai_indexing/credentials.py.
+      - AI_INDEX_PROVIDER=${AI_INDEX_PROVIDER:-gemini}
+      - AI_INDEX_MODEL=${AI_INDEX_MODEL:-gemini-2.5-flash}
+      - AI_INDEX_BASE_URL=${AI_INDEX_BASE_URL:-}
+      - AI_INDEX_API_KEY=${AI_INDEX_API_KEY:-}
     volumes:
       # Persists SQLite database and uploaded document files across container restarts
       - ocr_data:/app/data

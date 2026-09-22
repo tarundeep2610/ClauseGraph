@@ -294,16 +294,49 @@ _FUZZY_PREFIX_RE = re.compile(r"^\s*([A-Za-z]{4,14})\s*([A-Z]?-?\d+(?:\.\d+)*)\b
 _FUZZY_TAIL_RE = re.compile(r"^(?P<prefix>[A-Z]-?)?(?P<number>[ivxlcdm]+|\d+(?:\.\d+)*)$", re.IGNORECASE)
 _FUZZY_MATCH_CUTOFF = 0.75
 
+# No-digit fallback: _FUZZY_PREFIX_RE above requires a literal digit
+# character to even attempt a match — but OCR sometimes garbles the DIGIT
+# itself into a letter, not just the family word (confirmed on a real
+# sample: "AmexureAl" for "Annexure A-1" — the "1" was misread as a
+# lowercase "l", leaving no digit anywhere in the string at all, unlike
+# the already-handled "AmneXureA-1" case where the digit survives intact).
+# This regex has no digit requirement — just a short trailing letter run —
+# and is only ever tried once the primary, digit-anchored regex has
+# already failed to match anything.
+_FUZZY_PREFIX_NODIGIT_RE = re.compile(r"^\s*([A-Za-z]{4,14})([A-Za-z]{1,3})\s*$")
+
+# OCR letter/digit confusions common enough to be worth a best-effort fix:
+# l/I look like 1, O like 0, S like 5, Z like 2, B like 8, G like 6.
+_DIGIT_CONFUSABLE_MAP = {"l": "1", "i": "1", "o": "0", "s": "5", "z": "2", "b": "8", "g": "6"}
+
+
+def _denoise_digit_confusables(tail: str) -> str:
+    return "".join(_DIGIT_CONFUSABLE_MAP.get(ch.lower(), ch) if ch.isalpha() else ch for ch in tail)
+
 
 def _fuzzy_family_match(text: str) -> Optional[Tuple[str, Optional[str], str]]:
     """Best-effort recovery when CORE_RE's exact keyword fails - tries
     the leading alpha run (with and without its last 1-2 characters, to
     tolerate a trailing letter that's actually part of the prefix/number,
     e.g. "AmneXureA-1"'s trailing "A") against every FAMILIES alias.
-    Returns (family, prefix_or_None, number_raw) or None."""
+    Returns (family, prefix_or_None, number_raw) or None.
+
+    Falls back to _FUZZY_PREFIX_NODIGIT_RE when the primary, digit-anchored
+    regex finds no digit at all — see that regex's comment. That fallback
+    ALWAYS applies _denoise_digit_confusables to the tail before parsing it,
+    never tries the raw tail first: _FUZZY_TAIL_RE's roman-numeral branch
+    would otherwise happily (and wrongly) parse a bare "l" as the roman
+    numeral L (=50) instead of a garbled "1". Since the fallback only ever
+    runs when there is no digit anywhere in the input, it is structurally
+    impossible for it to change behavior on any input the primary,
+    already-verified path already resolves."""
     m = _FUZZY_PREFIX_RE.match(text)
+    no_digit_fallback = False
     if not m:
-        return None
+        m = _FUZZY_PREFIX_NODIGIT_RE.match(text)
+        no_digit_fallback = True
+        if not m:
+            return None
     candidates = [m.group(1)]
     if len(m.group(1)) > 4:
         candidates.append(m.group(1)[:-1])
@@ -321,6 +354,8 @@ def _fuzzy_family_match(text: str) -> Optional[Tuple[str, Optional[str], str]]:
     # "AmneXure" (8 chars) wins the ratio race against "annexure", so the
     # leftover "A" + group(2) "-1" reforms the real tail "A-1".
     tail = m.group(1)[len(best_cand):] + m.group(2)
+    if no_digit_fallback:
+        tail = _denoise_digit_confusables(tail)
     tail_m = _FUZZY_TAIL_RE.match(tail)
     if not tail_m:
         return None
@@ -328,6 +363,34 @@ def _fuzzy_family_match(text: str) -> Optional[Tuple[str, Optional[str], str]]:
     # name is already its own alias entry (_FAMILY_ALIASES["annexure"]
     # == "annexure"), so passing best_family directly resolves correctly.
     return best_family, *reconcile_prefix_and_number(best_family, tail_m.group("prefix"), tail_m.group("number"))
+
+
+def _resolve_ai_hint(
+    family_hint: Optional[str], number_hint: Optional[str],
+) -> Optional[Tuple[str, Optional[str], str]]:
+    """Resolves an AI-reported best-guess (family_hint, number_hint) pair —
+    e.g. ("annexure", "A-1") for a garbled heading like "AmexureAl" — into
+    the same (family, prefix, number_raw) shape _fuzzy_family_match returns,
+    so it plugs into normalize_key unchanged. This is deliberately trusted
+    OVER blind regex fuzzy-matching when present: recognizing a garbled
+    heading's true family/number from context is exactly the judgement call
+    AI-indexing exists to make, more general than any hand-coded
+    confusable-character table could anticipate — see mint_key_for_heading's
+    resolution order.
+
+    Validated defensively, never raises: an unrecognized/hallucinated
+    family_hint (not in _FAMILY_ALIASES) or an unparseable number_hint
+    returns None, silently falling through to the existing cascade rather
+    than propagating a bogus family into the key/scope machinery."""
+    if not family_hint or not number_hint:
+        return None
+    family = _FAMILY_ALIASES.get(str(family_hint).strip().lower())
+    if not family:
+        return None
+    tail_m = _FUZZY_TAIL_RE.match(str(number_hint).strip())
+    if not tail_m:
+        return None
+    return family, *reconcile_prefix_and_number(family, tail_m.group("prefix"), tail_m.group("number"))
 
 
 def collapse_key(key: str) -> str:
@@ -1203,14 +1266,309 @@ async def _cascade_locked(job_id: str, from_page: int, total_pages: int):
         asyncio.create_task(_cascade_entry(job_id, frontier, total_pages))
 
 
-async def _process_single_page(
-    job_id: str, page_num: int, page_text: str, total_pages: int, provisional: bool, raw_text: Optional[str] = None,
-):
-    seed_scope = database.get_end_of_page_scope(job_id, page_num - 1) if page_num > 1 else None
-    candidates, new_scope = build_targets_for_page(
-        page_text, seed_scope, has_next_page=page_num < total_pages, raw_text=raw_text,
-    )
+def parse_page_blocks(page_text: str) -> List[str]:
+    """Public wrapper over this module's own block parser (_get_parser +
+    _flatten_blocks + _block_own_text) — used by ai_reference_index.py to
+    ground an AI-reported heading against a page's real text blocks,
+    without reaching into three separate private helpers itself."""
+    tokens, _ = _get_parser().parse(page_text or "")
+    return [_block_own_text(b) for b in _flatten_blocks(tokens)]
 
+
+def mint_key_for_heading(
+    text: str, boundary_ordinal: int, label_occurrence_counts: Dict[str, int],
+    family_hint: Optional[str] = None, number_hint: Optional[str] = None,
+) -> Tuple[str, str, str, Optional[List[str]], int]:
+    """Reuses the rule detector's own PARSERS for key shape — never its
+    trust gates (_bare_integer_trusted, _letter_heading_trusted, the
+    layout_aligned gate, the headerless-decimal containment gate) — since
+    deciding "is this a heading at all" is exactly the judgement being
+    handed to the AI here; only the shape-to-key mapping is reused, so an
+    AI-minted key stays compatible with referenceStore.js's mention linking
+    and StructureTree.formatKeyLabel instead of an incompatible namespace.
+
+    `family_hint`/`number_hint` (optional — always None from the rule-based
+    path, which never calls this function) are the AI's own best-guess
+    resolution of a garbled heading it couldn't read cleanly (e.g.
+    heading_text="AmexureAl", family_hint="annexure", number_hint="A-1").
+
+    Tried ONLY AS A LAST RESORT, after every other parser has already
+    failed to match — never as a pre-emptive override. Confirmed necessary
+    by a real run: the model volunteers a hint far more liberally than the
+    prompt asks for, including on headings that already parse perfectly
+    well on their own (e.g. hinting family_hint="section" on a plain
+    "3.4 QUALITY PLANS", which the decimal-number parser below already
+    resolves correctly to "numheading:3.4"). Trying the hint first meant a
+    volunteered-but-unnecessary hint could silently re-key an
+    already-correct match into a different family namespace. Since this
+    function's whole point is "the AI-detected version of what
+    CORE_RE/fuzzy/decimal/letter already resolve for the rule-based path,"
+    the hint may only ever catch what NONE of those parsers could — which
+    is exactly the genuinely-garbled case ("AmexureAl") it exists for,
+    since nothing else can match that at all.
+
+    Returns (family, key, label, num_segments_or_None, new_boundary_ordinal).
+    """
+    stripped = (text or "").strip()
+
+    core_m = CORE_RE.match(stripped)
+    if core_m:
+        key = normalize_key(core_m.group("keyword"), core_m.group("prefix"), core_m.group("number"))
+        return key.partition(":")[0], key, _format_label_from_key(key), None, boundary_ordinal
+
+    fuzzy = _fuzzy_family_match(stripped)
+    if fuzzy:
+        family, prefix, number_raw = fuzzy
+        key = normalize_key(family, prefix, number_raw)
+        return family, key, _format_label_from_key(key), None, boundary_ordinal
+
+    # Decimal-numbered heading — the number-extraction shape only, not
+    # DECIMAL_HEADING_RE's stricter <=9-word label cap: the AI already
+    # asserted this line is a heading, so a longer label must not be
+    # silently rejected the way an unproven text heuristic would need to.
+    dm = _DECIMAL_NUMBER_HEAD_RE.match(stripped)
+    if dm:
+        number = dm.group("number")
+        segments = _numseg(number)
+        key = f"numheading:{number}"
+        label_part = stripped[dm.end():].strip()
+        own_label = f"{number} {label_part}" if label_part else number
+        return "numheading", key, own_label, segments, boundary_ordinal
+
+    lm = re.match(r"^\s*(?P<letter>[A-Z])\.\s+(?P<label>.+)$", stripped)
+    if lm:
+        letter = lm.group("letter")
+        key = f"letterheading:{letter}"
+        return "letterheading", key, f"{letter}. {lm.group('label').strip()}", None, boundary_ordinal
+
+    # Last resort before the generic subdoc bucket: the AI's own hint for
+    # a heading nothing above could parse at all — see this function's
+    # docstring for why this must stay last, not first.
+    hinted = _resolve_ai_hint(family_hint, number_hint)
+    if hinted:
+        family, prefix, number_raw = hinted
+        key = normalize_key(family, prefix, number_raw)
+        return family, key, _format_label_from_key(key), None, boundary_ordinal
+
+    # Otherwise: the keyword-less/number-less case AI exists for. Minted
+    # exactly like the number a plain new boundary_ordinal always gets
+    # (matching the existing residual layout-only fallback's own key
+    # shape, build_targets_for_page:1071-1097) — but note this function
+    # NEVER decides how much of nested_stack to pop; that's driven solely
+    # by the caller's explicitly-resolved `depth` in
+    # apply_heading_events_to_scope, never by this family's rank. That is
+    # the deliberate fix for a real bug found in review: FAMILIES["subdoc"]
+    # is rank 0, and BOTH existing rank-0 push paths in this module
+    # (detect_subdoc_trigger's boundary trigger, and the generic
+    # rank-based container push) unconditionally clear the ENTIRE
+    # nested_stack when pushing any rank-0 entry — correct for a genuine
+    # new sub-document boundary, but would silently evict an AI-detected
+    # heading's real Article/Section ancestor if this module's rank table
+    # were consulted for it at all. It never is.
+    boundary_ordinal += 1
+    key = f"subdoc:{boundary_ordinal}"
+    label = _disambiguate_label(stripped[:60], label_occurrence_counts)
+    return "subdoc", key, label, None, boundary_ordinal
+
+
+def validate_scope_shape(scope: Dict[str, Any]) -> None:
+    """Raises ValueError unless `scope` is structurally compatible with what
+    build_targets_for_page emits — the contract both compute_scope_ranges
+    and a later rule-based fallback chunk silently depend on (e.g.
+    _ground_scope_active indexes nested_stack[0]["label"] without .get(),
+    and _bare_integer_trusted/_letter_heading_trusted read
+    last_bare_integer/last_letter_ordinal expecting them to always be
+    present, even if None)."""
+    if not isinstance(scope, dict):
+        raise ValueError("scope must be a dict")
+    for field_name in ("stack", "boundary_ordinal", "label_occurrence_counts",
+                        "last_bare_integer", "last_letter_ordinal"):
+        if field_name not in scope:
+            raise ValueError(f"scope is missing required field {field_name!r}")
+    stack = scope["stack"]
+    if not isinstance(stack, list):
+        raise ValueError("scope['stack'] must be a list")
+    for i, entry in enumerate(stack):
+        if not isinstance(entry, dict):
+            raise ValueError(f"stack[{i}] must be a dict")
+        for field_name in ("family", "key", "label"):
+            if field_name not in entry:
+                raise ValueError(f"stack[{i}] is missing required field {field_name!r}")
+        if entry.get("family") == "numheading" and "num_segments" not in entry:
+            raise ValueError(f"stack[{i}] is a numheading entry missing num_segments")
+
+
+def apply_heading_events_to_scope(
+    events: List[Dict[str, Any]], seed_scope: Optional[Dict[str, Any]], page_num: int, has_next_page: bool,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """AI-side analogue of build_targets_for_page's stack machine — same
+    (candidates, new_scope) contract and the same 5-field scope shape (see
+    validate_scope_shape), so compute_scope_ranges/scopeRanges.js/
+    StructureTree.jsx can consume an AI-detected page with zero changes:
+    they only ever look at stack/scope_key/scope_chain, never at how a page
+    was detected.
+
+    Each event in `events` (already resolved/grounded by ai_reference_index.py,
+    in document order) is a dict:
+      heading_text: str (already sanitized)
+      depth: Optional[int] — target stack depth (0-indexed) to truncate to
+        before pushing, resolved from parent_ref (falling back to level) —
+        NEVER a family/rank lookup (see mint_key_for_heading's docstring for
+        why that distinction is load-bearing). None means "no resolved
+        parent at all" -> treated as a child of whatever's currently open.
+      end_page: Optional[int] — page on which the AI asserts this container
+        closes; still_open_at_chunk_end headings simply omit this.
+      fingerprint, snippet, truncated, heading_confidence,
+      heading_confidence_reasons, own_label_override, detection_model,
+      start_line_hint: passed through to the candidate row.
+    """
+    scope = seed_scope or {
+        "stack": [], "boundary_ordinal": 0, "label_occurrence_counts": {},
+        "last_bare_integer": None, "last_letter_ordinal": None,
+    }
+    nested_stack: List[Dict[str, Any]] = [dict(s) for s in scope.get("stack", [])]
+    boundary_ordinal = scope.get("boundary_ordinal", 0)
+    label_occurrence_counts: Dict[str, int] = dict(scope.get("label_occurrence_counts", {}))
+    last_bare_integer = scope.get("last_bare_integer")
+    last_letter_ordinal = scope.get("last_letter_ordinal")
+
+    candidates: List[Dict[str, Any]] = []
+    occurrence_counts: Dict[str, int] = {}
+    # Everything superseded WITHIN this page's own processing — either a
+    # same-page sibling overwritten before this page is ever persisted, or a
+    # container carried in from an earlier page that gets replaced partway
+    # through this one — that compute_scope_ranges' end-of-page-snapshot diff
+    # can otherwise never see at all (see compute_scope_ranges' own docstring
+    # and _compute_scope_ranges_uncached's consumption of this field for why).
+    closed_this_page: List[Dict[str, Any]] = []
+
+    for ev in events:
+        text = ev["heading_text"]
+        family, key, label, num_segments, boundary_ordinal = mint_key_for_heading(
+            text, boundary_ordinal, label_occurrence_counts,
+            family_hint=ev.get("family_hint"), number_hint=ev.get("number_hint"),
+        )
+
+        depth = ev.get("depth")
+        if depth is None:
+            depth = len(nested_stack)
+        depth = max(0, min(depth, len(nested_stack)))
+
+        # Repeat guard: a running header re-detected on a later page,
+        # resolving to the SAME depth+key as what's already open there, is
+        # a no-op (not a truncate+push) — without this, a running
+        # "ANNEXURE A-3" header re-seen on a later page would truncate the
+        # stack to `depth` and close every genuine descendant range
+        # mid-section.
+        if depth < len(nested_stack) and nested_stack[depth]["key"] == key:
+            continue
+
+        # Record every entry this truncate is about to drop — nested_stack[depth:],
+        # not just the one at `depth` — each with its OWN scope_key computed
+        # against the pre-truncation stack (a multi-level pop removes entries
+        # whose ancestor chains genuinely differ from one another).
+        for d, removed in enumerate(nested_stack[depth:], start=depth):
+            closed_this_page.append({
+                "family": removed["family"], "key": removed["key"], "label": removed["label"],
+                "depth": d, "scope_key": "/".join(s["key"] for s in nested_stack[:d]),
+                "start_page": page_num, "end_page": page_num,
+            })
+
+        nested_stack = nested_stack[:depth]
+
+        occ = occurrence_counts.get(key, 0)
+        occurrence_counts[key] = occ + 1
+
+        scope_key = "/".join(s["key"] for s in nested_stack)
+        scope_label = " › ".join(s["label"] for s in nested_stack)
+
+        # Must match frontend/src/components/StructureTree.jsx's
+        # OWN_LABEL_FAMILIES exactly — those are the synthetic-key families
+        # (no real document vocabulary) whose generic "Capitalize family +
+        # uppercase number" formatting would be wrong ("Subdoc 1" is a
+        # meaningless label; the real heading text is what must show).
+        # Confirmed via a real run: without "subdoc" here, an AI-minted
+        # keyword-less heading persisted with own_label=None, and the
+        # frontend fell back to rendering the bare key fragment ("1") for a
+        # `subdoc:1` node instead of its real heading text.
+        own_label = ev.get("own_label_override")
+        if own_label is None and family in ("numheading", "letterheading", "subdoc"):
+            own_label = label
+
+        candidates.append({
+            "key": key,
+            "occurrence_index": occ,
+            "snippet": (ev.get("snippet") or "")[:400],
+            "truncated": bool(ev.get("truncated")) and has_next_page,
+            "continues_on_page": None,
+            "scope_key": scope_key,
+            "scope_label": scope_label,
+            "scope_chain": [dict(s) for s in nested_stack],
+            "collapsed_key": collapse_key(key),
+            "fingerprint": ev.get("fingerprint", ""),
+            "heading_confidence": ev.get("heading_confidence", "high"),
+            "heading_confidence_reasons": ev.get("heading_confidence_reasons") or [],
+            "own_label": own_label,
+            "detection_source": "ai",
+            "detection_model": ev.get("detection_model"),
+            "start_line_hint": ev.get("start_line_hint"),
+        })
+
+        stack_entry: Dict[str, Any] = {"family": family, "key": key, "label": label, "source": "ai"}
+        if num_segments is not None:
+            stack_entry["num_segments"] = num_segments
+        if ev.get("end_page") is not None:
+            stack_entry["end_page"] = ev["end_page"]
+        nested_stack.append(stack_entry)
+
+        if family == "numheading" and num_segments and len(num_segments) == 1:
+            try:
+                last_bare_integer = int(num_segments[0])
+            except (TypeError, ValueError):
+                pass
+        if family == "letterheading":
+            last_letter_ordinal = ord(key.rsplit(":", 1)[-1].upper()) - ord("A") + 1
+
+    # Close, now that this page's own events have had a chance to use it as
+    # ancestor context, any entry whose AI-asserted end_page is THIS page —
+    # so it does not persist into page_num + 1's seed. Cascading truncation
+    # from the SHALLOWEST matching depth, not a blanket value-filter: a
+    # value-filter would remove a matching parent while leaving a
+    # non-matching child in place, and since list-comprehension filtering
+    # compacts indices, that child's position — and therefore its effective
+    # depth — would silently shift. A child is by definition nested inside a
+    # closing parent and must close with it regardless of its own end_page.
+    close_from = next((d for d, s in enumerate(nested_stack) if s.get("end_page") == page_num), None)
+    if close_from is not None:
+        for d, removed in enumerate(nested_stack[close_from:], start=close_from):
+            closed_this_page.append({
+                "family": removed["family"], "key": removed["key"], "label": removed["label"],
+                "depth": d, "scope_key": "/".join(s["key"] for s in nested_stack[:d]),
+                "start_page": page_num, "end_page": page_num,
+            })
+        nested_stack = nested_stack[:close_from]
+
+    new_scope = {
+        "stack": nested_stack, "boundary_ordinal": boundary_ordinal,
+        "label_occurrence_counts": label_occurrence_counts,
+        "last_bare_integer": last_bare_integer, "last_letter_ordinal": last_letter_ordinal,
+        "closed_this_page": closed_this_page,
+    }
+    return candidates, new_scope
+
+
+def _persist_page_index(
+    job_id: str, page_num: int, page_text: str,
+    candidates: List[Dict[str, Any]], new_scope: Dict[str, Any],
+    provisional: bool, detection_source: str = "rule", detection_model: Optional[str] = None,
+) -> int:
+    """Everything the live/rule path and the AI path share once each has its
+    own (candidates, new_scope) pair — version bump, anchor_id, the stamped-
+    page row, and the upsert + end_of_page_scope write. Split out of what
+    used to be _process_single_page's own body (behavior-preserving refactor
+    — the rule-based call site below is unchanged) specifically so
+    ai_reference_index.py's AI-sourced pages persist through the exact same
+    path, never a parallel one that could drift out of sync."""
     version = database.bump_reference_index_version(job_id)
     rows = []
     for c in candidates:
@@ -1219,6 +1577,8 @@ async def _process_single_page(
         if row["truncated"]:
             row["continues_on_page"] = page_num + 1
         row["scope_provisional"] = provisional
+        row.setdefault("detection_source", detection_source)
+        row.setdefault("detection_model", detection_model)
         rows.append(row)
 
     stamped = detect_stamped_page_number(page_text)
@@ -1239,10 +1599,23 @@ async def _process_single_page(
             "heading_confidence": "high",
             "heading_confidence_reasons": [],
             "own_label": None,
+            "detection_source": "rule",
+            "detection_model": None,
         })
 
     database.upsert_reference_targets_for_page(job_id, page_num, rows, version)
     database.set_end_of_page_scope(job_id, page_num, new_scope)
+    return version
+
+
+async def _process_single_page(
+    job_id: str, page_num: int, page_text: str, total_pages: int, provisional: bool, raw_text: Optional[str] = None,
+):
+    seed_scope = database.get_end_of_page_scope(job_id, page_num - 1) if page_num > 1 else None
+    candidates, new_scope = build_targets_for_page(
+        page_text, seed_scope, has_next_page=page_num < total_pages, raw_text=raw_text,
+    )
+    _persist_page_index(job_id, page_num, page_text, candidates, new_scope, provisional)
 
 
 # ─── Backfill / reindex for an already-OCR'd job ───────────────────────────────
@@ -1323,9 +1696,35 @@ def _compute_scope_ranges_uncached(job_id: str, total_pages: int) -> List[Dict[s
             continue
         stack = scope.get("stack") or []
 
+        # Same-page closures the plain end-of-page snapshot can never show on
+        # its own — a container superseded partway through THIS page (closes
+        # here, not on the previous page) or a container that was pushed and
+        # removed entirely within this one page (never appears in any
+        # persisted snapshot at all). Processed IN ORDER, before the normal
+        # cross-page diff below: when several same-depth siblings share one
+        # page, the first record matches whatever's tracked from an earlier
+        # page (if any) and closes it properly; each later record for the
+        # same depth then correctly finds nothing left to match and falls
+        # through to the degenerate single-page-range case.
+        for rec in scope.get("closed_this_page") or []:
+            depth = rec["depth"]
+            tracked = open_by_depth.get(depth)
+            if tracked is not None and tracked["key"] == rec["key"]:
+                close(depth, page_num)
+            else:
+                ranges.append({
+                    "family": rec["family"], "key": rec["key"], "label": rec["label"],
+                    "depth": depth, "scope_key": rec.get("scope_key", ""),
+                    "start_page": rec["start_page"], "end_page": rec["end_page"],
+                })
+
         # Close any real depth slot whose key no longer matches (or no
         # longer exists) at that depth — deepest first, though order has no
-        # correctness effect here (each close is independent).
+        # correctness effect here (each close is independent). This is the
+        # fallback for pages with no closed_this_page records at all (the
+        # rule-based path never produces any yet) — by the time this runs on
+        # an AI-produced page, the loop above has already resolved every real
+        # mismatch, so it's a safe no-op there.
         for depth in sorted((d for d in open_by_depth if d != "unclassified"), reverse=True):
             current = stack[depth] if depth < len(stack) else None
             if current is None or current["key"] != open_by_depth[depth]["key"]:
@@ -1359,12 +1758,16 @@ def _compute_scope_ranges_uncached(job_id: str, total_pages: int) -> List[Dict[s
     return ranges
 
 
-async def reindex_job(job_id: str):
-    """Rebuilds the entire reference index for one job from its already-stored
-    page text, processing pages strictly in physical order so every call lands
-    on the simple in-order path (the out-of-order provisional/cascade
-    machinery in update_reference_index_for_page is for genuinely concurrent
-    live completion and is never exercised here by construction)."""
+async def reindex_job(job_id: str, force_mode: Optional[str] = None, start_page: Optional[int] = None):
+    """Dispatches to the rule-based or AI-based full reindex depending on
+    the job's frozen engine_params.ai_indexing_enabled (or force_mode, for
+    a manual ?mode= override on the "Rebuild Cross-References" endpoint).
+
+    `start_page`, when given, is only meaningful for the AI path (a targeted
+    re-run starting from one retried page, per ai_reference_index.py) — the
+    rule-based path ignores it and always rebuilds from page 1, since it's
+    cheap enough that a partial-rebuild optimization isn't worth the extra
+    code path."""
     if job_id in _active_reindex_jobs:
         return
     _active_reindex_jobs.add(job_id)
@@ -1372,9 +1775,27 @@ async def reindex_job(job_id: str):
         job = database.get_job(job_id, include_pages=False)
         if not job:
             return
-        total_pages = job.get("total_pages") or 0
-        database.set_reference_index_frontier(job_id, 0)
-        for page in database.get_pages(job_id):
-            await update_reference_index_for_page(job_id, page["page_num"], page.get("text") or "", total_pages)
+        engine_params = job.get("engine_params") or {}
+        mode = force_mode or ("ai" if engine_params.get("ai_indexing_enabled") else "rule")
+        if mode == "ai":
+            import ai_reference_index
+            await ai_reference_index.reindex_job_with_ai(job_id, start_page=start_page)
+        else:
+            await _reindex_job_rule_based(job_id)
     finally:
         _active_reindex_jobs.discard(job_id)
+
+
+async def _reindex_job_rule_based(job_id: str):
+    """Rebuilds the entire reference index for one job from its already-stored
+    page text, processing pages strictly in physical order so every call lands
+    on the simple in-order path (the out-of-order provisional/cascade
+    machinery in update_reference_index_for_page is for genuinely concurrent
+    live completion and is never exercised here by construction)."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        return
+    total_pages = job.get("total_pages") or 0
+    database.set_reference_index_frontier(job_id, 0)
+    for page in database.get_pages(job_id):
+        await update_reference_index_for_page(job_id, page["page_num"], page.get("text") or "", total_pages)
