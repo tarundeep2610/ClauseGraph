@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
 import { apiFetch } from '../utils/api';
 import Dashboard from './Dashboard';
 
@@ -15,7 +15,7 @@ vi.mock('../utils/AuthContext', () => ({
 // whatever `pdfSrc` Dashboard fed it (enough to tell a remote-job PDF apart
 // from a locally-selected one and to tell "loaded" apart from "nothing
 // yet"), plus a button that fires onPageChange (the same callback the real
-// component calls on prev/next) so Part C1's windowed pages_data fetch
+// component calls on prev/next) so the windowed pages_data fetch
 // (keyed off the page pdf.js is actually showing, reported up through
 // ViewerPanel's onCurrentPageChange) can be exercised without touching
 // real pdf.js/canvas rendering at all.
@@ -839,14 +839,12 @@ describe('Dashboard — resuming a job no longer needs a lucky poll to notice it
       if (url === '/api/jobs') return { ok: true, json: async () => [job] };
       if (url.split('?')[0] === '/api/jobs/job-resume') {
         detailCalls += 1;
-        const pages = detailCalls < 3
-          ? [{ page: 1, text: 'first page text' }, { page: 2, text: 'second page text' }]
-          : [
-              { page: 1, text: 'first page text' }, { page: 2, text: 'second page text' },
-              { page: 3, text: 'third page text' }, { page: 4, text: 'fourth page text' },
-              { page: 5, text: 'fifth page text' },
-            ];
-        return { ok: true, json: async () => ({ ...job, pages_data: pages }) };
+        // The reader stays on page 1 throughout (no navigation in this
+        // test) — the Result pane only ever shows the current page now, so
+        // "polling keeps working" is observed as that one page's own
+        // content refreshing over time, not a later page's block appearing.
+        const page1Text = detailCalls < 3 ? 'first page text (partial)' : 'first page text (final)';
+        return { ok: true, json: async () => ({ ...job, pages_data: [{ page: 1, text: page1Text }] }) };
       }
       return { ok: false };
     });
@@ -856,8 +854,7 @@ describe('Dashboard — resuming a job no longer needs a lucky poll to notice it
 
     render(<Dashboard />);
     await screen.findByTestId('history-card');
-    await screen.findByTestId('page-block-1');
-    expect(screen.queryByTestId('page-block-5')).not.toBeInTheDocument();
+    await screen.findByText('first page text (partial)');
 
     const card = screen.getByTestId('history-card');
     const resumeBtn = card.querySelector('.fa-rotate-right').closest('button');
@@ -867,7 +864,7 @@ describe('Dashboard — resuming a job no longer needs a lucky poll to notice it
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
 
-    expect(screen.getByTestId('page-block-5')).toBeInTheDocument();
+    expect(screen.getByText('first page text (final)')).toBeInTheDocument();
   });
 
   it('3. resuming from the history list actually switches the viewer to that job', async () => {
@@ -949,7 +946,7 @@ describe('Dashboard — Rebuild Cross-References button', () => {
     apiFetch.mockImplementation(async (url, opts) => {
       if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
       if (url === '/api/jobs') return { ok: true, json: async () => [baseJob] };
-      if (url === '/api/jobs/job-r/reindex-references' && opts?.method === 'POST') {
+      if (url.startsWith('/api/jobs/job-r/reindex-references') && opts?.method === 'POST') {
         fetchesSinceReindex = 0;
         return { ok: true, json: async () => ({ status: 'reindexing' }) };
       }
@@ -997,7 +994,7 @@ describe('Dashboard — Rebuild Cross-References button', () => {
   });
 });
 
-describe('Dashboard — Part C1: windowed pages_data fetch centered on the current page', () => {
+describe('Dashboard — windowed pages_data fetch centered on the current page', () => {
   let originalCreateObjectURL;
   let originalRevokeObjectURL;
 
@@ -1013,7 +1010,7 @@ describe('Dashboard — Part C1: windowed pages_data fetch centered on the curre
     global.URL.revokeObjectURL = originalRevokeObjectURL;
   });
 
-  it('fetches a window around page 1 on initial load, and re-centers on the page pdf.js reports after navigation', async () => {
+  it('fetches a small window around page 1 on initial load, and re-centers within ~300ms of navigation — not waiting for the next 2.5s poll tick', async () => {
     const job = {
       job_id: 'job-window', filename: 'doc.pdf', status: 'completed',
       total_pages: 900, processed_pages: 900, engine: 'unlimited',
@@ -1041,18 +1038,22 @@ describe('Dashboard — Part C1: windowed pages_data fetch centered on the curre
     await screen.findByTestId('mock-pdf-canvas-viewer');
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 
-    // WINDOW = 15, centered on page 1 (the default before any navigation).
-    expect(seenPageParams[0]).toEqual({ from: '1', to: '16' });
+    // WINDOW = 2, centered on page 1 (the default before any navigation) —
+    // the Result pane only ever shows one page now, so the window no
+    // longer needs to be wide enough to scroll through.
+    expect(seenPageParams[0]).toEqual({ from: '1', to: '3' });
 
     fireEvent.click(screen.getByTestId('mock-go-to-page-40'));
-    await act(async () => { await vi.advanceTimersByTimeAsync(2500); }); // next poll tick picks up the new page
+    // The refetch fires on the debounced navigate-effect (~200ms), the
+    // actual regression test for the fix — not the 2.5s poll tick.
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
 
     const last = seenPageParams[seenPageParams.length - 1];
-    expect(last).toEqual({ from: '25', to: '55' });
+    expect(last).toEqual({ from: '38', to: '42' });
   });
 });
 
-describe('Dashboard — Part C3/C4: reference-triggered chunk view + client-side chunk cache', () => {
+describe('Dashboard — Structure-tab reading modal + content cache', () => {
   let originalCreateObjectURL;
   let originalRevokeObjectURL;
   let createObjectURLMock;
@@ -1081,7 +1082,7 @@ describe('Dashboard — Part C3/C4: reference-triggered chunk view + client-side
     };
   }
 
-  it('fetches the chunk PDF + text in parallel on first click, serves the cache on a repeat click without re-fetching, and returns to the full document on exit', async () => {
+  it('opens the reading modal, fetches the PDF + text in parallel on first click, serves the cache on a repeat click without re-fetching, and leaves the main viewer untouched throughout', async () => {
     const job = {
       job_id: 'job-chunk', filename: 'doc.pdf', status: 'completed',
       total_pages: 900, processed_pages: 900, engine: 'unlimited',
@@ -1119,27 +1120,38 @@ describe('Dashboard — Part C3/C4: reference-triggered chunk view + client-side
 
     render(<Dashboard />);
     await screen.findByTestId('mock-pdf-canvas-viewer');
+    // Captured before the modal ever opens, while there's still exactly one
+    // PdfCanvasViewer instance — the main pane's own element, reused by
+    // reference below rather than re-queried (which would fail once the
+    // modal's own instance is also on screen).
+    const mainPdfEl = screen.getByTestId('mock-pdf-canvas-viewer');
+    const mainPdfSrcBefore = mainPdfEl.dataset.pdfSrc;
+
     fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
     await screen.findByText('Annexure A-2');
 
     fireEvent.click(screen.getByTestId('structure-jump-root/annexure:a-2'));
 
-    await screen.findByTestId('chunk-view-banner');
-    expect(screen.getByTestId('chunk-view-banner')).toHaveTextContent('Annexure A-2');
-    expect(screen.getByTestId('chunk-view-banner')).toHaveTextContent('427');
-    expect(screen.getByTestId('chunk-view-banner')).toHaveTextContent('446');
-    expect(screen.getByTestId('mock-pdf-canvas-viewer').dataset.pdfSrc).toBe('blob:chunk-2');
+    const modal = await screen.findByTestId('structure-reading-modal');
+    expect(modal).toHaveTextContent('Annexure A-2');
+    const modalPdf = await within(modal).findByTestId('mock-pdf-canvas-viewer');
+    // blob:chunk-1 is the main doc's own blob (created first, on mount);
+    // the chunk fetch is the second blob created.
+    expect(modalPdf.dataset.pdfSrc).toBe('blob:chunk-2');
+    expect(within(modal).getByText('Chunk page text')).toBeInTheDocument();
     expect(filePagesCalls).toHaveLength(1);
 
-    // Exit back to the full document.
-    fireEvent.click(screen.getByTestId('exit-chunk-btn'));
-    await waitFor(() => expect(screen.queryByTestId('chunk-view-banner')).not.toBeInTheDocument());
-    expect(screen.getByTestId('mock-pdf-canvas-viewer').dataset.pdfSrc).toBe('blob:chunk-1');
+    // The main viewer is completely untouched throughout.
+    expect(mainPdfEl.dataset.pdfSrc).toBe(mainPdfSrcBefore);
 
-    // Selecting the same reference again must be served from cache, not
-    // re-fetched.
+    // Close, then reopen the same reference — must be served from cache,
+    // not re-fetched.
+    fireEvent.click(within(modal).getByTestId('structure-reading-modal-close'));
+    await waitFor(() => expect(screen.queryByTestId('structure-reading-modal')).not.toBeInTheDocument());
+
     fireEvent.click(screen.getByTestId('structure-jump-root/annexure:a-2'));
-    await screen.findByTestId('chunk-view-banner');
+    const modal2 = await screen.findByTestId('structure-reading-modal');
+    await within(modal2).findByText('Chunk page text');
     expect(filePagesCalls).toHaveLength(1);
   });
 
@@ -1186,12 +1198,81 @@ describe('Dashboard — Part C3/C4: reference-triggered chunk view + client-side
 
     for (let n = 1; n <= N; n++) {
       fireEvent.click(screen.getByTestId(`structure-jump-root/annexure:a-${n}`));
-      await waitFor(() => expect(screen.getByTestId('chunk-view-banner')).toHaveTextContent(`Annexure A-${n}`));
+      await waitFor(() => expect(screen.getByTestId('structure-reading-modal')).toHaveTextContent(`Annexure A-${n}`));
     }
 
     // The first chunk viewed (annexure:a-1, blob "blob:chunk-2" — index 1 is
     // the main doc's own blob, created first) must have been evicted once
     // the 11th distinct chunk pushed the cache past its 10-entry bound.
     expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:chunk-2');
+  });
+});
+
+describe('Dashboard — Structure item edit only sends fields that actually changed', () => {
+  let originalCreateObjectURL;
+  let originalRevokeObjectURL;
+
+  beforeEach(() => {
+    originalCreateObjectURL = global.URL.createObjectURL;
+    originalRevokeObjectURL = global.URL.revokeObjectURL;
+    global.URL.createObjectURL = vi.fn(() => 'blob:fake-url');
+    global.URL.revokeObjectURL = vi.fn();
+  });
+
+  afterEach(() => {
+    global.URL.createObjectURL = originalCreateObjectURL;
+    global.URL.revokeObjectURL = originalRevokeObjectURL;
+  });
+
+  it('a heading-only rename omits start_page/end_page from the PATCH body (would otherwise spuriously trigger the backend\'s range-change validation)', async () => {
+    const job = {
+      job_id: 'job-edit', filename: 'doc.pdf', status: 'completed',
+      total_pages: 900, processed_pages: 900, engine: 'unlimited',
+      created_at: new Date().toISOString(),
+    };
+    const patchCalls = [];
+
+    apiFetch.mockImplementation(async (url, opts) => {
+      if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
+      if (url === '/api/jobs') return { ok: true, json: async () => [job] };
+      if (url === '/api/jobs/job-edit/file') {
+        return { ok: true, blob: async () => new Blob(['main pdf'], { type: 'application/pdf' }) };
+      }
+      if (url.startsWith('/api/jobs/job-edit/structure-items/') && opts?.method === 'PATCH') {
+        patchCalls.push(JSON.parse(opts.body));
+        return { ok: true, json: async () => ({}) };
+      }
+      if (url.split('?')[0] === '/api/jobs/job-edit') {
+        return { ok: true, json: async () => ({ ...job, reference_index_version: 1, pages_data: [] }) };
+      }
+      if (url.startsWith('/api/jobs/job-edit/references')) {
+        return {
+          ok: true,
+          json: async () => ({
+            reference_index_version: 1,
+            changed_pages: { 427: { 'annexure:a-2': [{ anchor_id: 'a-leaf', collapsed_key: 'annexure:a-2', key: 'annexure:a-2', page: 427, occurrence_index: 0, scope_chain: [] }] } },
+          }),
+        };
+      }
+      if (url === '/api/jobs/job-edit/scope-ranges') {
+        return { ok: true, json: async () => ({ reference_index_version: 1, ranges: [{ key: 'annexure:a-2', scope_key: '', depth: 0, start_page: 427, end_page: 446 }] }) };
+      }
+      if (url === '/api/jobs/job-edit/structure-hierarchy-overrides') {
+        return { ok: true, json: async () => ({ reference_index_version: 1, parents: {}, order: {} }) };
+      }
+      return { ok: false };
+    });
+
+    render(<Dashboard />);
+    await screen.findByTestId('mock-pdf-canvas-viewer');
+    fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
+    await screen.findByText('Annexure A-2');
+
+    fireEvent.click(screen.getByTestId('structure-edit-root/annexure:a-2'));
+    fireEvent.change(screen.getByTestId('structure-item-heading-input'), { target: { value: 'Renamed Annexure' } });
+    fireEvent.click(screen.getByTestId('structure-item-modal-submit'));
+
+    await waitFor(() => expect(patchCalls).toHaveLength(1));
+    expect(patchCalls[0]).toEqual({ heading: 'Renamed Annexure' });
   });
 });

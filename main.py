@@ -24,6 +24,7 @@ import config
 import database
 import task_queue
 import reference_index
+import structure_overrides
 import ai_indexing
 import gpu_ocr_client
 import chunking
@@ -738,7 +739,8 @@ def get_ocr_job(
 
 @app.post("/api/jobs/{job_id}/reindex-references")
 async def reindex_job_references(
-    job_id: str, mode: Optional[str] = None, principal: Principal = Depends(_require_user),
+    job_id: str, mode: Optional[str] = None, text_source: Optional[str] = None,
+    principal: Principal = Depends(_require_user),
 ):
     """Rebuilds the cross-reference index for a job from its already-stored
     page text — for a job OCR'd before this feature existed (so it has zero
@@ -767,6 +769,8 @@ async def reindex_job_references(
         raise HTTPException(status_code=409, detail="A reference index rebuild is already running for this job.")
     if mode not in (None, "rule", "ai"):
         raise HTTPException(status_code=400, detail="mode must be 'rule' or 'ai'.")
+    if text_source not in (None, "clean", "raw"):
+        raise HTTPException(status_code=400, detail="text_source must be 'clean' or 'raw'.")
 
     resolved_mode = mode
     if resolved_mode is None:
@@ -774,7 +778,9 @@ async def reindex_job_references(
         ai_wanted = bool(current_settings.get("enable_ai_indexing", config.AI_INDEXING_ENABLED))
         resolved_mode = "ai" if (ai_wanted and ai_indexing.describe_active_config() is not None) else "rule"
 
-    asyncio.create_task(reference_index.reindex_job(job_id, force_mode=resolved_mode))
+    asyncio.create_task(reference_index.reindex_job(
+        job_id, force_mode=resolved_mode, text_source=text_source or "clean",
+    ))
     return {"message": f"Reference index rebuild started for job {job_id}.", "status": "reindexing"}
 
 
@@ -820,6 +826,11 @@ def get_job_scope_ranges(job_id: str, principal: Principal = Depends(_require_us
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     ranges = reference_index.compute_scope_ranges(job_id, job["total_pages"])
+    # Merged at read time, every call — never inside compute_scope_ranges'
+    # own cache, so an override mutation (which always bumps
+    # reference_index_version, invalidating that cache too) is reflected
+    # immediately without needing its own separate cache-invalidation path.
+    ranges = structure_overrides.apply_to_scope_ranges(job_id, ranges)
     return {
         "reference_index_version": database.get_reference_index_version(job_id),
         "ranges": ranges,
@@ -859,10 +870,247 @@ def get_job_references(
                 "own_label": None,
             }]
 
+    # Runs AFTER the page:N self-reference synthesis above so overrides see
+    # (and don't break iteration over) that synthesized entry too — in
+    # practice overrides never need to touch a page:N row, this is purely
+    # about ordering safety.
+    changed_pages = structure_overrides.apply_to_references_delta(job_id, changed_pages)
+
     return {
         "reference_index_version": database.get_reference_index_version(job_id),
         "changed_pages": changed_pages,
     }
+
+
+# ─── Structure tree overrides (user add/edit/delete/reparent/reorder on top
+# of the auto-detected Structure tree — see structure_overrides.py's module
+# docstring for why these live in their own tables, never touched by
+# reindex_job, and therefore survive a "Rebuild Cross-References" click by
+# construction). ──────────────────────────────────────────────────────────
+
+@app.post("/api/jobs/{job_id}/structure-items", status_code=201)
+def create_structure_item(job_id: str, body: dict, principal: Principal = Depends(_require_user)):
+    """Adds a user-created ("manual") node to the Structure tree."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    heading = body.get("heading")
+    start_page = body.get("start_page")
+    end_page = body.get("end_page")
+    if not heading or not isinstance(heading, str):
+        raise HTTPException(status_code=400, detail="heading is required")
+    if not isinstance(start_page, int) or isinstance(start_page, bool) or not isinstance(end_page, int) or isinstance(end_page, bool):
+        raise HTTPException(status_code=400, detail="start_page and end_page are required integers")
+    total_pages = job["total_pages"]
+    if start_page < 1:
+        raise HTTPException(status_code=400, detail="start_page must be >= 1")
+    if end_page < start_page:
+        raise HTTPException(status_code=400, detail="end_page must be >= start_page")
+    if end_page > total_pages:
+        raise HTTPException(status_code=400, detail=f"end_page exceeds job total_pages ({total_pages})")
+
+    item = structure_overrides.create_manual_item(
+        job_id, heading, start_page, end_page, created_by=principal.subject,
+    )
+    version = database.bump_reference_index_version(job_id)
+    database.touch_reference_index_pages(job_id, [start_page], version)
+    return item
+
+
+@app.patch("/api/jobs/{job_id}/structure-items/{item_key}")
+def update_structure_item(
+    job_id: str, item_key: str, body: dict,
+    page: Optional[int] = Query(None), occurrence_index: int = Query(0),
+    principal: Principal = Depends(_require_user),
+):
+    """Edits a structure item's heading and/or page range — either a
+    detected row (identified by key+page+occurrence_index, stored as an
+    override on top of the untouched ocr_reference_targets row) or a manual
+    item (identified by its manual_key alone)."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    heading = body.get("heading")
+    start_page = body.get("start_page")
+    end_page = body.get("end_page")
+    if heading is None and start_page is None and end_page is None:
+        raise HTTPException(status_code=400, detail="At least one of heading, start_page, end_page must be given")
+
+    is_manual = item_key.startswith("manual:")
+
+    if is_manual:
+        if page is not None:
+            raise HTTPException(status_code=400, detail="page must not be given for a manual item")
+        if start_page is not None and end_page is not None and end_page < start_page:
+            raise HTTPException(status_code=400, detail="end_page must be >= start_page")
+        updated = structure_overrides.update_manual_item(
+            job_id, item_key, heading=heading, start_page=start_page, end_page=end_page,
+        )
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Manual structure item not found")
+        version = database.bump_reference_index_version(job_id)
+        # A manual item's candidate is synthesized fresh from
+        # list_manual_items on every /references call (never persisted) —
+        # touching its (possibly new) start_page is the only signal a
+        # polling client needs to pick up the change.
+        database.touch_reference_index_pages(job_id, [updated["start_page"]], version)
+        return updated
+
+    if page is None:
+        raise HTTPException(status_code=400, detail="page is required to edit a detected structure item")
+
+    # A genuine range edit (either bound given) needs the container-tier
+    # checks below; a heading-only edit never does. Missing bounds default
+    # to the row's own single page — "the row's implied existing
+    # single-page-ness" from the spec.
+    wants_range = start_page is not None or end_page is not None
+    if wants_range:
+        effective_start = start_page if start_page is not None else page
+        effective_end = end_page if end_page is not None else page
+        if effective_end < effective_start:
+            raise HTTPException(status_code=400, detail="end_page must be >= start_page")
+
+        family = item_key.split(":", 1)[0] if ":" in item_key else item_key
+        family_known = family in reference_index.FAMILIES
+        rank = reference_index.FAMILIES.get(family, {}).get("rank") if family_known else None
+        if not family_known or rank is None:
+            # clause/para/ground/page (rank None), or a key whose family
+            # isn't in FAMILIES at all (e.g. an AI-minted numheading/
+            # letterheading key) — never a container, always a single page.
+            if effective_start != effective_end:
+                raise HTTPException(status_code=400, detail="this entry is a single page, not a range")
+        else:
+            matches = [
+                r for r in reference_index.compute_scope_ranges(job_id, job["total_pages"])
+                if r["key"] == item_key
+            ]
+            if len(matches) > 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "this section reopens elsewhere in the document; edit its heading only, "
+                        "or edit individual page occurrences instead"
+                    ),
+                )
+
+    structure_overrides.upsert_edit(
+        job_id, item_key, page, occurrence_index,
+        heading=heading, start_page=start_page, end_page=end_page, updated_by=principal.subject,
+    )
+
+    version = database.bump_reference_index_version(job_id)
+    touched = {page}
+    if start_page is not None and start_page != page:
+        touched.add(start_page)
+    if heading is not None:
+        # Rename propagation: every page nested under this key needs to be
+        # in the next delta too, or apply_to_references_delta's rename pass
+        # has nothing to rewrite for pages other than item_key's own page.
+        touched.update(structure_overrides.pages_referencing_key(job_id, item_key))
+    database.touch_reference_index_pages(job_id, list(touched), version)
+
+    return {
+        "key": item_key, "page": page, "occurrence_index": occurrence_index,
+        "heading_override": heading, "start_page_override": start_page, "end_page_override": end_page,
+    }
+
+
+@app.delete("/api/jobs/{job_id}/structure-items/{item_key}", status_code=204)
+def delete_structure_item(
+    job_id: str, item_key: str,
+    page: Optional[int] = Query(None), occurrence_index: int = Query(0),
+    principal: Principal = Depends(_require_user),
+):
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    is_manual = item_key.startswith("manual:")
+
+    if is_manual:
+        # Looked up BEFORE deleting: the manual item's own start_page is
+        # what needs touching so a polling client's next delta actually
+        # includes this page and notices the candidate is gone — after
+        # delete_manual_item runs, that page number no longer exists
+        # anywhere to read it back from.
+        existing = structure_overrides.get_manual_item(job_id, item_key)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Manual structure item not found")
+        structure_overrides.delete_manual_item(job_id, item_key)
+        version = database.bump_reference_index_version(job_id)
+        database.touch_reference_index_pages(job_id, [existing["start_page"]], version)
+        return Response(status_code=204)
+
+    if page is None:
+        raise HTTPException(status_code=400, detail="page is required to delete a detected structure item")
+
+    structure_overrides.tombstone(job_id, item_key, page, occurrence_index, updated_by=principal.subject)
+    version = database.bump_reference_index_version(job_id)
+    database.touch_reference_index_pages(job_id, [page], version)
+    return Response(status_code=204)
+
+
+@app.post("/api/jobs/{job_id}/structure-items/move")
+def move_structure_item(job_id: str, body: dict, principal: Principal = Depends(_require_user)):
+    """Reparents and/or reorders an item in the Structure tree. Never
+    touches any page's own detected candidates — only how the client nests
+    already-existing keys — so unlike every other mutation above, no
+    per-page reference_index_touched_version is stamped; bumping
+    reference_index_version alone is what invalidates the scope-ranges
+    cache and signals a change to polling clients."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    item_key = body.get("item_key")
+    new_parent_key = body.get("new_parent_key")
+    ordered_siblings = body.get("ordered_siblings")
+    if not item_key or new_parent_key is None or ordered_siblings is None:
+        raise HTTPException(
+            status_code=400, detail="item_key, new_parent_key, and ordered_siblings are required",
+        )
+    if new_parent_key == item_key:
+        raise HTTPException(status_code=400, detail="new_parent_key must not equal item_key")
+
+    # Cycle check: walk "up" from new_parent_key via override-resolved
+    # parents only, falling back to root ("") for any key with no override —
+    # a key that was never moved has no parent-override edge to traverse, so
+    # the walk terminates immediately at root for it. Only a chain of PRIOR
+    # moves can ever form a cycle, so this walk alone is sufficient without
+    # deriving anything from scope_chain.
+    cursor_key = new_parent_key
+    seen = set()
+    while cursor_key:
+        if cursor_key == item_key:
+            raise HTTPException(status_code=400, detail="cannot move an item under its own descendant")
+        if cursor_key in seen:
+            break  # defensive: would mean a cycle already existed in stored data
+        seen.add(cursor_key)
+        cursor_key = structure_overrides.resolve_effective_parent(job_id, cursor_key, "")
+
+    structure_overrides.set_parent(job_id, item_key, new_parent_key)
+    structure_overrides.set_sibling_order(job_id, new_parent_key, ordered_siblings)
+    database.bump_reference_index_version(job_id)
+
+    return {"item_key": item_key, "new_parent_key": new_parent_key, "ordered_siblings": ordered_siblings}
+
+
+@app.get("/api/jobs/{job_id}/structure-hierarchy-overrides")
+def get_structure_hierarchy_overrides(job_id: str, principal: Principal = Depends(_require_user)):
+    """Plain passthrough of the parent/sort override tables — no merge
+    logic, the frontend applies these on top of the natural scope_chain-
+    derived tree itself."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {
+        "reference_index_version": database.get_reference_index_version(job_id),
+        "parents": structure_overrides.get_parent_overrides(job_id),
+        "order": structure_overrides.get_sort_overrides(job_id),
+    }
+
 
 @app.get("/api/jobs/{job_id}/file")
 def get_job_uploaded_file(

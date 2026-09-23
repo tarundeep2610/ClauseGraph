@@ -200,11 +200,22 @@ def _ground_and_resolve_chunk(
     return events_by_page, warning_counts
 
 
-async def reindex_job_with_ai(job_id: str, start_page: Optional[int] = None) -> Dict[str, Any]:
+async def reindex_job_with_ai(
+    job_id: str, start_page: Optional[int] = None, text_source: str = "clean",
+) -> Dict[str, Any]:
     """Full-job AI reindex, chunked, with per-chunk fallback to the
     rule-based detector. `start_page`, when given, is a targeted re-run
     (triggered after a single page's manual retry) rather than a full
     rebuild — see the bounded/early-stop logic below.
+
+    `text_source` ("clean" default, or "raw") picks which stored per-page
+    text becomes the AI's input: the cleaned OCR text (`text`), or the raw,
+    pre-clean_detection_tags() text (`raw_ocr_text`) that still carries
+    Unlimited-OCR's `<|det|>type [bbox]<|/det|>` layout tags when the job ran
+    with grounding enabled. A page OCR'd without grounding has no tags in
+    `raw_ocr_text` at all, so this is a silent no-op (falls back to `text`)
+    for any non-grounded page — added to let a reviewer A/B the two inputs
+    on the same job, not because raw is known to be better.
 
     Checkpoint/resume (start_page=None only — a targeted retry always runs
     from its own explicit start_page): a prior run of THIS function that
@@ -248,7 +259,11 @@ async def reindex_job_with_ai(job_id: str, start_page: Optional[int] = None) -> 
     if not pages:
         return {"status": "done", "pages_done": 0}
 
-    page_inputs = [ai_indexing.PageInput(page_num=p["page_num"], text=p.get("text") or "") for p in pages]
+    def _page_text(p):
+        if text_source == "raw":
+            return p.get("raw_ocr_text") or p.get("text") or ""
+        return p.get("text") or ""
+    page_inputs = [ai_indexing.PageInput(page_num=p["page_num"], text=_page_text(p)) for p in pages]
     chunks = ai_indexing.plan_chunks(
         page_inputs,
         max_pages=chunk_pages_size,
@@ -262,6 +277,7 @@ async def reindex_job_with_ai(job_id: str, start_page: Optional[int] = None) -> 
     report.update({
         "status": "running", "provider": resolved.provider_config.provider,
         "model": resolved.provider_config.model, "chunk_pages": chunk_pages_size,
+        "text_source": text_source,
         "current_chunk": 0, "total_chunks": total_chunks,
         "pages_done": report.get("pages_done", 0) if continuing else 0,
         "chunks": report.get("chunks") if continuing else [],

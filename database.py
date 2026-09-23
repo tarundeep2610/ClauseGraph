@@ -249,6 +249,67 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # column already exists
 
+    # ─── Structure overrides (user edits/adds/reparents on top of the
+    # auto-detected Structure tree) — brand new tables, no migration needed.
+    # Deliberately separate from ocr_reference_targets: reindex_job /
+    # upsert_reference_targets_for_page / delete_reference_targets_for_page
+    # never read or write these, so a "Rebuild Cross-References" click can
+    # wipe and regenerate the whole detected index without erasing a single
+    # user edit — the overrides survive by construction (different tables),
+    # not because the reindex code specially preserves them. See
+    # structure_overrides.py for the read-time merge logic that combines
+    # these with the detector's own output.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ocr_structure_overrides (
+            job_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            page INTEGER NOT NULL,
+            occurrence_index INTEGER NOT NULL,
+            action TEXT NOT NULL,              -- 'edit' | 'delete'
+            heading_override TEXT,
+            start_page_override INTEGER,
+            end_page_override INTEGER,
+            updated_at TEXT NOT NULL,
+            updated_by TEXT,
+            PRIMARY KEY (job_id, key, page, occurrence_index)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ocr_structure_manual_items (
+            manual_key TEXT PRIMARY KEY,       -- "manual:<uuid4hex[:10]>"
+            job_id TEXT NOT NULL,
+            heading TEXT NOT NULL,
+            start_page INTEGER NOT NULL,
+            end_page INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            created_by TEXT
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_manual_items_job ON ocr_structure_manual_items(job_id)")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ocr_structure_parent_overrides (
+            job_id TEXT NOT NULL,
+            item_key TEXT NOT NULL,
+            new_parent_key TEXT NOT NULL,      -- "" = root
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (job_id, item_key)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ocr_structure_sort_overrides (
+            job_id TEXT NOT NULL,
+            scope_key TEXT NOT NULL,           -- the PARENT's key; "" = root
+            item_key TEXT NOT NULL,
+            sort_index INTEGER NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (job_id, scope_key, item_key)
+        )
+    """)
+
     conn.commit()
 
     _migrate_pages_data_to_ocr_pages(conn)
@@ -982,6 +1043,43 @@ def upsert_reference_targets_for_page(job_id: str, page_num: int, targets: List[
     )
     conn.commit()
     conn.close()
+
+
+def touch_reference_index_pages(job_id: str, page_nums: List[int], version: int) -> None:
+    """Stamps reference_index_touched_version on a set of pages without
+    touching ocr_reference_targets at all — the structure_overrides.py
+    mutation endpoints' equivalent of the per-page UPDATE inlined in
+    upsert_reference_targets_for_page above, factored out here so those
+    endpoints (create/edit/delete a structure item, rename propagation)
+    don't each re-write the same statement. Deliberately NOT wired into
+    upsert_reference_targets_for_page itself — that function is part of the
+    core reindex path and is left untouched by design (see
+    structure_overrides.py's module docstring)."""
+    if not page_nums:
+        return
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    for page_num in set(page_nums):
+        cursor.execute(
+            "UPDATE ocr_pages SET reference_index_touched_version = ? WHERE job_id = ? AND page_num = ?",
+            (version, job_id, page_num),
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_all_reference_targets_for_job(job_id: str) -> List[Dict[str, Any]]:
+    """All ocr_reference_targets rows for a job, page + scope_chain only —
+    used by structure_overrides.pages_referencing_key to find every page a
+    rename needs to propagate to. Deliberately not the full
+    get_reference_targets_since machinery: this doesn't care about
+    touched-version deltas, just wants every row that currently exists."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT page, scope_chain FROM ocr_reference_targets WHERE job_id = ?", (job_id,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
 
 
 def has_provisional_reference_targets(job_id: str, page_num: int) -> bool:

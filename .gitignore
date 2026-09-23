@@ -231,6 +231,10 @@ __marimo__/
 data/
 *.db
 
+# Ad-hoc AI-indexing provider comparison dumps (scripts/compare_ai_indexing_qwen_vs_gemini.py) —
+# contains full extracted text/headings from real documents, not for commit.
+qwen_comparison_results/
+
 # Build artifacts / bundled images
 *.tar
 *.tar.gz

@@ -67,28 +67,44 @@ export default function Dashboard() {
   // server-side by that same version, so this is cheap to re-issue).
   const [scopeRanges, setScopeRanges] = useState([]);
 
-  // Part C3/C4: the reference-triggered chunk currently showing (null when
-  // viewing the complete document) — { startPage, endPage, label, pdfUrl,
-  // pagesData } once resolved. chunkCacheRef is a bounded, in-memory cache
-  // keyed by "start-end" so bouncing between a couple of already-seen
-  // references doesn't re-fetch/re-generate the same chunk PDF every time;
-  // capped and LRU-evicted (oldest Map entry, since re-gets move an entry to
-  // the end) with URL.revokeObjectURL on eviction so a long session doesn't
-  // accumulate unbounded blob URLs.
-  const [chunkView, setChunkView] = useState(null);
-  const chunkCacheRef = useRef(new Map());
-  const CHUNK_CACHE_MAX = 10;
+  // Add/edit/delete/reorder overrides on top of the auto-detected Structure
+  // tree — { parents: {item_key: new_parent_key}, order: {scope_key:
+  // [item_key,...]} }, plain passthrough of GET .../structure-hierarchy-
+  // overrides. Re-fetched on the same reference_index_version trigger as
+  // scopeRanges/references above (every override mutation bumps that same
+  // version, per the backend's design — see structure_overrides.py).
+  const [structureHierarchy, setStructureHierarchy] = useState({ parents: {}, order: {} });
 
-  // Part C1: the page currently showing in PdfCanvasViewer, reported up via
-  // ViewerPanel's onCurrentPageChange — drives the windowed pages_data fetch
-  // below so a 900+ page job doesn't re-transfer every page's OCR text on
-  // every 2.5s poll tick. Always known exactly (no scroll-drift risk): pdf.js
-  // renders one page at a time, so this only ever changes on an explicit
-  // page-change event (prev/next, or a parent-driven jump), never silently.
+  // Structure-tab reading modal content — the range currently open (or
+  // being fetched) in StructureReadingModal, null when the modal is closed.
+  // { startPage, endPage, label, status: 'loading'|'error'|'ready', pdfUrl?,
+  // pagesData?, message? }. structureContentCacheRef is a bounded,
+  // in-memory cache keyed by "start-end" so bouncing between a couple of
+  // already-seen references doesn't re-fetch/re-generate the same PDF every
+  // time; capped and LRU-evicted (oldest Map entry, since re-gets move an
+  // entry to the end) with URL.revokeObjectURL on eviction so a long
+  // session doesn't accumulate unbounded blob URLs.
+  const [structureContent, setStructureContent] = useState(null);
+  const structureContentCacheRef = useRef(new Map());
+  const STRUCTURE_CONTENT_CACHE_MAX = 10;
+
+  // The page currently showing in PdfCanvasViewer/Result pane, reported up
+  // via ViewerPanel's onCurrentPageChange — drives the windowed pages_data
+  // fetch below so a 900+ page job doesn't re-transfer every page's OCR
+  // text on every 2.5s poll tick. Always known exactly (no scroll-drift
+  // risk): pdf.js renders one page at a time, and the Result pane now shows
+  // only this same page, so this only ever changes on an explicit
+  // page-change event (prev/next, jump-to-page, or a parent-driven jump),
+  // never silently.
   const [currentPdfPage, setCurrentPdfPage] = useState(1);
   const currentPdfPageRef = useRef(1);
   useEffect(() => { currentPdfPageRef.current = currentPdfPage; }, [currentPdfPage]);
-  const PAGE_WINDOW = 15;
+  // Both panes now show exactly one page at a time (no continuous Result
+  // scroll left to fill), so this only needs to be a small prefetch buffer
+  // for prev/next to feel instant — not the wide pre-fetched window the old
+  // continuously-scrolling Result pane needed.
+  const PAGE_WINDOW = 2;
+  const fetchSeqRef = useRef(0);
 
   // Locally-tracked "rebuild in flight" state — reindex_job() just re-parses
   // already-stored text, so for anything but a very large job it can start
@@ -254,23 +270,36 @@ export default function Dashboard() {
     referenceStoreRef.current = createReferenceStore();
     setReferenceStoreTick(0);
     setScopeRanges([]);
+    setStructureHierarchy({ parents: {}, order: {} });
     setReindexState(null);
     setCurrentPdfPage(1);
     currentPdfPageRef.current = 1;
-    // A different job means its chunk PDFs/text are meaningless (and its
-    // page numbers may not even exist in the new document) - drop the
-    // active chunk view and the whole cache, revoking every cached blob URL
-    // so switching documents repeatedly doesn't leak memory.
-    setChunkView(null);
-    for (const entry of chunkCacheRef.current.values()) {
+    // A different job means its cached chunk PDFs/text are meaningless (and
+    // its page numbers may not even exist in the new document) - close the
+    // reading modal and drop the whole cache, revoking every cached blob
+    // URL so switching documents repeatedly doesn't leak memory.
+    setStructureContent(null);
+    for (const entry of structureContentCacheRef.current.values()) {
       if (entry.pdfUrl) URL.revokeObjectURL(entry.pdfUrl);
     }
-    chunkCacheRef.current.clear();
+    structureContentCacheRef.current.clear();
     fetchJobDetails(activeJobId, 1);
     const t = setInterval(() => fetchJobDetails(activeJobId, currentPdfPageRef.current), 2500);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeJobId]);
+
+  // Fires immediately (debounced) on every page-change event, instead of
+  // waiting for the next 2.5s poll tick — this is the actual fix for the
+  // Result pane "running dry": before, the windowed fetch only re-centered
+  // when the slow poll happened to read a moved currentPdfPageRef, so a
+  // reader navigating faster than 2.5s per page would outrun the loaded
+  // window. Skipped while there's no active job.
+  useEffect(() => {
+    if (!activeJobId) return;
+    const t = setTimeout(() => fetchJobDetails(activeJobId, currentPdfPage), 200);
+    return () => clearTimeout(t);
+  }, [activeJobId, currentPdfPage]);
 
   useEffect(() => {
     // The existing 2.5s job-details poll already carries this cheap version
@@ -308,6 +337,21 @@ export default function Dashboard() {
   }, [activeJobId, jobDetails?.reference_index_version]);
 
   useEffect(() => {
+    // Same cheap-re-fetch-on-version-change pattern as references/scope-
+    // ranges above — every add/edit/delete/reorder mutation bumps
+    // reference_index_version too, so this stays in sync with them for free.
+    if (!activeJobId) { setStructureHierarchy({ parents: {}, order: {} }); return; }
+    let cancelled = false;
+    (async () => {
+      const resp = await apiFetch(`/api/jobs/${activeJobId}/structure-hierarchy-overrides`);
+      if (!resp.ok || cancelled) return;
+      const body = await resp.json();
+      if (!cancelled) setStructureHierarchy({ parents: body.parents || {}, order: body.order || {} });
+    })();
+    return () => { cancelled = true; };
+  }, [activeJobId, jobDetails?.reference_index_version]);
+
+  useEffect(() => {
     if (!reindexState || reindexState.jobId !== activeJobId) return;
     const currentVersion = jobDetails?.reference_index_version || 0;
     if (currentVersion > reindexState.startVersion) {
@@ -321,6 +365,7 @@ export default function Dashboard() {
   }, [reindexState, activeJobId, jobDetails?.reference_index_version]);
 
   async function fetchJobDetails(jobId, aroundPage) {
+    const seq = ++fetchSeqRef.current;
     const params = new URLSearchParams();
     if (aroundPage) {
       params.set('page_from', String(Math.max(1, aroundPage - PAGE_WINDOW)));
@@ -329,52 +374,60 @@ export default function Dashboard() {
     const qs = params.toString();
     const resp = await apiFetch(`/api/jobs/${jobId}${qs ? `?${qs}` : ''}`);
     if (!resp.ok) return;
-    setJobDetails(await resp.json());
+    const data = await resp.json();
+    // An older in-flight request resolving after a newer one must not
+    // clobber the newer page's already-applied response — possible now
+    // that fetches fire on every navigation instead of a slow serialized
+    // poll, so responses can arrive out of order.
+    if (seq !== fetchSeqRef.current) return;
+    setJobDetails(data);
   }
 
-  // Part C3: fetches (or serves from the C4 cache) both the chunk PDF and
-  // its own pages_data in parallel, for the container range a Structure
-  // sidebar chunk-jump click resolved. Selecting a different reference
-  // while already viewing one just replaces chunkView (a single piece of
-  // state, not a stack) - never nests.
-  function evictOldestChunkCacheEntry() {
-    const oldestKey = chunkCacheRef.current.keys().next().value;
+  // Fetches (or serves from the cache) both the PDF and OCR text for the
+  // page or page-range a Structure-tab click opened the reading modal for.
+  // Reusing the existing cache means a leaf click and a later container
+  // click covering that same page both hit the same entry.
+  function evictOldestStructureContentCacheEntry() {
+    const oldestKey = structureContentCacheRef.current.keys().next().value;
     if (oldestKey === undefined) return;
-    const evicted = chunkCacheRef.current.get(oldestKey);
+    const evicted = structureContentCacheRef.current.get(oldestKey);
     if (evicted?.pdfUrl) URL.revokeObjectURL(evicted.pdfUrl);
-    chunkCacheRef.current.delete(oldestKey);
+    structureContentCacheRef.current.delete(oldestKey);
   }
 
-  async function handleSelectStructureChunk({ startPage, endPage, label }) {
+  async function handleRequestStructureContent({ startPage, endPage, label }) {
     if (!activeJobId) return;
     const cacheKey = `${startPage}-${endPage}`;
-    const cached = chunkCacheRef.current.get(cacheKey);
+    const cached = structureContentCacheRef.current.get(cacheKey);
     if (cached) {
       // Re-insert so the Map's iteration order reflects recency - the
       // oldest (least-recently-used) entry is always the one evicted below.
-      chunkCacheRef.current.delete(cacheKey);
-      chunkCacheRef.current.set(cacheKey, cached);
-      setChunkView({ startPage, endPage, label, ...cached });
+      structureContentCacheRef.current.delete(cacheKey);
+      structureContentCacheRef.current.set(cacheKey, cached);
+      setStructureContent({ startPage, endPage, label, status: 'ready', ...cached });
       return;
     }
+
+    // Set before awaiting the fetch so the modal shows a spinner
+    // immediately instead of appearing to do nothing.
+    setStructureContent({ startPage, endPage, label, status: 'loading' });
 
     const [pdfResp, dataResp] = await Promise.all([
       apiFetch(`/api/jobs/${activeJobId}/file/pages?start=${startPage}&end=${endPage}`),
       apiFetch(`/api/jobs/${activeJobId}?page_from=${startPage}&page_to=${endPage}`),
     ]);
-    if (!pdfResp.ok || !dataResp.ok) return;
+    if (!pdfResp.ok || !dataResp.ok) {
+      setStructureContent({ startPage, endPage, label, status: 'error', message: 'Failed to load this section.' });
+      return;
+    }
     const blob = await pdfResp.blob();
     const pdfUrl = URL.createObjectURL(blob);
     const data = await dataResp.json();
     const entry = { pdfUrl, pagesData: data.pages_data || [] };
 
-    if (chunkCacheRef.current.size >= CHUNK_CACHE_MAX) evictOldestChunkCacheEntry();
-    chunkCacheRef.current.set(cacheKey, entry);
-    setChunkView({ startPage, endPage, label, ...entry });
-  }
-
-  function handleExitChunkView() {
-    setChunkView(null);
+    if (structureContentCacheRef.current.size >= STRUCTURE_CONTENT_CACHE_MAX) evictOldestStructureContentCacheEntry();
+    structureContentCacheRef.current.set(cacheKey, entry);
+    setStructureContent({ startPage, endPage, label, status: 'ready', ...entry });
   }
 
   useEffect(() => {
@@ -537,10 +590,12 @@ export default function Dashboard() {
     loadJobsList();
   }
 
-  async function handleReindexReferences(jobId) {
+  async function handleReindexReferences(jobId, textSource = 'clean') {
     if (!jobId) return;
     const startVersion = jobDetails?.reference_index_version || 0;
-    const resp = await apiFetch(`/api/jobs/${jobId}/reindex-references`, { method: 'POST' });
+    const resp = await apiFetch(
+      `/api/jobs/${jobId}/reindex-references?text_source=${textSource}`, { method: 'POST' },
+    );
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       alert(`Reindex failed: ${err.detail || resp.statusText}`);
@@ -553,6 +608,91 @@ export default function Dashboard() {
     // this snapshot (see the effect watching reindexState above).
     setReindexState({ jobId, startVersion, startedAt: Date.now() });
     fetchJobDetails(jobId, currentPdfPageRef.current);
+  }
+
+  // ── Structure-tree add/edit/delete/reorder ──────────────────────────────
+  // Not optimistic: each call throws on failure (surfaced by the modal) and
+  // otherwise just re-triggers fetchJobDetails, which picks up the bumped
+  // reference_index_version — the existing version-watching effects above
+  // (references, scope-ranges, structure-hierarchy) then refetch on their
+  // own, same pattern handleReindexReferences already uses.
+  async function handleAddStructureItem({ heading, startPage, endPage }) {
+    if (!activeJobId) return;
+    const resp = await apiFetch(`/api/jobs/${activeJobId}/structure-items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ heading, start_page: startPage, end_page: endPage }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to add this entry.');
+    }
+    fetchJobDetails(activeJobId, currentPdfPageRef.current);
+  }
+
+  async function handleEditStructureItem(descriptor, { heading, startPage, endPage }) {
+    if (!activeJobId) return;
+    // Only send fields that actually changed from the descriptor's current
+    // values. The modal always submits all three, but the backend treats
+    // the mere PRESENCE of start_page/end_page as "the range is changing"
+    // (triggering its container-range/multi-occurrence validation) — always
+    // sending them, even unchanged, would spuriously 409 a pure heading
+    // rename on a container with disjoint ranges.
+    const body = {};
+    if (heading !== descriptor.heading) body.heading = heading;
+    if (startPage !== descriptor.startPage) body.start_page = startPage;
+    if (endPage !== descriptor.endPage) body.end_page = endPage;
+    if (Object.keys(body).length === 0) return; // nothing changed — treat as a no-op save
+
+    const params = new URLSearchParams();
+    if (!descriptor.isManual) {
+      params.set('page', String(descriptor.page));
+      params.set('occurrence_index', String(descriptor.occurrenceIndex ?? 0));
+    }
+    const qs = params.toString();
+    const resp = await apiFetch(
+      `/api/jobs/${activeJobId}/structure-items/${encodeURIComponent(descriptor.itemKey)}${qs ? `?${qs}` : ''}`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    );
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to save changes.');
+    }
+    fetchJobDetails(activeJobId, currentPdfPageRef.current);
+  }
+
+  async function handleDeleteStructureItem(descriptor) {
+    if (!activeJobId || !descriptor) return;
+    const params = new URLSearchParams();
+    if (!descriptor.isManual) {
+      params.set('page', String(descriptor.page));
+      params.set('occurrence_index', String(descriptor.occurrenceIndex ?? 0));
+    }
+    const qs = params.toString();
+    const resp = await apiFetch(
+      `/api/jobs/${activeJobId}/structure-items/${encodeURIComponent(descriptor.itemKey)}${qs ? `?${qs}` : ''}`,
+      { method: 'DELETE' },
+    );
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to delete this entry.');
+    }
+    fetchJobDetails(activeJobId, currentPdfPageRef.current);
+  }
+
+  async function handleMoveStructureItem({ itemKey, newParentKey, orderedSiblings }) {
+    if (!activeJobId) return;
+    const resp = await apiFetch(`/api/jobs/${activeJobId}/structure-items/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_key: itemKey, new_parent_key: newParentKey, ordered_siblings: orderedSiblings }),
+    });
+    // A rejected move (e.g. a cycle the server caught that the client-side
+    // guard missed) just silently has no effect — the tree simply doesn't
+    // reflect a move that never happened, no error surface needed for a
+    // drag-and-drop gesture the way there is for an explicit modal submit.
+    if (!resp.ok) return;
+    fetchJobDetails(activeJobId, currentPdfPageRef.current);
   }
 
   async function handleDelete(jobId) {
@@ -746,14 +886,19 @@ export default function Dashboard() {
           onRetryPage={handleRetryPage}
           retryingPage={retryingPage}
           onRetryPages={handleRetryPages}
-          onReindexReferences={() => activeJobId && handleReindexReferences(activeJobId)}
+          onReindexReferences={(textSource) => activeJobId && handleReindexReferences(activeJobId, textSource)}
           reindexing={!!(reindexState && reindexState.jobId === activeJobId) || !!jobDetails?.reference_index_reindexing}
           referenceStore={referenceStoreRef.current}
           scopeRanges={scopeRanges}
           onCurrentPageChange={setCurrentPdfPage}
-          chunkView={chunkView}
-          onSelectChunk={handleSelectStructureChunk}
-          onExitChunk={handleExitChunkView}
+          structureContent={structureContent}
+          onRequestStructureContent={handleRequestStructureContent}
+          parentOverrides={structureHierarchy.parents}
+          sortOverrides={structureHierarchy.order}
+          onAddStructureItem={handleAddStructureItem}
+          onEditStructureItem={handleEditStructureItem}
+          onDeleteStructureItem={handleDeleteStructureItem}
+          onMoveStructureItem={handleMoveStructureItem}
         />
       </div>
     </div>

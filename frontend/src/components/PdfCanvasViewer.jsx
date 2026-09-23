@@ -43,7 +43,7 @@ const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
 const ZOOM_STEP = 0.15;
 
-export default function PdfCanvasViewer({ pdfSrc, pageNum, totalPages, onPageChange }) {
+export default function PdfCanvasViewer({ pdfSrc, pageNum, totalPages, onPageChange, showPageNav = true }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const docRef = useRef(null);
@@ -212,25 +212,29 @@ export default function PdfCanvasViewer({ pdfSrc, pageNum, totalPages, onPageCha
         <canvas ref={canvasRef} data-testid="pdf-canvas" style={{ display: error ? 'none' : 'block' }} />
       </div>
       <div className="pdf-canvas-nav">
-        <button
-          className="btn btn-sm btn-secondary"
-          onClick={() => goToPage(currentPage - 1)}
-          disabled={currentPage <= 1}
-          data-testid="pdf-prev-page"
-        >
-          <i className="fa-solid fa-chevron-left" />
-        </button>
-        <span className="pdf-canvas-page-label">
-          Page {currentPage}{effectiveTotalPages ? ` / ${effectiveTotalPages}` : ''}
-        </span>
-        <button
-          className="btn btn-sm btn-secondary"
-          onClick={() => goToPage(currentPage + 1)}
-          disabled={!!effectiveTotalPages && currentPage >= effectiveTotalPages}
-          data-testid="pdf-next-page"
-        >
-          <i className="fa-solid fa-chevron-right" />
-        </button>
+        {showPageNav && (
+          <>
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage <= 1}
+              data-testid="pdf-prev-page"
+            >
+              <i className="fa-solid fa-chevron-left" />
+            </button>
+            <span className="pdf-canvas-page-label">
+              Page {currentPage}{effectiveTotalPages ? ` / ${effectiveTotalPages}` : ''}
+            </span>
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={!!effectiveTotalPages && currentPage >= effectiveTotalPages}
+              data-testid="pdf-next-page"
+            >
+              <i className="fa-solid fa-chevron-right" />
+            </button>
+          </>
+        )}
         <span className="pdf-canvas-zoom-group">
           <button
             className="btn btn-sm btn-secondary"
