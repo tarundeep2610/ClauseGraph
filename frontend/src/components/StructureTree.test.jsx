@@ -431,3 +431,178 @@ describe('StructureTree — tree built from the flat, materialized-path candidat
     expect(onSelect.mock.calls[0][0]).toMatchObject({ anchor_id: 'leaf-1', page: 2, key: 'clause:4.1' });
   });
 });
+
+describe('StructureTree — manual entries render like any other node', () => {
+  it('renders a manual entry\'s own heading verbatim, not through the family/number formatter', () => {
+    const store = storeFromRows({
+      12: {
+        'manual:abc123': [candidate({
+          key: 'manual:abc123', anchor_id: 'manual-leaf', page: 12, scope_chain: [],
+          own_label: 'My Custom Section', detection_source: 'manual',
+        })],
+      },
+    });
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} />);
+    expect(screen.getByText('My Custom Section')).toBeInTheDocument();
+    expect(screen.getByTestId('structure-leaf-manual-leaf')).toHaveTextContent('Manual');
+  });
+});
+
+describe('StructureTree — edit/delete affordances', () => {
+  it('shows edit/delete on a container node with its own occurrence, calling back with the right descriptor', () => {
+    const store = storeFromRows({
+      427: {
+        'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'annexure-leaf', page: 427, occurrence_index: 0, scope_chain: [] })],
+      },
+    });
+    const onEditItem = vi.fn();
+    const onDeleteItem = vi.fn();
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} onEditItem={onEditItem} onDeleteItem={onDeleteItem} />);
+
+    fireEvent.click(screen.getByTestId('structure-edit-root/annexure:a-2'));
+    expect(onEditItem).toHaveBeenCalledWith(expect.objectContaining({ itemKey: 'annexure:a-2', page: 427, occurrenceIndex: 0, isManual: false }));
+
+    fireEvent.click(screen.getByTestId('structure-delete-root/annexure:a-2'));
+    expect(onDeleteItem).toHaveBeenCalledWith(expect.objectContaining({ itemKey: 'annexure:a-2', page: 427 }));
+  });
+
+  it('hides edit/delete for a container node with no leaves of its own (a pure grouping artifact)', () => {
+    // "article:2" only ever appears as an ANCESTOR in a descendant's
+    // scope_chain — it has no own detected row, so no addressable override
+    // target.
+    const store = storeFromRows({
+      6: {
+        'clause:4.1': [candidate({
+          key: 'clause:4.1', anchor_id: 'clause-leaf', page: 6,
+          scope_chain: [{ family: 'article', key: 'article:2', label: 'Article 2' }],
+        })],
+      },
+    });
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} onEditItem={vi.fn()} onDeleteItem={vi.fn()} />);
+    expect(screen.queryByTestId('structure-edit-root/article:2')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('structure-delete-root/article:2')).not.toBeInTheDocument();
+  });
+
+  it('shows edit/delete on a leaf row, calling back without opening/toggling the parent node', () => {
+    const store = storeFromRows({
+      6: {
+        'clause:4.1': [candidate({
+          key: 'clause:4.1', anchor_id: 'clause-leaf', page: 6, occurrence_index: 0,
+          scope_chain: [{ family: 'annexure', key: 'annexure:a-1', label: 'Annexure A-1' }],
+        })],
+      },
+    });
+    const onEditItem = vi.fn();
+    const onDeleteItem = vi.fn();
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} onEditItem={onEditItem} onDeleteItem={onDeleteItem} />);
+
+    // "Annexure A-1" (depth 0) is auto-expanded; "Clause 4.1" (depth 1) is
+    // collapsed by default and needs a click to reveal its own leaf row.
+    fireEvent.click(screen.getByText('Clause 4.1'));
+
+    fireEvent.click(screen.getByTestId('structure-edit-leaf-clause-leaf'));
+    expect(onEditItem).toHaveBeenCalledWith(expect.objectContaining({ itemKey: 'clause:4.1', page: 6, occurrenceIndex: 0 }));
+    fireEvent.click(screen.getByTestId('structure-delete-leaf-clause-leaf'));
+    expect(onDeleteItem).toHaveBeenCalledWith(expect.objectContaining({ itemKey: 'clause:4.1', page: 6 }));
+  });
+
+  it('does not render edit/delete buttons at all when the callbacks are not provided', () => {
+    const store = storeFromRows({
+      427: { 'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'annexure-leaf', page: 427, scope_chain: [] })] },
+    });
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} />);
+    expect(screen.queryByTestId('structure-edit-root/annexure:a-2')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('structure-delete-root/annexure:a-2')).not.toBeInTheDocument();
+  });
+});
+
+describe('StructureTree — hierarchy overrides (drag-and-drop reparent/reorder)', () => {
+  function twoSiblingAnnexures() {
+    return storeFromRows({
+      10: { 'annexure:a-1': [candidate({ key: 'annexure:a-1', anchor_id: 'a1-leaf', page: 10, scope_chain: [] })] },
+      50: { 'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'a2-leaf', page: 50, scope_chain: [] })] },
+    });
+  }
+
+  it('a parent override moves a node (and its whole subtree) under its new parent', () => {
+    const store = storeFromRows({
+      10: { 'annexure:a-1': [candidate({ key: 'annexure:a-1', anchor_id: 'a1-leaf', page: 10, scope_chain: [] })] },
+      50: { 'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'a2-leaf', page: 50, scope_chain: [] })] },
+      55: {
+        'clause:1': [candidate({
+          key: 'clause:1', anchor_id: 'clause-leaf', page: 55,
+          scope_chain: [{ family: 'annexure', key: 'annexure:a-2', label: 'Annexure A-2' }],
+        })],
+      },
+    });
+    // Move Annexure A-2 (and its child Clause 1) to become a child of Annexure A-1.
+    const parentOverrides = { 'annexure:a-2': 'annexure:a-1' };
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} parentOverrides={parentOverrides} />);
+
+    // Annexure A-2's node keeps its original id (a stable identity, not a
+    // recomputed path) but now renders nested inside Annexure A-1's
+    // children.
+    const a1Node = screen.getByTestId('structure-node-root/annexure:a-1');
+    const a2Node = screen.getByTestId('structure-node-root/annexure:a-2');
+    expect(a1Node).toContainElement(a2Node);
+
+    // Its own child (Clause 1) came along too — collapsed by default now
+    // that Annexure A-2 sits at depth 1, not depth 0, so expand it first.
+    fireEvent.click(screen.getByText('Annexure A-2'));
+    expect(screen.getByText('Clause 1')).toBeInTheDocument();
+  });
+
+  it('moving a node under a previously-childless leaf-shaped node nests it there (every node already carries a children slot)', () => {
+    const store = storeFromRows({
+      6: {
+        'clause:4.1': [candidate({ key: 'clause:4.1', anchor_id: 'clause-leaf', page: 6, scope_chain: [] })],
+      },
+      10: {
+        'clause:4.2': [candidate({ key: 'clause:4.2', anchor_id: 'clause-4-2-leaf', page: 10, scope_chain: [] })],
+      },
+    });
+    // Move Clause 4.2 to become a child of Clause 4.1 (previously a bare leaf).
+    const parentOverrides = { 'clause:4.2': 'clause:4.1' };
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} parentOverrides={parentOverrides} />);
+
+    const parentNode = screen.getByTestId('structure-node-root/clause:4.1');
+    const childNode = screen.getByTestId('structure-node-root/clause:4.2');
+    expect(parentNode).toContainElement(childNode);
+  });
+
+  it('an orphaned parent override (target no longer exists) is silently inert', () => {
+    const store = twoSiblingAnnexures();
+    const parentOverrides = { 'annexure:a-1': 'annexure:does-not-exist' };
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} parentOverrides={parentOverrides} />);
+    // Falls back to its natural (root-level) position — no crash, no vanish.
+    expect(screen.getByTestId('structure-node-root/annexure:a-1')).toBeInTheDocument();
+  });
+
+  it('a sort override reorders siblings, with an un-positioned sibling appended in default page order', () => {
+    const store = storeFromRows({
+      10: { 'annexure:a-1': [candidate({ key: 'annexure:a-1', anchor_id: 'a1-leaf', page: 10, scope_chain: [] })] },
+      50: { 'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'a2-leaf', page: 50, scope_chain: [] })] },
+      90: { 'annexure:a-3': [candidate({ key: 'annexure:a-3', anchor_id: 'a3-leaf', page: 90, scope_chain: [] })] },
+    });
+    // Default page order would be A-1, A-2, A-3 — override puts A-2 first;
+    // A-3 has no explicit position and should land after the positioned ones.
+    const sortOverrides = { '': ['annexure:a-2', 'annexure:a-1'] };
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} sortOverrides={sortOverrides} />);
+
+    const nodeIds = screen.getAllByTestId(/^structure-node-root\/annexure:a-\d$/).map((el) => el.dataset.testid);
+    expect(nodeIds).toEqual([
+      'structure-node-root/annexure:a-2',
+      'structure-node-root/annexure:a-1',
+      'structure-node-root/annexure:a-3',
+    ]);
+  });
+
+  it('renders a "move to top level" root drop zone only when onMoveItem is provided', () => {
+    const store = twoSiblingAnnexures();
+    const { rerender } = render(<StructureTree referenceStore={store} onSelect={vi.fn()} />);
+    expect(screen.queryByTestId('structure-tree-root-dropzone')).not.toBeInTheDocument();
+
+    rerender(<StructureTree referenceStore={store} onSelect={vi.fn()} onMoveItem={vi.fn()} />);
+    expect(screen.getByTestId('structure-tree-root-dropzone')).toBeInTheDocument();
+  });
+});

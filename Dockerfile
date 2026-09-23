@@ -33,6 +33,7 @@ COPY role_utils.py .
 COPY database.py .
 COPY reference_index.py .
 COPY ai_reference_index.py .
+COPY structure_overrides.py .
 COPY ai_indexing/ ./ai_indexing/
 COPY task_queue.py .
 COPY gpu_ocr_client.py .

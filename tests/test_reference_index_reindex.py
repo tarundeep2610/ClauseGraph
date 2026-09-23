@@ -110,7 +110,7 @@ def test_reindex_endpoint_starts_a_background_task_for_a_completed_job(client, a
     job_id = _job_with_pages(["Clause 1 text."])
     calls = []
 
-    async def _fake_reindex(job_id_arg, force_mode=None, start_page=None):
+    async def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean"):
         calls.append((job_id_arg, force_mode, start_page))
 
     monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
@@ -133,7 +133,7 @@ def test_manual_rebuild_with_no_mode_uses_current_setting_not_the_jobs_frozen_on
     job_id = _job_with_pages(["Clause 1 text."])  # engine_params has no ai_indexing_enabled key at all
     calls = []
 
-    def _fake_reindex(job_id_arg, force_mode=None, start_page=None):
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean"):
         # Records the argument synchronously, at the moment main.py calls
         # this to build the coroutine for asyncio.create_task() — NOT
         # inside the coroutine body, which only runs whenever the event
@@ -159,7 +159,7 @@ def test_manual_rebuild_falls_back_to_rule_when_no_provider_configured(client, a
     job_id = _job_with_pages(["Clause 1 text."])
     calls = []
 
-    def _fake_reindex(job_id_arg, force_mode=None, start_page=None):
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean"):
         # Records the argument synchronously, at the moment main.py calls
         # this to build the coroutine for asyncio.create_task() — NOT
         # inside the coroutine body, which only runs whenever the event
@@ -185,7 +185,7 @@ def test_explicit_mode_query_param_always_wins_over_current_setting(client, auth
     job_id = _job_with_pages(["Clause 1 text."])
     calls = []
 
-    def _fake_reindex(job_id_arg, force_mode=None, start_page=None):
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean"):
         # Records the argument synchronously, at the moment main.py calls
         # this to build the coroutine for asyncio.create_task() — NOT
         # inside the coroutine body, which only runs whenever the event

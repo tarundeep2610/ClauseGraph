@@ -3,6 +3,10 @@ import { renderMarkdown, renderPageMarkdown } from '../utils/markdown';
 import RetryPagesModal from './RetryPagesModal';
 import PdfCanvasViewer from './PdfCanvasViewer';
 import StructureTree from './StructureTree';
+import PageNavBar from './PageNavBar';
+import StructureReadingModal from './StructureReadingModal';
+import StructureItemModal from './StructureItemModal';
+import StructureDeleteConfirmModal from './StructureDeleteConfirmModal';
 
 // Presentational only — the thresholds themselves live entirely on the backend
 // (confidence.py); this just maps the already-computed tier string to a label/color
@@ -57,20 +61,44 @@ export default function ViewerPanel({
   referenceStore,
   scopeRanges,
   onCurrentPageChange,
-  chunkView,
-  onSelectChunk,
-  onExitChunk,
+  structureContent,
+  onRequestStructureContent,
+  parentOverrides,
+  sortOverrides,
+  onAddStructureItem,
+  onEditStructureItem,
+  onDeleteStructureItem,
+  onMoveStructureItem,
 }) {
   const showPdf = viewMode === 'split' || viewMode === 'pdf';
   const showResult = viewMode === 'split' || viewMode === 'result';
   const [retryModalOpen, setRetryModalOpen] = useState(false);
   const [pdfPageOverride, setPdfPageOverride] = useState(null);
-  const [pendingJump, setPendingJump] = useState(null); // candidate to jump to once a viewable pane is showing
   // The Structure tree is a persistent sidebar (collapsed by default), not a
   // competing view mode — it stays available no matter which of
   // Split/PDF/Result the reader has open, since jumping to a reference and
   // seeing the document it points to are both things a reader wants at once.
   const [structureSidebarOpen, setStructureSidebarOpen] = useState(false);
+  // The reading modal opened by a Structure-tab click — { startPage,
+  // endPage, label, anchorId? } or null when closed. Deliberately never
+  // touches pdfPageOverride: this is what guarantees the main viewer sits
+  // exactly where it was left once the modal closes.
+  const [readingTarget, setReadingTarget] = useState(null);
+  // Add/Edit structure-item modal: { mode: 'add'|'edit', descriptor?, initialValues } or null.
+  // `descriptor` (edit only) carries the addressing info (itemKey/page/
+  // occurrenceIndex/isManual) the submit handler needs to call the right
+  // update endpoint; add has no descriptor since it always creates fresh.
+  const [itemModal, setItemModal] = useState(null);
+  const [itemModalSubmitting, setItemModalSubmitting] = useState(false);
+  const [itemModalError, setItemModalError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  // A/B toggle for the "Rebuild Cross-References" button: whether the AI
+  // reads Unlimited-OCR's raw, <|det|>-tagged text or the cleaned text. Only
+  // has any effect on a job that ran with grounding enabled — see
+  // ai_reference_index.reindex_job_with_ai's text_source param.
+  const [useRawText, setUseRawText] = useState(false);
+  const groundingEnabled = !!jobDetails?.engine_params?.grounding_enabled;
 
   let progressLabel = 'Ready';
   let progressColor = 'var(--accent)';
@@ -87,14 +115,16 @@ export default function ViewerPanel({
     else progressLabel = 'Queued...';
   }
 
-  // Part C3: while viewing a reference-triggered chunk, both panes read from
-  // the chunk's own (much smaller) pages_data instead of the main windowed
-  // fetch — Dashboard.jsx resolves chunkView (PDF blob + pages_data) and
-  // hands it down already-fetched, same as it does for the main pdfSrc.
-  const inChunkMode = !!chunkView;
-  const pages = inChunkMode ? (chunkView.pagesData || []) : (jobDetails?.pages_data || []);
+  const pages = jobDetails?.pages_data || [];
+  const pageMap = useMemo(() => new Map(pages.map((p) => [p.page, p])), [pages]);
+
+  // The single source of truth for "what page is showing," read by BOTH
+  // panes — the PDF pane via its `pageNum` prop, the Result pane via a
+  // pageMap lookup below. Always the global physical page number.
+  const currentPdfPage = pdfPageOverride || 1;
+
   let resultHtml;
-  let pageBlocks = null;
+  let currentPageBlock = null;
   if (!pages.length) {
     if (!jobDetails && hasSelection) {
       // A job switch (new upload or selecting a different history entry) has
@@ -111,105 +141,93 @@ export default function ViewerPanel({
       resultHtml = '<div style="text-align:center;padding-top:60px;color:var(--muted)">Waiting for first page...</div>';
     }
   } else {
-    // Rendered per-page (not one concatenated blob) so each page can carry its own
-    // confidence badge. Pages with no score yet (still pending/processing) show no
-    // badge rather than a fabricated one.
-    pageBlocks = pages.map((p) => ({
-      page: p.page,
-      bodyHtml: referenceStore ? renderPageMarkdown(p.text || '', p.page, referenceStore) : renderMarkdown(p.text || ''),
-      data: p,
-    }));
+    const data = pageMap.get(currentPdfPage);
+    if (data) {
+      currentPageBlock = {
+        page: currentPdfPage,
+        bodyHtml: referenceStore ? renderPageMarkdown(data.text || '', data.page, referenceStore) : renderMarkdown(data.text || ''),
+        data,
+      };
+    } else {
+      // Normal transient state now (not an edge case): the windowed fetch
+      // around currentPdfPage hasn't landed yet — distinct from the
+      // job-level "Scanning..."/"Waiting for first page" states above,
+      // which mean the job itself has no data at all yet.
+      resultHtml = `<div style="text-align:center;padding-top:60px;color:var(--muted)">Loading page ${currentPdfPage}…</div>`;
+    }
   }
 
-  const pageMap = useMemo(() => new Map(pages.map((p) => [p.page, p])), [pages]);
-
-  // Always the GLOBAL physical page — the rest of the app (Dashboard's
-  // windowed fetch, the Structure sidebar's activePage) keeps thinking in
-  // real document page numbers regardless of whether a chunk is showing;
-  // only the PDF pane itself is handed a locally-translated number below.
-  const currentPdfPage = pdfPageOverride || 1;
-
   // Reports the current page up to Dashboard.jsx so its windowed
-  // pages_data poll (Part C1) can center on wherever the reader actually
+  // pages_data fetch (Part A) can center on wherever the reader actually
   // is — pdf.js always knows this exactly (one page at a time, no scroll
   // drift), so this fires only on genuine page changes, never guesses.
   useEffect(() => {
     if (onCurrentPageChange) onCurrentPageChange(currentPdfPage);
   }, [currentPdfPage, onCurrentPageChange]);
 
-  // Part C3 local<->global page-number translation. PdfCanvasViewer always
-  // renders one page (pdf.js is single-page-at-a-time, see the plan's C0
-  // section) — in chunk mode it's handed the chunk's own local numbering
-  // (1..chunkSize) so its own clamping/prev-next logic doesn't need to know
-  // about the physical document at all; its onPageChange is translated back
-  // to a global page here before touching the shared pdfPageOverride state.
-  const chunkPageCount = inChunkMode ? chunkView.endPage - chunkView.startPage + 1 : 0;
-  const pdfPaneSrc = inChunkMode ? chunkView.pdfUrl : pdfSrc;
-  const pdfPaneTotalPages = inChunkMode ? chunkPageCount : jobDetails?.total_pages;
-  const pdfPaneCurrentPage = inChunkMode
-    ? Math.min(Math.max(currentPdfPage - chunkView.startPage + 1, 1), chunkPageCount || 1)
-    : currentPdfPage;
-
-  function handlePdfPageChange(localOrGlobalPage) {
-    setPdfPageOverride(inChunkMode ? chunkView.startPage + localOrGlobalPage - 1 : localOrGlobalPage);
+  function handlePdfPageChange(page) {
+    setPdfPageOverride(page);
   }
 
-  // Clicking a container's chunk-jump button in the Structure sidebar (a
-  // whole Annexure/Article/Section span, per compute_scope_ranges) — unlike
-  // handleStructureSelect below (a single leaf page, jumped to within
-  // whatever's already loaded), this fetches a standalone chunk PDF+text
-  // and switches both panes to it. Jumps the global page to the chunk's
-  // start immediately so the Structure sidebar's activePage/current-node
-  // highlight updates right away, without waiting on the fetch in Dashboard.
-  function handleChunkRequest(range) {
-    setPdfPageOverride(range.startPage);
-    if (onSelectChunk) onSelectChunk(range);
+  // Clicking a Structure-sidebar leaf or a container's jump button both open
+  // the reading modal instead of moving the main viewer — the main pane's
+  // pdfPageOverride is left completely untouched, so closing the modal
+  // leaves the reader exactly where they were.
+  function handleStructureSelect(candidate) {
+    const target = { startPage: candidate.page, endPage: candidate.page, label: `Page ${candidate.page}`, anchorId: candidate.anchor_id };
+    setReadingTarget(target);
+    if (onRequestStructureContent) onRequestStructureContent(target);
+  }
+
+  function handleStructureContainerJump(range) {
+    const target = { startPage: range.startPage, endPage: range.endPage, label: range.label };
+    setReadingTarget(target);
+    if (onRequestStructureContent) onRequestStructureContent(target);
+  }
+
+  function openAddItemModal() {
+    setItemModalError('');
+    setItemModal({ mode: 'add', initialValues: { heading: '', startPage: currentPdfPage, endPage: currentPdfPage } });
+  }
+
+  function openEditItemModal(descriptor) {
+    setItemModalError('');
+    setItemModal({
+      mode: 'edit',
+      descriptor,
+      initialValues: { heading: descriptor.heading, startPage: descriptor.startPage, endPage: descriptor.endPage },
+    });
+  }
+
+  async function handleItemModalSubmit(values) {
+    setItemModalSubmitting(true);
+    setItemModalError('');
+    try {
+      if (itemModal.mode === 'add') {
+        if (onAddStructureItem) await onAddStructureItem(values);
+      } else if (onEditStructureItem) {
+        await onEditStructureItem(itemModal.descriptor, values);
+      }
+      setItemModal(null);
+    } catch (e) {
+      setItemModalError(e?.message || 'Failed to save this entry.');
+    } finally {
+      setItemModalSubmitting(false);
+    }
+  }
+
+  async function handleDeleteConfirm() {
+    setDeleteSubmitting(true);
+    try {
+      if (onDeleteStructureItem) await onDeleteStructureItem(deleteTarget);
+      setDeleteTarget(null);
+    } finally {
+      setDeleteSubmitting(false);
+    }
   }
 
   const canPause = jobDetails?.status === 'processing';
   const canResume = jobDetails?.status === 'paused' || jobDetails?.status === 'failed';
-
-  // Result-pane-only concern: precisely scrolls a candidate's own anchor
-  // into view. Requires the Result pane to actually be mounted (its DOM
-  // doesn't exist at all in PDF-only mode) and the target page's OCR text
-  // to already be loaded — neither is needed for the PDF page jump itself
-  // (handleStructureSelect below), which only needs the page number.
-  // Returns whether the anchor was actually found.
-  function scrollToCandidate(candidate) {
-    const el = candidate.anchor_id ? document.getElementById(candidate.anchor_id) : null;
-    if (!el) return false;
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    return true;
-  }
-
-  // Clicking a Structure-sidebar leaf is explicit navigation intent. The
-  // PDF page is jumped immediately and unconditionally — the page number
-  // is already known, so this never waits on the Result pane's OCR text
-  // being loaded or its anchor being in the DOM (that DOM lookup is what
-  // silently deadlocked jumps to a page far from the currently-loaded
-  // window on long documents: the anchor was never in the DOM until the
-  // page jumped, but the page never jumped until the anchor was found).
-  // The current view mode is left as-is — a reader in PDF-only mode stays
-  // in PDF-only mode; the Result pane is never force-opened just to serve
-  // a jump it doesn't need.
-  function handleStructureSelect(candidate) {
-    if (!pageMap.get(candidate.page)?.is_boundary) {
-      setPdfPageOverride(candidate.page);
-    }
-    if (showResult) {
-      setPendingJump(candidate);
-    }
-  }
-
-  useEffect(() => {
-    if (!pendingJump || !showResult) return;
-    if (scrollToCandidate(pendingJump)) {
-      setPendingJump(null);
-    }
-    // Re-checked whenever fresh page data arrives, in case the target
-    // wasn't in the DOM yet on the first attempt.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingJump, pages, showResult]);
 
   // The Result pane is display-only — this only swallows the click so an
   // `<a href="#">` doesn't jump the page to top. Clicking a reference
@@ -263,10 +281,29 @@ export default function ViewerPanel({
             {canResume && <button className="btn btn-sm btn-secondary" onClick={onResume}><i className="fa-solid fa-rotate-right" /> Resume</button>}
             <button className="btn btn-sm btn-secondary" onClick={() => setRetryModalOpen(true)} data-testid="retry-pages-btn"><i className="fa-solid fa-rotate-right" /> Retry Pages</button>
             {jobDetails?.status !== 'processing' && jobDetails?.status !== 'escalating' && (
+              <label
+                className="btn btn-sm btn-secondary"
+                style={{ opacity: groundingEnabled ? 1 : 0.5, cursor: groundingEnabled ? 'pointer' : 'default' }}
+                title={groundingEnabled
+                  ? "Use Unlimited-OCR's raw, layout-tagged text as the AI indexer's input instead of the cleaned text"
+                  : 'This job was not run with grounding enabled — toggling this has no effect'}
+                data-testid="reindex-raw-text-toggle"
+              >
+                <input
+                  type="checkbox"
+                  checked={useRawText}
+                  disabled={!groundingEnabled}
+                  onChange={(e) => setUseRawText(e.target.checked)}
+                  style={{ marginRight: 6 }}
+                />
+                Raw tagged text
+              </label>
+            )}
+            {jobDetails?.status !== 'processing' && jobDetails?.status !== 'escalating' && (
               <button
                 className="btn btn-sm btn-secondary"
                 disabled={!!reindexing}
-                onClick={onReindexReferences}
+                onClick={() => onReindexReferences(useRawText ? 'raw' : 'clean')}
                 data-testid="reindex-references-btn"
               >
                 <i className="fa-solid fa-diagram-project" />
@@ -279,15 +316,13 @@ export default function ViewerPanel({
         )}
       </div>
 
-      {chunkView && (
-        <div className="chunk-view-banner" data-testid="chunk-view-banner">
-          <span>
-            <i className="fa-solid fa-diagram-project" /> Viewing: {chunkView.label} (pages {chunkView.startPage}–{chunkView.endPage})
-          </span>
-          <button className="btn btn-sm btn-secondary" onClick={onExitChunk} data-testid="exit-chunk-btn">
-            <i className="fa-solid fa-arrow-left" /> View complete PDF
-          </button>
-        </div>
+      {hasSelection && jobDetails?.total_pages > 0 && (
+        <PageNavBar
+          currentPage={currentPdfPage}
+          minPage={1}
+          maxPage={jobDetails.total_pages}
+          onNavigate={handlePdfPageChange}
+        />
       )}
 
       <div className="dual-viewport">
@@ -295,14 +330,24 @@ export default function ViewerPanel({
           <div className="view-box structure-sidebar" data-testid="structure-sidebar">
             <div className="view-box-header">
               <span><i className="fa-solid fa-sitemap" /> Document Structure</span>
+              {onAddStructureItem && (
+                <button className="btn btn-sm btn-secondary" onClick={openAddItemModal} data-testid="structure-add-btn">
+                  <i className="fa-solid fa-plus" /> Add
+                </button>
+              )}
             </div>
             <div className="view-box-content">
               <StructureTree
                 referenceStore={referenceStore}
                 onSelect={handleStructureSelect}
-                onSelectContainer={handleChunkRequest}
+                onSelectContainer={handleStructureContainerJump}
                 scopeRanges={scopeRanges}
                 activePage={currentPdfPage}
+                onEditItem={onEditStructureItem ? openEditItemModal : undefined}
+                onDeleteItem={onDeleteStructureItem ? setDeleteTarget : undefined}
+                onMoveItem={onMoveStructureItem}
+                parentOverrides={parentOverrides}
+                sortOverrides={sortOverrides}
               />
             </div>
           </div>
@@ -314,12 +359,13 @@ export default function ViewerPanel({
               <span style={{ fontSize: '0.73rem', color: 'var(--muted)' }}>{pdfStatusLabel}</span>
             </div>
             <div className="view-box-content" style={{ padding: 0, overflow: 'hidden' }}>
-              {pdfPaneSrc ? (
+              {pdfSrc ? (
                 <PdfCanvasViewer
-                  pdfSrc={pdfPaneSrc}
-                  pageNum={pdfPaneCurrentPage}
-                  totalPages={pdfPaneTotalPages}
+                  pdfSrc={pdfSrc}
+                  pageNum={currentPdfPage}
+                  totalPages={jobDetails?.total_pages}
                   onPageChange={handlePdfPageChange}
+                  showPageNav={false}
                 />
               ) : (
                 <div style={{ textAlign: 'center', paddingTop: 60, color: 'var(--muted)' }}>
@@ -335,29 +381,26 @@ export default function ViewerPanel({
               <span><i className="fa-solid fa-align-left" /> Extracted OCR Markdown</span>
               <span style={{ fontSize: '0.73rem', color: progressColor }}>{progressLabel}</span>
             </div>
-            {hasSelection && pageBlocks ? (
+            {hasSelection && currentPageBlock ? (
               <div className="view-box-content markdown-body" onClick={handleMarkdownClick}>
-                {pageBlocks.map(({ page, bodyHtml, data }) => (
-                  <div key={page} id={`page-block-${page}`} className="ocr-page-block" data-testid={`page-block-${page}`}>
-                    <h3 style={{ display: 'flex', alignItems: 'center', margin: '0 0 8px' }}>
-                      Page {page}
-                      <ConfidenceBadge page={data} />
-                      {(data.status === 'failed' || data.status === 'review') && (
-                        <button
-                          className="btn btn-sm btn-secondary"
-                          style={{ marginLeft: 10 }}
-                          disabled={retryingPage !== null && retryingPage !== undefined}
-                          onClick={() => onRetryPage(page)}
-                          data-testid={`retry-page-${page}`}
-                        >
-                          <i className="fa-solid fa-rotate-right" /> {retryingPage === page ? 'Retrying...' : 'Retry'}
-                        </button>
-                      )}
-                    </h3>
-                    <div dangerouslySetInnerHTML={{ __html: bodyHtml }} />
-                    <hr />
-                  </div>
-                ))}
+                <div id={`page-block-${currentPageBlock.page}`} className="ocr-page-block" data-testid={`page-block-${currentPageBlock.page}`}>
+                  <h3 style={{ display: 'flex', alignItems: 'center', margin: '0 0 8px' }}>
+                    Page {currentPageBlock.page}
+                    <ConfidenceBadge page={currentPageBlock.data} />
+                    {(currentPageBlock.data.status === 'failed' || currentPageBlock.data.status === 'review') && (
+                      <button
+                        className="btn btn-sm btn-secondary"
+                        style={{ marginLeft: 10 }}
+                        disabled={retryingPage !== null && retryingPage !== undefined}
+                        onClick={() => onRetryPage(currentPageBlock.page)}
+                        data-testid={`retry-page-${currentPageBlock.page}`}
+                      >
+                        <i className="fa-solid fa-rotate-right" /> {retryingPage === currentPageBlock.page ? 'Retrying...' : 'Retry'}
+                      </button>
+                    )}
+                  </h3>
+                  <div dangerouslySetInnerHTML={{ __html: currentPageBlock.bodyHtml }} />
+                </div>
               </div>
             ) : (
               <div
@@ -380,6 +423,32 @@ export default function ViewerPanel({
           review: jobDetails?.review_pages ?? 0,
           total: jobDetails?.total_pages ?? 0,
         }}
+      />
+
+      <StructureReadingModal
+        target={readingTarget}
+        content={structureContent}
+        onClose={() => setReadingTarget(null)}
+        onRetry={() => readingTarget && onRequestStructureContent && onRequestStructureContent(readingTarget)}
+        referenceStore={referenceStore}
+      />
+
+      <StructureItemModal
+        open={!!itemModal}
+        mode={itemModal?.mode}
+        initialValues={itemModal?.initialValues}
+        onClose={() => setItemModal(null)}
+        onSubmit={handleItemModalSubmit}
+        submitting={itemModalSubmitting}
+        error={itemModalError}
+      />
+
+      <StructureDeleteConfirmModal
+        open={!!deleteTarget}
+        label={deleteTarget?.heading}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteConfirm}
+        submitting={deleteSubmitting}
       />
     </div>
   );

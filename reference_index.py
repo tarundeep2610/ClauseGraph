@@ -1758,7 +1758,10 @@ def _compute_scope_ranges_uncached(job_id: str, total_pages: int) -> List[Dict[s
     return ranges
 
 
-async def reindex_job(job_id: str, force_mode: Optional[str] = None, start_page: Optional[int] = None):
+async def reindex_job(
+    job_id: str, force_mode: Optional[str] = None, start_page: Optional[int] = None,
+    text_source: str = "clean",
+):
     """Dispatches to the rule-based or AI-based full reindex depending on
     the job's frozen engine_params.ai_indexing_enabled (or force_mode, for
     a manual ?mode= override on the "Rebuild Cross-References" endpoint).
@@ -1767,7 +1770,13 @@ async def reindex_job(job_id: str, force_mode: Optional[str] = None, start_page:
     re-run starting from one retried page, per ai_reference_index.py) — the
     rule-based path ignores it and always rebuilds from page 1, since it's
     cheap enough that a partial-rebuild optimization isn't worth the extra
-    code path."""
+    code path.
+
+    `text_source` ("clean" default, or "raw") is likewise AI-only — lets a
+    manual rebuild use Unlimited-OCR's raw `<|det|>`-tagged text as the AI's
+    input instead of the cleaned text, for A/B comparison. The rule-based
+    path already has its own separate layout signal (parse_layout_blocks /
+    layout_aligned) and ignores this."""
     if job_id in _active_reindex_jobs:
         return
     _active_reindex_jobs.add(job_id)
@@ -1779,7 +1788,7 @@ async def reindex_job(job_id: str, force_mode: Optional[str] = None, start_page:
         mode = force_mode or ("ai" if engine_params.get("ai_indexing_enabled") else "rule")
         if mode == "ai":
             import ai_reference_index
-            await ai_reference_index.reindex_job_with_ai(job_id, start_page=start_page)
+            await ai_reference_index.reindex_job_with_ai(job_id, start_page=start_page, text_source=text_source)
         else:
             await _reindex_job_rule_based(job_id)
     finally:
