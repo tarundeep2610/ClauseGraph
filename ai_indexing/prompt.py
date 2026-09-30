@@ -19,6 +19,18 @@ contiguous range of pages from a single large document (a contract, tender,
 or legal compilation). Your ONLY job is to identify the HEADINGS that define
 the document's structure, and their hierarchy.
 
+REPORT, DON'T OMIT, WHEN UNCERTAIN
+- When you are genuinely uncertain whether a line is a heading, REPORT it
+  rather than leaving it out — and reflect your own uncertainty honestly
+  (a lower "level"/looser "parent_ref" guess is fine) rather than forcing
+  false confidence. A spurious extra heading is trivial for a human
+  reviewer to delete afterward; a heading you silently omitted is much
+  harder for them to even notice is missing, let alone add back. Never let
+  uncertainty be a reason to leave something out — it is a reason to flag
+  it, not skip it. (This does not apply to the administrative-noise
+  exclusions below — a stamp or docket code is a different kind of
+  "uncertain" from a genuine borderline heading.)
+
 WHAT COUNTS AS A HEADING
 - A line that names or opens a structural division of THIS document:
   Annexure / Schedule / Appendix / Article / Section / Chapter / Part /
@@ -28,6 +40,19 @@ WHAT COUNTS AS A HEADING
 - Headings whose convention you have never seen before still count. Judge by
   ROLE (does this line open a division that the following text belongs to?),
   not by matching a fixed vocabulary.
+- This applies EQUALLY inside a minor supporting document (a covering
+  letter, a purchase order's own terms section, an internal memo) as it
+  does in the main contract or pleading — a short, isolated line naming a
+  topic that the following text elaborates on is a heading regardless of
+  which part of the compilation it sits in. General shape to look for: it
+  stands alone as its own paragraph, it's short (roughly 6 words or
+  fewer), and it either ends with a colon or has every significant word
+  capitalized/ALL-CAPS. The examples below (from one real document) are
+  ILLUSTRATIONS of this shape, not an exhaustive list — the same judgment
+  applies to any short topic-naming line using completely different words
+  you have never seen in these examples: "Insurance:", "Contract
+  Agreement:", "Taxes & Duties", "Bank Guarantee for Contract
+  Performance", "Summary Price Proposal", "Memo of Costs".
 
 THE DOCUMENT'S OPENING HEADING — MANDATORY, EVEN IF GARBLED
 - The very first non-blank line of the earliest page you are shown is
@@ -44,6 +69,48 @@ THE DOCUMENT'S OPENING HEADING — MANDATORY, EVEN IF GARBLED
   line), the SECOND occurrence is not a new top-level heading — it is a
   repeat of existing content and should either be skipped or nested under
   whatever is already open, never treated as its own root.
+
+REPEATING CASE-CAPTION BLOCKS THAT INTRODUCE DIFFERENT PLEADINGS
+- A court-caption block ("IN THE HIGH COURT OF ... AT ...", a case/Civil
+  Misc. number, an "IN F.A.O. ..." line) can legitimately repeat several
+  times across a paper-book, each time followed by a DIFFERENT application,
+  affidavit, or reply. This is NOT the same as the repeated-running-header
+  case above — judge by what immediately follows the caption:
+  - If the caption is immediately followed by the SAME distinguishing text
+    you already reported earlier (an exact repeat, nothing new) — skip it,
+    per the running-header rule above.
+  - If the caption is immediately followed by a NEW distinguishing line (a
+    different Civil Misc. No., "RESPECTFULLY SHOWETH:", "Affidavit of
+    <a name>...", or a similarly worded application/affidavit opening) —
+    this IS a new top-level heading. Report it using THAT distinguishing
+    line (not the caption itself) as "heading_text", verbatim, "level": 1,
+    "parent_ref": null.
+  Worked example: page 7 opens with the caption followed by "RESPECTFULLY
+  SHOWETH:" -> report heading_text "RESPECTFULLY SHOWETH:". Page 8 opens
+  with the SAME caption followed by "Affidavit of Ishwar Chand Balan..." ->
+  report THAT as its own new heading, level 1, even though the caption text
+  above it is identical to page 7's.
+- SELF-CHECK: before finalizing, confirm you reported exactly one heading
+  for the very first non-blank line of the earliest page shown, even if it
+  looks unreadable (see above) — and that you did not silently drop a new
+  application/affidavit opening just because it sits behind a caption block
+  you have seen before.
+- "Versus" (or "Vs."/"V/S") standing between two party names inside a case
+  caption is NEVER itself a heading, in any document — it is standard
+  case-caption formatting, not a structural division. Do not report it,
+  and do not let noticing it distract you from the real heading nearby
+  (the distinguishing line described above, or whatever else the caption
+  introduces).
+- A keyword like "Annexure"/"Schedule"/"Appendix" genuinely divides the
+  document only when it (plus at most a trailing number/letter) is the
+  WHOLE of a short, isolated line. The SAME word appearing as part of a
+  longer descriptive label — "Price Schedule", "Work Schedule", "Delivery
+  Schedule for widgets" — inside a covering letter or purchase order is a
+  MINOR sub-label of that supporting document, not a new top-level
+  division of the whole compilation. Still report it (per the reporting
+  principle above) with a low/uncertain level rather than promoting it to
+  a level-1 root that would incorrectly close out everything else that's
+  genuinely still open.
 
 RESOLVING A GARBLED HEADING: "family_hint" AND "number_hint"
 - These two fields exist ONLY to rescue a heading you cannot read cleanly —
@@ -69,6 +136,31 @@ RESOLVING A GARBLED HEADING: "family_hint" AND "number_hint"
     "heading_text": "AmexureAl"   (verbatim, unchanged)
     "family_hint": "annexure"
     "number_hint": "A-1"
+
+OCR-LAYOUT ANNOTATIONS — WHEN PRESENT, A STRONG SIGNAL
+- Some pages you are shown have each text block prefixed with a bracketed
+  tag like "[OCR-LAYOUT: HEADER]" or "[OCR-LAYOUT: TITLE]" on its own line,
+  immediately before the block's text. These come from the OCR engine's own
+  visual layout classifier — a judgment about the block's position, size,
+  and formatting on the original page image, made independently of what the
+  text actually says.
+- A block tagged HEADER or TITLE is strong evidence it is a real heading,
+  even if its OCR'd text is badly garbled or doesn't otherwise look like a
+  heading (e.g. "AmexureAl" tagged "[OCR-LAYOUT: HEADER]" is almost
+  certainly a heading despite being unreadable as text). Trust this layout
+  signal over your own text-shape judgment when the two conflict.
+- A block with no such tag, or tagged with a plain-text type (e.g.
+  "[OCR-LAYOUT: TEXT]"), should NOT be treated as a heading on the strength
+  of the tag alone — it is neutral, not negative; apply the usual rules
+  above.
+- Regardless of any tag, always report "heading_text" as the block's real
+  OCR'd text verbatim (never include the "[OCR-LAYOUT: ...]" tag itself in
+  "heading_text", and never paraphrase or "correct" the OCR text) — the tag
+  is a hint for YOUR judgment, not part of the document's own content.
+- Most pages have no such tags at all (they only appear when the OCR engine
+  ran with its layout-detection mode on) — when you don't see any, ignore
+  this section entirely and judge headings by content alone as described
+  above.
 
 WHAT IS NOT A HEADING
 - THE #1 MISTAKE TO WATCH FOR: a NUMBERED SENTENCE OR CLAUSE OF BODY TEXT.
@@ -109,6 +201,10 @@ WHAT IS NOT A HEADING
   this exact mistake. For each one, re-apply the noun-phrase test: does it
   contain a finite verb, or run well past 8 words? If yes to either, remove
   it from your answer before responding.
+  EXCEPTION: Do NOT exclude section-opening numbered paragraphs (e.g. "2. ...",
+  "3. ...") or numbered lines introducing a list with a colon (e.g. "3. The
+  Award is challenged on following grounds:") — those MUST be reported (see
+  "NUMBERED PLEADING POINTS AND GROUNDS" and "A SHORT LINE ENDING IN COLON").
 - ADMINISTRATIVE STAMPS, DOCKET/FORM CODES, AND COVER-PAGE MARGINALIA. A
   cover/opening page of a court filing or official document is often
   covered in printing-registration codes, docket numbers, and stamps —
@@ -128,6 +224,24 @@ WHAT IS NOT A HEADING
   If the line continues into prose, it is a reference, not a heading.
 - A reference to an EXTERNAL law or authority ("Section 34 of the Arbitration
   and Conciliation Act, 1996", a cited judgment).
+- A clause QUOTED/REPRODUCED VERBATIM inside someone else's argument, not
+  a new heading of THIS document. Watch for introductory phrasing right
+  before a numbered/short heading-shaped line — "which reads as under:",
+  "as per clause X, which states", "reads as follows:" — signaling that
+  what follows is being copied in for reference, not opening a new
+  section. Still REPORT it (per the reporting principle above — do not
+  silently drop it), but do not treat later, unrelated headings as its
+  children, and do not let it interrupt the parent argument's own
+  structure. Worked example (one real document; apply the same reasoning
+  to any similarly-introduced numbered text regardless of the specific
+  clause number or wording involved): a Ground of Appeal's argument reads
+  "...it was obligatory to have inspected the site before tendering as
+  per clause 9.0 ITB, Vol-II, Contract, which reads as under:" immediately
+  followed by "9.0 Local/ Site conditions" and "9.1 It will be imperative
+  on each Bidder..." — these are the OTHER document's clause 9.0/9.1,
+  quoted here for reference; they are not new headings of the appeal
+  itself, and the ground that follows this quotation is still a sibling
+  of the ground doing the quoting, not a child of "9.0".
 - A table row, a list item in a running list, a signature block, a running
   header/footer, a page number, or a table-of-contents/index line that merely
   points at a heading printed elsewhere.
@@ -149,6 +263,45 @@ FINDING THE FULL RUN OF AN ENUMERATED LIST — DON'T STOP AT THE FIRST ONE
   of that same enumeration you may have missed on your first pass. Add any
   you find. Do not assume a list genuinely starts at whatever member you
   happened to notice first.
+- The document's own running paragraph numbers are the SAME kind of
+  enumerated run — this self-check applies to them too, not just to
+  lettered/roman sub-lists. Finding paragraph "3." and then next noticing
+  paragraph "16." is just as strong a signal that paragraphs 4 through 15
+  were skipped and need to be found on re-scan.
+- A document's numbered paragraphs can run CONTINUOUSLY ACROSS several
+  section headings, never restarting at each one: paragraph 2 might be the
+  opening sentence of one section, paragraph 3 the opening sentence of the
+  NEXT section, paragraph 4 the one after that, and so on — the numbering
+  itself never resets just because a new heading appeared. Each numbered
+  paragraph must still be reported as its own heading, with "parent_ref"
+  set to whichever section heading most recently opened — even though its
+  own number continues an unbroken sequence that runs straight through
+  that heading boundary.
+
+SEQUENTIAL LETTERS ARE NOT ROMAN NUMERALS
+- A plain lettered list — "(A)", "(B)", "(C)", "(D)", "(E)" — continues by
+  ALPHABET POSITION once it's established, never by roman-numeral value,
+  even though some individual letters (I, V, X, L, C, D, M) also happen to
+  be valid roman numerals. Once you have seen "(A)" and "(B)" open a list,
+  a later "(C)" in that SAME list is the 3rd item, not roman numeral 100 —
+  and "(D)" is the 4th item, not roman numeral 500. Worked example (one
+  real document; the same reasoning applies to any lettered list, any
+  starting letter): a list reads "(A) That the award is based on no
+  evidence...", "(B) The Arbitral Tribunal has erred...", "(C) The
+  Arbitral Tribunal has erroneously held...", "(D) Arbitral Tribunal has
+  erroneously condoned..." — all four are siblings in one plain
+  alphabetical list; "(C)" and "(D)" are its 3rd/4th members, not a jump to
+  roman numeral 100 or 500.
+- Conversely, a GENUINE roman-numeral enumeration ("(I)", "(II)", "(III)",
+  "(IV)", ...) is real and should be reported as such — the distinction
+  only matters when a single already-established alphabetical run reaches
+  a letter that's also roman-valid. When a roman sequence continues an
+  earlier one under a NUMBERED parent (e.g. Grounds 1 through 10 given as
+  plain decimal grounds, then the list continues as roman numerals "(XI)",
+  "(XII)", ...), report those roman-numeral grounds as CHILDREN of the
+  specific decimal ground they continue from (ground 10 in this example),
+  via "parent_ref" — not as siblings restarting the decimal sequence, and
+  not as new top-level headings of their own.
 
 PAGE ATTRIBUTION
 - Every heading MUST be reported with the page number of the page block it
@@ -177,6 +330,67 @@ HIERARCHY AND PARENTS
   If you use a "ref_id" from the "Currently open" list, copy it EXACTLY as
   given — do not paraphrase, reformat, or add words to it.
 
+ENUMERATED LIST ITEMS ARE SIBLINGS OF EACH OTHER, NOT OF THE PREVIOUS ITEM
+- When several items share the same enumeration style in one continuous run
+  — all lettered ("(A)", "(B)", "(C)", ...), all numbered ("1.", "2.",
+  "3.", ...), or all roman ("(I)", "(II)", ...) — every item in that run is
+  a SIBLING of every other item in the SAME run: the same "parent_ref" and
+  the same "level". Do NOT report an item's "parent_ref" as the item that
+  came immediately before it in the list just because it is the most
+  recent heading you reported — that turns one flat list into a deep,
+  incorrect nesting chain. An item is a child of the PREVIOUS item only
+  when that previous item's own text genuinely opens a NEW, differently-
+  styled sub-list (see the numbering-style-transition guidance above) or
+  the following text is visibly a sub-clause of it, not merely the next
+  member of the same enumeration.
+- Worked example (one real document; the same reasoning applies to any
+  enumerated list regardless of the letters/numbers/wording involved): a
+  list under "Challenge to the Arbitral Award" reads "(F) The Arbitral
+  Tribunal erred in observing...", "(G) The Arbitral Tribunal has also
+  overlooked...", "(H) The Arbitral Tribunal has also wrongly held...",
+  "(J) It is further urged that..." — all four (and every other letter in
+  the same (A)-(O) run) share the SAME "parent_ref" ("Challenge to the
+  Arbitral Award") and the SAME "level". (G) is NOT a child of (F), (H) is
+  NOT a child of (F) either, and (J) is NOT a child of (F) — none of them
+  is a child of the letter immediately before it.
+- A second worked example, same reasoning, different style — lowercase
+  roman numerals in parens: a list under "Conclusion" reads "(i) The
+  Tribunal shall pay damages...", "(ii) The Tribunal shall further pay
+  costs...", "(iii) Interest shall accrue...", "(iv) The counter-claim is
+  dismissed..." — every one of (i) through (vii) shares the SAME
+  "parent_ref" ("Conclusion") and the SAME "level". (ii) is NOT a child of
+  (i), (iii) is NOT a child of (ii), and so on — this exact mistake (each
+  item reported one level deeper than the one before it) is the most
+  common way this rule gets violated in practice, so check specifically
+  for it before finalizing your answer.
+
+A SHORT LINE ENDING IN ":", "-", OR "->" OFTEN INTRODUCES THE LIST THAT FOLLOWS
+- A short line (roughly a sentence or less) that ends with a colon, a dash,
+  or an arrow ("->") is a strong signal that it is the PARENT of whatever
+  enumerated list immediately follows it — report that line's own
+  "heading_text" as the "parent_ref" for every item in the list that
+  follows it, not the item that came immediately before it. This applies
+  whether or not the introducing line is itself a numbered heading in its
+  own right — a numbered paragraph that also ends this way is still a
+  heading because of its number, and the colon/dash/arrow is a separate,
+  additional signal for what nests under it.
+- This is a general SHAPE rule, not tied to any particular document's
+  wording — judge any line that fits the shape, using completely different
+  words than the illustrations below. ILLUSTRATIONS of this shape, not an
+  exhaustive list: "The inspection revealed the following defects:"
+  followed by "(a) ... (b) ... (c) ..."; "Delivery shall proceed in the
+  following stages -" followed by "(1) ... (2) ... (3) ..."; "The vendor's
+  obligations are as follows ->" followed by "(i) ... (ii) ... (iii) ...".
+  In every case, every list item that follows shares that introducing
+  line's key as "parent_ref" — none of them is a child of the item before
+  it (see ENUMERATED LIST ITEMS ARE SIBLINGS OF EACH OTHER above).
+- Worked example combining both signals (a real document): paragraph
+  "3. The Award is under challenge on following grounds:" is itself a
+  numbered heading (report it as such), AND its trailing colon marks it as
+  the parent of the lettered list that follows — "(A)" through "(O)" must
+  all report "parent_ref" as that paragraph 3, not as the section heading
+  above it and not as each other.
+
 RULES
 - Copy "heading_text" VERBATIM from the page, including its number/letter
   prefix. Do not re-title, translate, expand abbreviations, or fix OCR
@@ -189,6 +403,52 @@ RULES
 - Output ONLY a single JSON object. No prose, no markdown fences, no
   commentary before or after.
 """
+
+# Appended to STRUCTURE_SYSTEM_PROMPT only when the caller opts in
+# (build_structure_prompt's include_pleading_points=True) — the default
+# prompt above is otherwise unchanged. Overrides the "NUMBERED SENTENCE OR
+# CLAUSE OF BODY TEXT" exclusion specifically for enumerated pleading
+# points/grounds — everywhere else in the base prompt, that exclusion still
+# applies.
+PLEADING_POINTS_SECTION = """\
+NUMBERED PLEADING POINTS AND GROUNDS ARE HEADINGS TOO (OVERRIDES THE EXCLUSION ABOVE)
+- The "NUMBERED SENTENCE OR CLAUSE OF BODY TEXT" exclusion above does NOT
+  apply to a numbered/lettered/roman-numeral item that is part of an
+  ENUMERATED LIST of averments, grounds, or objections — a pleading's
+  numbered averments ("1. That the appellant is..."), an appeal's
+  numbered/roman grounds ("(I) That the tribunal erred..."), or any
+  similarly-enumerated list of points — even though each individual item is
+  itself a full sentence with a finite verb. Report EVERY member of such a
+  list as its own heading, using the same level/parent_ref mechanism as
+  every other heading in this document — this is what lets a reader
+  navigate directly to "Ground 14" or "point 7" instead of only seeing the
+  section title above the list.
+- Nesting follows the SAME numbering-style-transition logic already
+  described above (see SEQUENTIAL LETTERS ARE NOT ROMAN NUMERALS): when one
+  item's own text explicitly introduces what follows as its own sub-list
+  (judge by meaning — no single fixed phrase), the items that follow nest
+  as its children; when the ORIGINAL list's next value reappears, that item
+  resumes as a SIBLING of the item that opened the sub-list — same level,
+  same parent — never a further child of it, and never a new unrelated
+  top-level heading just because it comes after a long detour through a
+  different numbering style.
+- NUMBERED PARAGRAPHS OF COURT JUDGMENTS, ORDERS, PETITIONS, AND LEGAL PLEADINGS:
+  In legal documents (court judgments, petitions, replies, written statements, orders),
+  paragraphs are sequentially numbered (e.g. "1.", "2.", "3.", ... "31.").
+  Report EVERY such numbered paragraph as a heading under its containing section
+  (e.g. under "FACTS", "Submissions of petitioner", "Conclusion", etc.). Even though it is
+  a full sentence with a finite verb, it is a numbered point/averment that must be indexed.
+  Do NOT strip or exclude it under the noun-phrase test.
+  CRITICAL:
+  1. ALWAYS report the FULL paragraph opening (the number PLUS the opening words of
+     the sentence, up to ~10 words, e.g. "12. It is further argued that the delay in front clearance of site",
+     "16. It has been argued by learned counsel for the respondent", "20. From perusal of the challenge made").
+     NEVER strip the sentence to emit a bare number (never emit "12", "16", "20" alone). Emitting bare numbers
+     destroys the document outline.
+  2. NEVER invent, shift, or prepend paragraph numbers to an unnumbered line!
+     If a line does not have a number printed on the page, copy it VERBATIM without adding any number.
+"""
+
 
 STRUCTURE_OUTPUT_CONTRACT = """\
 # OUTPUT FORMAT (strict JSON — exactly this shape, nothing else)
@@ -335,7 +595,12 @@ def _render_carry_in(carry: Optional[CarryContext]) -> str:
 
 def build_structure_prompt(
     chunk: ChunkPlan, *, carry_context: Optional[CarryContext] = None, document_hint: str = "",
+    include_pleading_points: bool = False,
 ) -> "tuple[str, str]":
+    system_prompt = STRUCTURE_SYSTEM_PROMPT
+    if include_pleading_points:
+        system_prompt = system_prompt + "\n\n" + PLEADING_POINTS_SECTION
+
     parts = []
     page_nums = chunk.page_nums
     parts.append(f"# PAGE RANGE\nThis chunk contains pages {page_nums[0]}-{page_nums[-1]}. "
@@ -355,4 +620,4 @@ def build_structure_prompt(
 
     parts.append(STRUCTURE_OUTPUT_CONTRACT)
 
-    return STRUCTURE_SYSTEM_PROMPT, "\n\n".join(parts)
+    return system_prompt, "\n\n".join(parts)

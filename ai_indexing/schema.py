@@ -25,6 +25,10 @@ import config
 _MD_HEADING_PREFIX_RE = re.compile(r"^\s*#{1,6}\s+")
 _MD_EMPHASIS_RE = re.compile(r"(\*\*|\*|__|_|`)")
 _TRAILING_COLON_RE = re.compile(r"\s*:\s*$")
+# A page or sheet stamp number ("-:12:-", "-:7:-", "-:-10:-", "- 12 -") printed at page margins
+_SHEET_PAGE_STAMP_RE = re.compile(
+    r"^\s*[-–—]?\s*[:\.]\s*[-–—]?\s*\d+\s*[:\.]\s*[-–—]?\s*$|^\s*[-–—]\s*\d+\s*[-–—]\s*$"
+)
 
 
 def sanitize_heading_text(text: str) -> str:
@@ -165,7 +169,7 @@ def normalize_chunk(
         if h.start_page not in expected:
             report.dropped_offpage += 1
             continue
-        if not h.heading_text.strip():
+        if not h.heading_text.strip() or _SHEET_PAGE_STAMP_RE.match(h.heading_text.strip()):
             report.dropped_empty += 1
             continue
         dk = _dedupe_key(h)

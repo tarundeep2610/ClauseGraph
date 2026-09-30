@@ -372,8 +372,8 @@ export default function AdvancedSettingsPanel({
                   <label>Pages per AI call</label>
                   <input
                     type="number" min="1" max="50"
-                    defaultValue={settings.ai_index_chunk_pages || 10}
-                    onBlur={(e) => onSaveAiChunkPages(parseInt(e.target.value, 10) || 10)}
+                    defaultValue={settings.ai_index_chunk_pages || 5}
+                    onBlur={(e) => onSaveAiChunkPages(parseInt(e.target.value, 10) || 5)}
                   />
                 </div>
               )}

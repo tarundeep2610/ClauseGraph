@@ -110,7 +110,7 @@ def test_reindex_endpoint_starts_a_background_task_for_a_completed_job(client, a
     job_id = _job_with_pages(["Clause 1 text."])
     calls = []
 
-    async def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean"):
+    async def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean", chunk_pages_override=None):
         calls.append((job_id_arg, force_mode, start_page))
 
     monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
@@ -133,7 +133,7 @@ def test_manual_rebuild_with_no_mode_uses_current_setting_not_the_jobs_frozen_on
     job_id = _job_with_pages(["Clause 1 text."])  # engine_params has no ai_indexing_enabled key at all
     calls = []
 
-    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean"):
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean", chunk_pages_override=None):
         # Records the argument synchronously, at the moment main.py calls
         # this to build the coroutine for asyncio.create_task() — NOT
         # inside the coroutine body, which only runs whenever the event
@@ -159,7 +159,7 @@ def test_manual_rebuild_falls_back_to_rule_when_no_provider_configured(client, a
     job_id = _job_with_pages(["Clause 1 text."])
     calls = []
 
-    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean"):
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean", chunk_pages_override=None):
         # Records the argument synchronously, at the moment main.py calls
         # this to build the coroutine for asyncio.create_task() — NOT
         # inside the coroutine body, which only runs whenever the event
@@ -185,7 +185,7 @@ def test_explicit_mode_query_param_always_wins_over_current_setting(client, auth
     job_id = _job_with_pages(["Clause 1 text."])
     calls = []
 
-    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean"):
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean", chunk_pages_override=None):
         # Records the argument synchronously, at the moment main.py calls
         # this to build the coroutine for asyncio.create_task() — NOT
         # inside the coroutine body, which only runs whenever the event
@@ -202,6 +202,60 @@ def test_explicit_mode_query_param_always_wins_over_current_setting(client, auth
     resp = client.post(f"/api/jobs/{job_id}/reindex-references?mode=ai", headers=auth_headers)
     assert resp.status_code == 200
     assert calls == ["ai"]
+
+
+def test_manual_rebuild_with_no_mode_uses_current_chunk_pages_not_the_jobs_frozen_one(
+    client, auth_headers, monkeypatch,
+):
+    """Regression: the same frozen-engine_params bug test_manual_rebuild_
+    with_no_mode_uses_current_setting_not_the_jobs_frozen_one already covers
+    for enable_ai_indexing also applied to ai_index_chunk_pages — confirmed
+    bug: updating "Pages per AI call" in the settings panel had zero effect
+    on an existing job's manual rebuilds, because engine_params.
+    ai_index_chunk_pages was frozen at job-creation time and never
+    refreshed. job's own frozen value is absent entirely here (created
+    before the setting existed) to make sure a stale/missing frozen value
+    doesn't accidentally match the current setting by coincidence."""
+    job_id = _job_with_pages(["Clause 1 text."])  # engine_params has no ai_index_chunk_pages key at all
+    calls = []
+
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean", chunk_pages_override=None):
+        calls.append(chunk_pages_override)
+        async def _noop():
+            pass
+        return _noop()
+
+    monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
+
+    resp = client.post("/api/settings", json={"ai_index_chunk_pages": 3}, headers=auth_headers)
+    assert resp.status_code == 200
+
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references", headers=auth_headers)
+    assert resp.status_code == 200
+    assert calls == [3]
+
+
+def test_explicit_mode_query_param_still_gets_the_current_chunk_pages_too(client, auth_headers, monkeypatch):
+    """The chunk-size refresh must apply even when ?mode= is given explicitly
+    — mode only picks the detector, it must not opt the request back into
+    the job's frozen chunk size."""
+    job_id = _job_with_pages(["Clause 1 text."])
+    calls = []
+
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean", chunk_pages_override=None):
+        calls.append(chunk_pages_override)
+        async def _noop():
+            pass
+        return _noop()
+
+    monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
+
+    resp = client.post("/api/settings", json={"ai_index_chunk_pages": 7}, headers=auth_headers)
+    assert resp.status_code == 200
+
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references?mode=ai", headers=auth_headers)
+    assert resp.status_code == 200
+    assert calls == [7]
 
 
 def test_job_details_response_surfaces_reindexing_flag(client, auth_headers):

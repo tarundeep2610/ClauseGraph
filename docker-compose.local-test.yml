@@ -15,7 +15,7 @@ services:
     # instead, and the GPU service is reached via host.docker.internal
     # (see .env.local-test) rather than over a tailnet.
     ports:
-      - "12006:8000"
+      - "12016:8000"
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1
@@ -49,6 +49,8 @@ services:
       - AI_INDEX_MODEL=${AI_INDEX_MODEL:-gemini-2.5-flash}
       - AI_INDEX_BASE_URL=${AI_INDEX_BASE_URL:-}
       - AI_INDEX_API_KEY=${AI_INDEX_API_KEY:-}
+      - AI_INDEX_CHUNK_PAGES=${AI_INDEX_CHUNK_PAGES:-10}
+      - AI_INDEX_REQUEST_TIMEOUT_SECONDS=${AI_INDEX_REQUEST_TIMEOUT_SECONDS:-180}
     volumes:
       # Persists SQLite database and uploaded document files across container restarts
       - ocr_data:/app/data

@@ -739,7 +739,7 @@ def get_ocr_job(
 
 @app.post("/api/jobs/{job_id}/reindex-references")
 async def reindex_job_references(
-    job_id: str, mode: Optional[str] = None, text_source: Optional[str] = None,
+    job_id: str, mode: Optional[str] = None,
     principal: Principal = Depends(_require_user),
 ):
     """Rebuilds the cross-reference index for a job from its already-stored
@@ -750,12 +750,21 @@ async def reindex_job_references(
 
     `mode` (optional, "rule" or "ai") forces one detector for this rebuild
     regardless of anything else — lets a reviewer A/B the two detectors on
-    one job. With no `mode`, a manual rebuild is a standalone action (not
-    part of an in-progress OCR run), so — unlike the auto-trigger right
-    after OCR completes, which must stay tied to the job's own frozen
-    engine_params for run-to-run consistency — it uses the CURRENT
-    enable_ai_indexing setting, not whatever was frozen at this job's
-    original creation time."""
+    one job. A manual rebuild is a standalone action (not part of an
+    in-progress OCR run), so — unlike the auto-trigger right after OCR
+    completes, which must stay tied to the job's own frozen engine_params
+    for run-to-run consistency — it always uses the CURRENT
+    enable_ai_indexing and ai_index_chunk_pages settings, not whatever was
+    frozen at this job's original creation time. This applies whether or
+    not `mode` was given explicitly — `mode` only picks the detector, it
+    doesn't opt back into the frozen chunk size.
+
+    There is deliberately no caller-facing choice between the raw/grounded
+    OCR capture and the plain cleaned text as indexing input — the AI path
+    picks automatically, per page (see ai_reference_index._page_text /
+    build_layout_annotated_text), so a job only ever has ONE reference
+    index, never two competing ones for the same page built from different
+    inputs."""
     _check_rate_limit(principal.rate_limit_key)
     job = database.get_job(job_id, include_pages=False)
     if not job:
@@ -769,17 +778,16 @@ async def reindex_job_references(
         raise HTTPException(status_code=409, detail="A reference index rebuild is already running for this job.")
     if mode not in (None, "rule", "ai"):
         raise HTTPException(status_code=400, detail="mode must be 'rule' or 'ai'.")
-    if text_source not in (None, "clean", "raw"):
-        raise HTTPException(status_code=400, detail="text_source must be 'clean' or 'raw'.")
 
+    current_settings = _load_settings()
     resolved_mode = mode
     if resolved_mode is None:
-        current_settings = _load_settings()
         ai_wanted = bool(current_settings.get("enable_ai_indexing", config.AI_INDEXING_ENABLED))
         resolved_mode = "ai" if (ai_wanted and ai_indexing.describe_active_config() is not None) else "rule"
+    chunk_pages_override = current_settings.get("ai_index_chunk_pages")
 
     asyncio.create_task(reference_index.reindex_job(
-        job_id, force_mode=resolved_mode, text_source=text_source or "clean",
+        job_id, force_mode=resolved_mode, chunk_pages_override=chunk_pages_override,
     ))
     return {"message": f"Reference index rebuild started for job {job_id}.", "status": "reindexing"}
 

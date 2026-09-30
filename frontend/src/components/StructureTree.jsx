@@ -45,7 +45,7 @@ function ownLabelOrBareKey(candidate) {
 // instead of the generic synthetic "Subdoc 3" formatKeyLabel would produce.
 // 'manual' likewise: a user-added entry's key is an opaque "manual:<id>"
 // token, not real document vocabulary — always render its own heading text.
-const OWN_LABEL_FAMILIES = new Set(['numheading', 'letterheading', 'subdoc', 'manual']);
+const OWN_LABEL_FAMILIES = new Set(['numheading', 'letterheading', 'subdoc', 'manual', 'point', 'subpoint']);
 
 function terminalLabel(candidate) {
   const idx = candidate.key.indexOf(':');
@@ -188,6 +188,8 @@ const REASON_LABELS = {
   ai_unlocated: "the AI-reported heading text couldn't be matched to this page's real content",
   ai_unresolved_parent_ref: "the AI's stated parent heading couldn't be resolved; nested by its reported level instead",
   ai_fuzzy_parent_ref: "the AI's stated parent heading was matched approximately, not exactly",
+  ai_page_corrected: 'the AI reported the wrong page for this heading; matched on a neighboring page instead',
+  ai_fuzzy_grounded: "the AI-reported heading text only matched approximately, not exactly, to this page's real content",
 };
 
 function reasonsTooltip(reasons) {
@@ -255,7 +257,7 @@ function DragHandle({ id, testId }) {
   );
 }
 
-function TreeNode({ node, depth, onSelect, onSelectContainer, rangeIndex, activePathIds, currentNodeId, onEditItem, onDeleteItem }) {
+function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, onJumpContainer, rangeIndex, activePathIds, currentNodeId, onEditItem, onDeleteItem }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const isCurrent = node.id === currentNodeId;
   const headerRef = useRef(null);
@@ -279,54 +281,118 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, rangeIndex, active
 
   if (node.children.length === 0 && node.leaves.length === 0) return null;
 
-  // Only container-tier nodes (Annexure/Article/Section — anything Part B's
-  // compute_scope_ranges ever tracked) have a page span worth fetching as
-  // its own chunk; a bare leaf-holding node (e.g. "Clause 4.1") never got
-  // pushed onto nested_stack, so it has no range entry and gets no button.
+  // Real backend-tracked container tiers (Annexure/Article/Section —
+  // anything Part B's compute_scope_ranges ever pushed onto nested_stack)
+  // get an explicit multi-page span; anything else falls back to this
+  // node's own earliest known page (finalize() bubbles minPage up from
+  // every leaf/child, so it's always defined here) — every node gets a
+  // working jump/preview target, never just the ranged ones.
   const ranges = rangeIndex?.get(node.key);
-  const itemDescriptor = containerItemDescriptor(node, rangeIndex);
+  const hasOwnRange = !!ranges?.length;
+  const jumpRange = hasOwnRange
+    ? { startPage: ranges[0].start_page, endPage: ranges[0].end_page }
+    : { startPage: node.minPage, endPage: node.minPage };
+
+  // Exactly one occurrence of its own, no real backend range — this node's
+  // own header IS that occurrence (jump/preview/edit/delete all target it
+  // directly, with the leaf's own anchor-precise jump), regardless of
+  // whether it also has real nested children (those still get their own
+  // chevron+expand below) — a redundant "Page N" row under it would add a
+  // click for zero new information. A node WITH a real range keeps full
+  // container treatment even with just one occurrence (still worth a
+  // whole-section preview). A node with MORE than one occurrence keeps each
+  // shown separately, as today — there's genuinely more than one distinct
+  // page to reach.
+  const primaryLeaf = (!hasOwnRange && node.leaves.length === 1) ? node.leaves[0] : null;
+  const lowConfidence = primaryLeaf?.heading_confidence === 'low';
+  const itemDescriptor = primaryLeaf
+    ? { ...leafItemDescriptor(primaryLeaf), heading: node.label }
+    : containerItemDescriptor(node, rangeIndex);
+  // A non-primaryLeaf node always has *something* to expand (leaves-or-
+  // children, per the null-guard above); a primaryLeaf node only has real
+  // children left to expand, since its own one occurrence is folded above.
+  const expandable = primaryLeaf ? node.children.length > 0 : true;
+
+  function handleRowClick() {
+    if (primaryLeaf) {
+      if (onSelect) onSelect(primaryLeaf);
+    } else if (onJumpContainer) {
+      onJumpContainer({ startPage: jumpRange.startPage, endPage: jumpRange.endPage, label: node.label });
+    } else {
+      setExpanded((e) => !e);
+    }
+  }
+
+  function handleMagnifyClick(e) {
+    e.stopPropagation();
+    if (primaryLeaf) {
+      if (onOpenReference) onOpenReference(primaryLeaf);
+    } else if (onSelectContainer) {
+      onSelectContainer({ startPage: jumpRange.startPage, endPage: jumpRange.endPage, label: node.label });
+    }
+  }
 
   return (
     <li
-      className={`structure-tree-node${isCurrent ? ' structure-tree-node--current' : ''}`}
-      data-testid={`structure-node-${node.id}`}
+      className={`structure-tree-node${isCurrent ? ' structure-tree-node--current' : ''}${lowConfidence ? ' structure-tree-leaf--low-confidence' : ''}`}
+      data-testid={primaryLeaf ? `structure-leaf-${primaryLeaf.anchor_id}` : `structure-node-${node.id}`}
+      title={lowConfidence ? reasonsTooltip(primaryLeaf.heading_confidence_reasons) : undefined}
+      // The row's own click lives here, on the outer <li> — not just the
+      // header <div> — so a synthetic click targeting this node directly
+      // (its own testid) fires the same way a real click bubbling up from
+      // inside the header does. Stopping propagation immediately is what
+      // keeps that safe: a nested child row's own click (LeafRow, or a
+      // deeper TreeNode — both stop propagation the same way) is swallowed
+      // at ITS level and never reaches this <li>, so a click deep in an
+      // expanded subtree never also re-fires this ancestor's jump.
+      onClick={(e) => { e.stopPropagation(); handleRowClick(); }}
     >
       <div
         ref={(el) => { headerRef.current = el; setDropRef(el); }}
         className={`structure-tree-node-header${isOver ? ' structure-tree-node-header--drop-over' : ''}`}
         style={{ paddingLeft: depth * 16 }}
-        onClick={() => setExpanded((e) => !e)}
       >
         <DragHandle id={node.key} testId={`structure-drag-handle-${node.id}`} />
-        <i className={`fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}`} />
+        {expandable ? (
+          <i
+            className={`fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}`}
+            onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+            data-testid={`structure-toggle-${node.id}`}
+          />
+        ) : (
+          <i className="fa-regular fa-file-lines" />
+        )}
         <span>
+          {lowConfidence && <span className="structure-low-confidence-marker">≈ </span>}
           {node.label}
-          <span className="structure-tree-node-range">{formatRangeSuffix(node.key, rangeIndex)}</span>
+          {!primaryLeaf && <span className="structure-tree-node-range">{formatRangeSuffix(node.key, rangeIndex)}</span>}
+          {primaryLeaf?.detection_source === 'ai' && (
+            <span className="structure-ai-badge" title={`Detected by AI${primaryLeaf.detection_model ? ` (${primaryLeaf.detection_model})` : ''}`}> AI</span>
+          )}
+          {primaryLeaf?.detection_source === 'manual' && (
+            <span className="structure-ai-badge structure-manual-badge" title="Added manually"> Manual</span>
+          )}
+          {primaryLeaf?.scope_provisional && <span className="structure-provisional-hint"> (provisional)</span>}
         </span>
         <span className="structure-tree-node-actions">
-          {ranges && ranges.length > 0 && onSelectContainer && (
+          {(primaryLeaf ? onOpenReference : onSelectContainer) && (
             <button
               className="structure-tree-node-jump"
-              onClick={(e) => {
-                e.stopPropagation();
-                // Disjoint ranges (a container that closed and reopened later)
-                // pick the earliest occurrence — a reasonable default for "take
-                // me there" with no further disambiguation UI.
-                const r = ranges[0];
-                onSelectContainer({ startPage: r.start_page, endPage: r.end_page, label: node.label });
-              }}
-              title={`View just this section (pages ${ranges[0].start_page}–${ranges[0].end_page})`}
-              data-testid={`structure-jump-${node.id}`}
+              onClick={handleMagnifyClick}
+              title={primaryLeaf || jumpRange.startPage === jumpRange.endPage
+                ? 'Preview this page in a reading modal'
+                : `Preview this section in a reading modal (pages ${jumpRange.startPage}–${jumpRange.endPage})`}
+              data-testid={primaryLeaf ? `structure-view-leaf-${primaryLeaf.anchor_id}` : `structure-jump-${node.id}`}
             >
-              <i className="fa-solid fa-up-right-from-square" />
+              <i className="fa-solid fa-magnifying-glass" />
             </button>
           )}
           {itemDescriptor && onEditItem && (
             <button
               className="structure-tree-node-edit"
               onClick={(e) => { e.stopPropagation(); onEditItem(itemDescriptor); }}
-              title="Edit heading / pages"
-              data-testid={`structure-edit-${node.id}`}
+              title={primaryLeaf ? 'Edit heading / page' : 'Edit heading / pages'}
+              data-testid={primaryLeaf ? `structure-edit-leaf-${primaryLeaf.anchor_id}` : `structure-edit-${node.id}`}
             >
               <i className="fa-solid fa-pen" />
             </button>
@@ -336,25 +402,26 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, rangeIndex, active
               className="structure-tree-node-delete"
               onClick={(e) => { e.stopPropagation(); onDeleteItem(itemDescriptor); }}
               title="Delete this entry"
-              data-testid={`structure-delete-${node.id}`}
+              data-testid={primaryLeaf ? `structure-delete-leaf-${primaryLeaf.anchor_id}` : `structure-delete-${node.id}`}
             >
               <i className="fa-solid fa-trash" />
             </button>
           )}
         </span>
       </div>
-      {expanded && (
+      {expandable && expanded && (
         <ul className="structure-tree-children">
-          {node.leaves.map((leaf) => {
-            const lowConfidence = leaf.heading_confidence === 'low';
+          {!primaryLeaf && node.leaves.map((leaf) => {
+            const leafLowConfidence = leaf.heading_confidence === 'low';
             const leafDescriptor = leafItemDescriptor(leaf);
             return (
               <LeafRow
                 key={leaf.anchor_id}
                 leaf={leaf}
                 depth={depth + 1}
-                lowConfidence={lowConfidence}
+                lowConfidence={leafLowConfidence}
                 onSelect={onSelect}
+                onOpenReference={onOpenReference}
                 onEditItem={onEditItem}
                 onDeleteItem={onDeleteItem}
                 leafDescriptor={leafDescriptor}
@@ -368,6 +435,8 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, rangeIndex, active
               depth={depth + 1}
               onSelect={onSelect}
               onSelectContainer={onSelectContainer}
+              onOpenReference={onOpenReference}
+              onJumpContainer={onJumpContainer}
               rangeIndex={rangeIndex}
               activePathIds={activePathIds}
               currentNodeId={currentNodeId}
@@ -381,14 +450,16 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, rangeIndex, active
   );
 }
 
-function LeafRow({ leaf, depth, lowConfidence, onSelect, onEditItem, onDeleteItem, leafDescriptor }) {
+function LeafRow({ leaf, depth, lowConfidence, onSelect, onOpenReference, onEditItem, onDeleteItem, leafDescriptor }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: leaf.key });
   return (
     <li
       ref={setDropRef}
       className={`structure-tree-leaf${lowConfidence ? ' structure-tree-leaf--low-confidence' : ''}${isOver ? ' structure-tree-leaf--drop-over' : ''}`}
       style={{ paddingLeft: depth * 16 }}
-      onClick={() => onSelect(leaf)}
+      // Stops here so this occurrence's own click never also re-fires an
+      // ancestor node's row click (see the matching note on TreeNode's <li>).
+      onClick={(e) => { e.stopPropagation(); onSelect(leaf); }}
       data-testid={`structure-leaf-${leaf.anchor_id}`}
       title={lowConfidence ? reasonsTooltip(leaf.heading_confidence_reasons) : undefined}
     >
@@ -404,6 +475,16 @@ function LeafRow({ leaf, depth, lowConfidence, onSelect, onEditItem, onDeleteIte
       )}
       {leaf.scope_provisional && <span className="structure-provisional-hint"> (provisional)</span>}
       <span className="structure-tree-node-actions">
+        {onOpenReference && (
+          <button
+            className="structure-tree-node-jump"
+            onClick={(e) => { e.stopPropagation(); onOpenReference(leaf); }}
+            title="Preview this page in a reading modal"
+            data-testid={`structure-view-leaf-${leaf.anchor_id}`}
+          >
+            <i className="fa-solid fa-magnifying-glass" />
+          </button>
+        )}
         {onEditItem && (
           <button
             className="structure-tree-node-edit"
@@ -443,7 +524,7 @@ function RootDropZone() {
 }
 
 export default function StructureTree({
-  referenceStore, onSelect, onSelectContainer, scopeRanges, activePage,
+  referenceStore, onSelect, onSelectContainer, onOpenReference, onJumpContainer, scopeRanges, activePage,
   onEditItem, onDeleteItem, onMoveItem, parentOverrides, sortOverrides,
 }) {
   const sensors = useSensors(
@@ -536,6 +617,8 @@ export default function StructureTree({
             depth={0}
             onSelect={onSelect}
             onSelectContainer={onSelectContainer}
+            onOpenReference={onOpenReference}
+            onJumpContainer={onJumpContainer}
             rangeIndex={rangeIndex}
             activePathIds={activePathIds}
             currentNodeId={currentNodeId}

@@ -6,7 +6,12 @@ fuzzy match (which also makes a reference cycle structurally impossible),
 and markdown-artifact sanitization before block grounding.
 """
 
+import pytest
+
+import ai_indexing
 import ai_reference_index as ari
+from ai_indexing.prompt import CarryContext
+from ai_indexing.schema import AIHeading
 
 
 def test_parent_ref_matches_carry_in_ref_id_exactly():
@@ -60,21 +65,61 @@ def test_no_parent_ref_falls_back_to_level():
     assert (depth, warn) == (1, None)
 
 
+def test_parent_ref_fuzzy_matches_a_carried_in_label_from_an_earlier_chunk():
+    """Direct repro of the confirmed real bug: a chunk where the AI
+    correctly flagged 12 roman-numeral grounds as headings, all with
+    parent_ref naming "Grounds of Appeal" (opened in an EARLIER chunk, so
+    neither an exact carry_ref_map ref_id nor a same-chunk
+    chunk_heading_depths entry) — every one fell back to
+    ai_unresolved_parent_ref with no fuzzy attempt against the carry-in
+    labels at all."""
+    carry_label_map = {ari._norm_for_match("Grounds of Appeal"): 0}
+    depth, warn = ari._resolve_depth_for_heading(
+        "Grounds of Appeal", level=2, carry_ref_map={}, chunk_heading_depths={},
+        current_stack_len=1, carry_label_map=carry_label_map,
+    )
+    assert (depth, warn) == (1, None)  # exact label match, fully resolved
+
+
+def test_parent_ref_fuzzy_matches_a_paraphrased_carried_in_label():
+    carry_label_map = {ari._norm_for_match("Grounds of Appeal"): 0}
+    depth, warn = ari._resolve_depth_for_heading(
+        "Grounds Of the Appeal", level=2, carry_ref_map={}, chunk_heading_depths={},
+        current_stack_len=1, carry_label_map=carry_label_map,
+    )
+    assert depth == 1
+    assert warn == "ai_fuzzy_carry_parent_ref"
+
+
+def test_parent_ref_unresolvable_even_against_carry_labels_still_degrades_safely():
+    carry_label_map = {ari._norm_for_match("Grounds of Appeal"): 0}
+    depth, warn = ari._resolve_depth_for_heading(
+        "Some Completely Unrelated Heading", level=2, carry_ref_map={}, chunk_heading_depths={},
+        current_stack_len=1, carry_label_map=carry_label_map,
+    )
+    assert warn == "ai_unresolved_parent_ref"
+    assert depth == 1  # clamped to current_stack_len via level - 1
+
+
 def test_locate_heading_block_exact_and_fuzzy():
     blocks = ["ANNEXURE A-1", "some intro text", "3.0 CONDITIONS AND COVENANTS", "body text here"]
-    assert ari.locate_heading_block(blocks, "ANNEXURE A-1", set()) == 0
-    # Slightly OCR-drifted / re-cased text should still fuzzy-match.
-    assert ari.locate_heading_block(blocks, "3.0 Conditions and Covenants", {0, 1}) == 2
+    result = ari.locate_heading_block(blocks, "ANNEXURE A-1", set())
+    assert result[0] == 0 and result[1] == "exact"
+    # Re-cased text with only punctuation/case differences normalizes to an
+    # identical string (_norm_for_match folds case and collapses non-word
+    # chars) -> still an "exact" match, not fuzzy.
+    result = ari.locate_heading_block(blocks, "3.0 Conditions and Covenants", {0, 1})
+    assert result[0] == 2 and result[1] == "exact"
 
 
 def test_locate_heading_block_never_reuses_a_claimed_block():
     blocks = ["3.0 CONDITIONS", "body", "3.0 CONDITIONS"]  # duplicate text on one page
     used = set()
     first = ari.locate_heading_block(blocks, "3.0 CONDITIONS", used)
-    assert first == 0
-    used.add(first)
+    assert first[0] == 0
+    used.add(first[0])
     second = ari.locate_heading_block(blocks, "3.0 CONDITIONS", used)
-    assert second == 2  # not 0 again
+    assert second[0] == 2  # not 0 again
 
 
 def test_locate_heading_block_returns_none_below_cutoff():
@@ -82,8 +127,295 @@ def test_locate_heading_block_returns_none_below_cutoff():
     assert ari.locate_heading_block(blocks, "3.4 QUALITY PLANS", set()) is None
 
 
+def test_locate_heading_in_chunk_finds_a_match_on_a_neighboring_page_when_claimed_page_is_wrong():
+    """Direct repro of the confirmed bug: the AI claims a heading is on one
+    page, but the real matching text is a couple of pages away in the same
+    chunk — the original single-page-only search had nothing to
+    cross-check the claimed page against."""
+    page_blocks = {5: ["unrelated court-fee stamp text"], 7: ["3.3 TIME SCHEDULE"]}
+    result = ari._locate_heading_in_chunk(page_blocks, 5, "3.3 TIME SCHEDULE", {})
+    assert result == (7, 0, "exact", 1.0)
+
+
+def test_locate_heading_in_chunk_rejects_a_coincidental_fuzzy_match_with_a_different_leading_number():
+    """The direct repro of the "3.3 TIME SCHEDULE"/"3.4 QUALITY PLANS"
+    false-positive: a same-shaped decimal heading text with a DIFFERENT
+    leading number must never be accepted, even though its fuzzy ratio
+    clears the cutoff."""
+    page_blocks = {9: ["3.4 TIME SCHEDULE"]}
+    assert ari._locate_heading_in_chunk(page_blocks, 9, "3.3 TIME SCHEDULE", {}) is None
+
+
+def test_locate_heading_in_chunk_tries_alt_text_for_a_hinted_garbled_heading():
+    """alt_text (the AI's own family_hint/number_hint canonical form) is
+    tried alongside the verbatim heading_text — rescues a case where the
+    verbatim text alone can't be grounded but the canonical form matches
+    the real page content."""
+    page_blocks = {61: ["Annexure A-1"]}
+    without_alt = ari._locate_heading_in_chunk(page_blocks, 61, "Zzxq Garble Nomatch", {})
+    assert without_alt is None
+
+    with_alt = ari._locate_heading_in_chunk(
+        page_blocks, 61, "Zzxq Garble Nomatch", {}, alt_text="Annexure A-1",
+    )
+    assert with_alt == (61, 0, "exact", 1.0)
+
+
 def test_markdown_artifacts_are_sanitized_before_and_after_grounding():
     from ai_indexing.schema import sanitize_heading_text
     assert sanitize_heading_text("### 3.4 QUALITY PLANS") == "3.4 QUALITY PLANS"
     assert sanitize_heading_text("**3.4 QUALITY PLANS**") == "3.4 QUALITY PLANS"
     assert sanitize_heading_text("3.4 QUALITY PLANS:") == "3.4 QUALITY PLANS"
+
+
+# ─── Per-heading AI parent-resolution micro-decision (replaces the fuzzy/
+# positional fallback specifically — never the exact-match path) ──────────
+
+
+def test_build_parent_choice_prompt_lists_innermost_first_and_top_level_last():
+    """Innermost-first, top-level-last ordering (see _build_parent_choice_
+    prompt's docstring) — the safe, usually-correct default should be the
+    first-listed option, not the riskiest one."""
+    system_prompt, user_prompt = ari._build_parent_choice_prompt(
+        "Respondent's case", ["JUDGMENT", "Challenge to the Arbitral Award"],
+    )
+    assert "single letter" in system_prompt
+    assert "Respondent's case" in user_prompt
+    assert "A) Directly inside 'Challenge to the Arbitral Award'" in user_prompt
+    assert "B) Directly inside 'JUDGMENT'" in user_prompt
+    assert "C) Top-level" in user_prompt
+
+
+def test_parse_parent_choice_answer_maps_letters_to_depth_innermost_first():
+    # num_candidates=2: A -> depth 2 (innermost), B -> depth 1, C -> depth 0 (top-level, last letter)
+    assert ari._parse_parent_choice_answer("A", num_candidates=2) == 2
+    assert ari._parse_parent_choice_answer("B", num_candidates=2) == 1
+    assert ari._parse_parent_choice_answer("C.", num_candidates=2) == 0
+    assert ari._parse_parent_choice_answer("  b  ", num_candidates=2) == 1  # lowercase, whitespace
+
+
+def test_parse_parent_choice_answer_rejects_out_of_range_or_unparseable():
+    assert ari._parse_parent_choice_answer("D", num_candidates=2) is None  # only A-C offered
+    assert ari._parse_parent_choice_answer("", num_candidates=2) is None
+    assert ari._parse_parent_choice_answer("I think it's the second one", num_candidates=2) is None
+
+
+class _FakeProvider:
+    def __init__(self, answer=None, raises=None):
+        self.answer = answer
+        self.raises = raises
+        self.calls = []
+
+    async def complete(self, *, system_prompt, user_prompt, cancel_check=None):
+        self.calls.append((system_prompt, user_prompt))
+        if self.raises:
+            raise self.raises
+        return ai_indexing.CompletionResult(text=self.answer, provider="fake", model="fake", duration_ms=0)
+
+
+def _fake_get_provider(fake):
+    async def _get(cfg):
+        return fake
+    return _get
+
+
+@pytest.mark.asyncio
+async def test_resolve_parent_via_ai_returns_depth_from_a_valid_answer(monkeypatch):
+    fake = _FakeProvider(answer="A")  # innermost-first: "A" = directly inside the last (innermost) candidate
+    monkeypatch.setattr(ai_indexing, "get_provider", _fake_get_provider(fake))
+    depth = await ari._resolve_parent_via_ai(
+        "Respondent's case", ["JUDGMENT", "Challenge to the Arbitral Award"], provider_config=object(),
+    )
+    assert depth == 2
+    assert len(fake.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_parent_via_ai_returns_none_on_unparseable_answer(monkeypatch):
+    fake = _FakeProvider(answer="I'm not sure, maybe the second one?")
+    monkeypatch.setattr(ai_indexing, "get_provider", _fake_get_provider(fake))
+    depth = await ari._resolve_parent_via_ai("X", ["A", "B"], provider_config=object())
+    assert depth is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_parent_via_ai_returns_none_on_provider_failure(monkeypatch):
+    fake = _FakeProvider(raises=ai_indexing.AIRemoteError("simulated outage", provider="fake"))
+    monkeypatch.setattr(ai_indexing, "get_provider", _fake_get_provider(fake))
+    depth = await ari._resolve_parent_via_ai("X", ["A", "B"], provider_config=object())
+    assert depth is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_parent_via_ai_skips_the_call_with_no_candidates():
+    # No monkeypatch of ai_indexing.get_provider here on purpose — an empty
+    # candidate list must return before ever reaching the provider layer.
+    depth = await ari._resolve_parent_via_ai("X", [], provider_config=object())
+    assert depth is None
+
+
+# ─── Wiring inside _ground_and_resolve_chunk: gated by resolve_parent_via_ai,
+# and only ever consulted on the fuzzy/unresolved fallback path ────────────
+
+
+def _heading(text, page, level, parent_ref=None):
+    return AIHeading(
+        heading_text=text, start_page=page, level=level, parent_ref=parent_ref,
+        end_page=None, still_open_at_chunk_end=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_ground_and_resolve_chunk_never_calls_ai_resolver_on_an_exact_match(monkeypatch):
+    fake = _FakeProvider(answer="A")
+    monkeypatch.setattr(ai_indexing, "get_provider", _fake_get_provider(fake))
+    headings = [_heading("ANNEXURE A-1", page=1, level=1)]
+    page_blocks = {1: ["ANNEXURE A-1", "body text"]}
+    carry_context = CarryContext(open_containers=[], last_page_tail="")
+    await ari._ground_and_resolve_chunk(
+        headings, page_blocks, carry_context, "fake-model", has_next_page_fn=lambda pn: False,
+        resolve_parent_via_ai=True, provider_config=object(),
+    )
+    assert fake.calls == []
+
+
+@pytest.mark.asyncio
+async def test_ground_and_resolve_chunk_uses_ai_resolver_on_the_fallback_path_when_enabled(monkeypatch):
+    """Direct repro of the confirmed real bug: a heading whose parent_ref
+    doesn't exactly match anything known (today: fuzzy-string-match or give
+    up positionally) instead gets a bounded multiple-choice question — here
+    the fake provider picks "A" (the only candidate, JUDGMENT), overriding
+    what the mechanical fallback would otherwise have resolved to."""
+    fake = _FakeProvider(answer="A")
+    monkeypatch.setattr(ai_indexing, "get_provider", _fake_get_provider(fake))
+    headings = [
+        _heading("JUDGMENT", page=1, level=1),
+        _heading("Challenge to the Arbitral Award", page=2, level=1, parent_ref="something unresolvable"),
+    ]
+    page_blocks = {1: ["JUDGMENT", "body"], 2: ["Challenge to the Arbitral Award", "body"]}
+    carry_context = CarryContext(open_containers=[], last_page_tail="")
+    events_by_page, warning_counts = await ari._ground_and_resolve_chunk(
+        headings, page_blocks, carry_context, "fake-model", has_next_page_fn=lambda pn: False,
+        resolve_parent_via_ai=True, provider_config=object(),
+    )
+    assert len(fake.calls) == 1
+    challenge_event = events_by_page[2][0]
+    assert challenge_event["depth"] == 1  # "B" = directly inside candidate 1 (JUDGMENT)
+    assert "ai_micro_resolved_parent_ref" in warning_counts
+
+
+@pytest.mark.asyncio
+async def test_ground_and_resolve_chunk_falls_back_when_ai_resolver_is_unparseable(monkeypatch):
+    """Safety net: an unparseable/failed micro-decision must never regress
+    below today's existing fuzzy/positional behavior."""
+    fake = _FakeProvider(answer="not sure")
+    monkeypatch.setattr(ai_indexing, "get_provider", _fake_get_provider(fake))
+    headings = [
+        _heading("JUDGMENT", page=1, level=1),
+        _heading("Challenge to the Arbitral Award", page=2, level=1, parent_ref="something unresolvable"),
+    ]
+    page_blocks = {1: ["JUDGMENT", "body"], 2: ["Challenge to the Arbitral Award", "body"]}
+    carry_context = CarryContext(open_containers=[], last_page_tail="")
+    events_by_page, warning_counts = await ari._ground_and_resolve_chunk(
+        headings, page_blocks, carry_context, "fake-model", has_next_page_fn=lambda pn: False,
+        resolve_parent_via_ai=True, provider_config=object(),
+    )
+    assert len(fake.calls) == 1
+    assert "ai_unresolved_parent_ref" in warning_counts
+    assert "ai_micro_resolved_parent_ref" not in warning_counts
+
+
+@pytest.mark.asyncio
+async def test_ground_and_resolve_chunk_never_calls_ai_resolver_when_flag_is_off(monkeypatch):
+    fake = _FakeProvider(answer="B")
+    monkeypatch.setattr(ai_indexing, "get_provider", _fake_get_provider(fake))
+    headings = [
+        _heading("JUDGMENT", page=1, level=1),
+        _heading("Challenge to the Arbitral Award", page=2, level=1, parent_ref="something unresolvable"),
+    ]
+    page_blocks = {1: ["JUDGMENT", "body"], 2: ["Challenge to the Arbitral Award", "body"]}
+    carry_context = CarryContext(open_containers=[], last_page_tail="")
+    await ari._ground_and_resolve_chunk(
+        headings, page_blocks, carry_context, "fake-model", has_next_page_fn=lambda pn: False,
+        resolve_parent_via_ai=False, provider_config=object(),
+    )
+    assert fake.calls == []
+
+
+@pytest.mark.asyncio
+async def test_ground_and_resolve_chunk_catches_a_bare_level_only_eviction_with_no_parent_ref(monkeypatch):
+    """Direct repro of the confirmed real bug found on live verification: the
+    model reported "Challenge to the Arbitral Award" with NO parent_ref at
+    all (just level=1), which _resolve_depth_for_heading trusts outright
+    (warn=None — "no parent_ref" was never a flagged case) even though it
+    evicts both JUDGMENT and FACTS from the open stack. The widened trigger
+    (any resolution that would evict an open ancestor, not just ones the
+    mechanical resolver already flagged) must catch this too."""
+    fake = _FakeProvider(answer="B")  # "child of JUDGMENT" — correct, sibling of FACTS
+    monkeypatch.setattr(ai_indexing, "get_provider", _fake_get_provider(fake))
+    headings = [
+        _heading("JUDGMENT", page=1, level=1),
+        _heading("FACTS", page=1, level=2, parent_ref="JUDGMENT"),
+        _heading("Challenge to the Arbitral Award", page=2, level=1),  # no parent_ref at all
+    ]
+    page_blocks = {1: ["JUDGMENT", "FACTS", "body"], 2: ["Challenge to the Arbitral Award", "body"]}
+    carry_context = CarryContext(open_containers=[], last_page_tail="")
+    events_by_page, warning_counts = await ari._ground_and_resolve_chunk(
+        headings, page_blocks, carry_context, "fake-model", has_next_page_fn=lambda pn: False,
+        resolve_parent_via_ai=True, provider_config=object(),
+    )
+    assert len(fake.calls) == 1
+    challenge_event = events_by_page[2][0]
+    assert challenge_event["depth"] == 1  # child of JUDGMENT, not evicted to root
+    assert "ai_micro_resolved_parent_ref" in warning_counts
+
+
+@pytest.mark.asyncio
+async def test_ground_and_resolve_chunk_also_double_checks_an_exact_label_match_that_evicts_ancestors(monkeypatch):
+    """An exact match against a same-chunk heading's own text (not an opaque
+    carry_ref_map id) still gets double-checked when it would close out
+    several open ancestors — this is deliberately wider than "only what the
+    mechanical resolver already flagged," per the approved widening."""
+    fake = _FakeProvider(answer="B")
+    monkeypatch.setattr(ai_indexing, "get_provider", _fake_get_provider(fake))
+    headings = [
+        _heading("JUDGMENT", page=1, level=1),
+        _heading("Conclusion", page=1, level=2, parent_ref="JUDGMENT"),
+        _heading("19.", page=1, level=3, parent_ref="Conclusion"),
+        _heading("5.", page=1, level=4, parent_ref="19."),
+        # Exact match against "Conclusion"'s own text — resolves cleanly via
+        # chunk_heading_depths, not carry_ref_map — but closes both "19."
+        # and "5." on the way back up.
+        _heading("20.", page=2, level=2, parent_ref="Conclusion"),
+    ]
+    page_blocks = {1: ["JUDGMENT", "Conclusion", "19.", "5.", "body"], 2: ["20.", "body"]}
+    carry_context = CarryContext(open_containers=[], last_page_tail="")
+    await ari._ground_and_resolve_chunk(
+        headings, page_blocks, carry_context, "fake-model", has_next_page_fn=lambda pn: False,
+        resolve_parent_via_ai=True, provider_config=object(),
+    )
+    assert len(fake.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_ground_and_resolve_chunk_still_trusts_a_carry_ref_id_match_even_when_it_evicts(monkeypatch):
+    """The one exemption from the widened trigger: an exact match against an
+    opaque carry_ref_map id (the resolver's own minted identifier, copied
+    back verbatim by the model) is never second-guessed, no matter how many
+    ancestors it closes — it's the most reliable signal available."""
+    fake = _FakeProvider(answer="A")
+    monkeypatch.setattr(ai_indexing, "get_provider", _fake_get_provider(fake))
+    headings = [
+        _heading("FACTS", page=1, level=2, parent_ref="Conclusion inner"),
+        _heading("Resumes at root", page=2, level=1, parent_ref="c1"),  # opaque carried-in ref_id
+    ]
+    page_blocks = {1: ["FACTS", "body"], 2: ["Resumes at root", "body"]}
+    carry_context = CarryContext(
+        open_containers=[{"ref_id": "c1", "level": 1, "label": "JUDGMENT", "source": "ai"}],
+        last_page_tail="",
+    )
+    await ari._ground_and_resolve_chunk(
+        headings, page_blocks, carry_context, "fake-model", has_next_page_fn=lambda pn: False,
+        resolve_parent_via_ai=True, provider_config=object(),
+    )
+    assert fake.calls == []

@@ -156,6 +156,32 @@ def test_repeated_generic_trigger_gets_a_disambiguating_label():
     assert by_key["clause:1"]["scope_chain"][0]["key"] != by_key["clause:2"]["scope_chain"][0]["key"]
 
 
+def test_case_caption_trigger_synthesizes_label_from_the_distinguishing_line_that_follows():
+    """The case-caption trigger itself ("In the High Court of...") carries
+    no distinguishing text of its own — the SAME caption legitimately
+    repeats before several different pleadings in one paper-book (real
+    example: the same court-caption block opens three different pleadings
+    on consecutive pages of one paper-book). The label must come from
+    whichever later block actually distinguishes this occurrence, not the
+    generic caption phrase."""
+    page_text = (
+        "In the High Court of Punjab and Haryana at Chandigarh\n\n"
+        "Civil Misc. No. 63-CARB/2019\n\n"
+        "In F.A.O. (Comm.Arb.) 23 2019\n\n"
+        "Clause 1 Under this application.\n"
+    )
+    by_key, _ = _by_key(page_text)
+    assert by_key["clause:1"]["scope_chain"][0]["label"] == "Civil Misc. No. 63-carb/2019"
+
+
+def test_facts_and_prayer_bare_headings_open_a_new_subdoc_boundary():
+    by_key, _ = _by_key("FACTS\n\nClause 1 The petitioner invited tenders.\n")
+    assert by_key["clause:1"]["scope_chain"][0]["label"] == "Facts"
+
+    by_key, _ = _by_key("PRAYER\n\nClause 1 It is prayed that the appeal be allowed.\n")
+    assert by_key["clause:1"]["scope_chain"][0]["label"] == "Prayer"
+
+
 def test_grounds_of_appeal_still_activates_ground_scope_detection():
     page_text = (
         "GROUNDS OF APPEAL\n\n"
