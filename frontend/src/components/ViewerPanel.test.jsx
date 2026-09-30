@@ -389,16 +389,16 @@ describe('ViewerPanel — Structure sidebar (Part C2)', () => {
   });
 });
 
-describe('ViewerPanel — Structure sidebar leaf click opens the reading modal', () => {
-  it('opens the reading modal for the leaf\'s page without moving the main PDF pane, even far outside the loaded window', () => {
+describe('ViewerPanel — Structure sidebar leaf click jumps the main panel', () => {
+  it('moves the main PDF pane straight to the leaf\'s page, even far outside the loaded window, without opening the reading modal', () => {
     const store = storeWithDelta({
       800: {
         'clause:9.1': [{ anchor_id: 'far-leaf', collapsed_key: 'clause:9.1', key: 'clause:9.1', page: 800, scope_chain: [] }],
       },
     });
-    const onRequestStructureContent = vi.fn();
     // Only page 1 is loaded — a windowed fetch on a 900+ page document
-    // would never include page 800 while the reader is on page 1.
+    // would never include page 800 while the reader is on page 1; the jump
+    // itself only needs to move currentPdfPage, exactly like PageNavBar does.
     const job = { ...jobWithPages([{ page: 1, text: 'x' }]), total_pages: 900 };
     render(
       <ViewerPanel
@@ -408,27 +408,23 @@ describe('ViewerPanel — Structure sidebar leaf click opens the reading modal',
         jobDetails={job}
         referenceStore={store}
         scopeRanges={[]}
-        onRequestStructureContent={onRequestStructureContent}
       />
     );
     fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
     fireEvent.click(screen.getByTestId('structure-leaf-far-leaf'));
 
-    // Main PDF pane is untouched.
-    expect(screen.getByTestId('mock-pdf-page')).toHaveTextContent('1');
-    // The reading modal opened for that leaf's page instead.
-    expect(screen.getByTestId('structure-reading-modal')).toBeInTheDocument();
-    expect(onRequestStructureContent).toHaveBeenCalledWith({ startPage: 800, endPage: 800, label: 'Page 800', anchorId: 'far-leaf' });
+    expect(screen.getByTestId('mock-pdf-page')).toHaveTextContent('800');
+    expect(screen.queryByTestId('structure-reading-modal')).not.toBeInTheDocument();
   });
 
-  it('does not force-switch view mode — clicking a leaf in PDF-only mode still opens the modal without touching the current view mode', () => {
+  it('does not force-switch view mode — clicking a leaf in PDF-only mode jumps the page without touching the current view mode', () => {
     const store = storeWithDelta({
       5: {
         'clause:2.1': [{ anchor_id: 'pdf-only-leaf', collapsed_key: 'clause:2.1', key: 'clause:2.1', page: 5, scope_chain: [] }],
       },
     });
     const setViewMode = vi.fn();
-    const job = jobWithPages([{ page: 1, text: 'x' }]);
+    const job = jobWithPages([{ page: 1, text: 'x' }, { page: 5, text: 'page five text' }]);
     render(
       <ViewerPanel
         {...baseProps}
@@ -442,13 +438,100 @@ describe('ViewerPanel — Structure sidebar leaf click opens the reading modal',
     );
     fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
     fireEvent.click(screen.getByTestId('structure-leaf-pdf-only-leaf'));
-    expect(screen.getByTestId('mock-pdf-page')).toHaveTextContent('1');
+    expect(screen.getByTestId('mock-pdf-page')).toHaveTextContent('5');
     expect(setViewMode).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('structure-reading-modal')).not.toBeInTheDocument();
+  });
+
+  it('scrolls the Result pane to the leaf\'s exact anchor position once its page has rendered', () => {
+    const store = storeWithDelta({
+      5: {
+        'clause:2.1': [{
+          anchor_id: 'anchor-leaf', collapsed_key: 'clause:2.1', key: 'clause:2.1', page: 5, scope_chain: [],
+          fingerprint: 'Clause 2.1 page five text',
+        }],
+      },
+    });
+    const job = jobWithPages([{ page: 1, text: 'x' }, { page: 5, text: 'Clause 2.1 page five text.' }]);
+    const scrollSpy = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollSpy;
+    try {
+      render(
+        <ViewerPanel
+          {...baseProps}
+          viewMode="split"
+          pdfSrc="blob:full-doc"
+          jobDetails={job}
+          referenceStore={store}
+          scopeRanges={[]}
+        />
+      );
+      fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
+      fireEvent.click(screen.getByTestId('structure-leaf-anchor-leaf'));
+
+      expect(screen.getByTestId('mock-pdf-page')).toHaveTextContent('5');
+      expect(scrollSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it('clicking a leaf\'s magnifying-glass button opens the reading modal for that page without moving the main PDF pane', () => {
+    const store = storeWithDelta({
+      800: {
+        'clause:9.1': [{ anchor_id: 'far-leaf', collapsed_key: 'clause:9.1', key: 'clause:9.1', page: 800, scope_chain: [] }],
+      },
+    });
+    const onRequestStructureContent = vi.fn();
+    const job = { ...jobWithPages([{ page: 1, text: 'x' }]), total_pages: 900 };
+    render(
+      <ViewerPanel
+        {...baseProps}
+        viewMode="split"
+        pdfSrc="blob:full-doc"
+        jobDetails={job}
+        referenceStore={store}
+        scopeRanges={[]}
+        onRequestStructureContent={onRequestStructureContent}
+      />
+    );
+    fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
+    fireEvent.click(screen.getByTestId('structure-view-leaf-far-leaf'));
+
+    // Main PDF pane is untouched.
+    expect(screen.getByTestId('mock-pdf-page')).toHaveTextContent('1');
+    // The reading modal opened for that leaf's page instead.
     expect(screen.getByTestId('structure-reading-modal')).toBeInTheDocument();
+    expect(onRequestStructureContent).toHaveBeenCalledWith({ startPage: 800, endPage: 800, label: 'Page 800', anchorId: 'far-leaf' });
   });
 });
 
 describe('ViewerPanel — Structure container jump opens the reading modal', () => {
+  it('clicking a container row (not its magnifying-glass button) jumps the main PDF pane to the section\'s start page, without opening the modal', () => {
+    const store = storeWithDelta({
+      427: {
+        'annexure:a-2': [{ anchor_id: 'a-leaf', collapsed_key: 'annexure:a-2', key: 'annexure:a-2', page: 427, scope_chain: [] }],
+      },
+    });
+    const job = { ...jobWithPages([{ page: 1, text: 'x' }]), total_pages: 900 };
+    render(
+      <ViewerPanel
+        {...baseProps}
+        viewMode="split"
+        pdfSrc="blob:full-doc"
+        jobDetails={job}
+        referenceStore={store}
+        scopeRanges={[{ key: 'annexure:a-2', scope_key: '', depth: 0, start_page: 427, end_page: 446 }]}
+      />
+    );
+    fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
+    fireEvent.click(screen.getByText('Annexure A-2'));
+
+    expect(screen.getByTestId('mock-pdf-page')).toHaveTextContent('427');
+    expect(screen.queryByTestId('structure-reading-modal')).not.toBeInTheDocument();
+  });
+
   it('renders no reading modal by default', () => {
     const job = jobWithPages([{ page: 1, text: 'x' }]);
     render(<ViewerPanel {...baseProps} viewMode="split" pdfSrc="blob:full-doc" jobDetails={{ ...job, total_pages: 900 }} />);

@@ -42,8 +42,76 @@ MENTION_RE = re.compile(
     re.IGNORECASE,
 )
 
-GROUND_DIGIT_RE = re.compile(r"^\s*\(?(?P<number>\d+(?:\.\d+)*)(?:\)|\.)\s+[A-Z]")
-GROUND_ROMAN_RE = re.compile(r"^\s*\(?(?P<number>[IVXLCDM]+)(?:\)|\.)\s+[A-Z]")
+GROUND_DIGIT_RE = re.compile(r"^\s*\(?(?P<number>\d+(?:\.\d+)*)(?:\)\.?|\.)\s+[A-Z]")
+GROUND_ROMAN_RE = re.compile(r"^\s*\(?(?P<number>[IVXLCDMivxlcdm]+)(?:\)\.?|\.)\s+[A-Z]")
+
+
+def _is_date_shaped_number(number_raw: str) -> bool:
+    """A GROUND_DIGIT_RE match whose segments look like a date ("22.10.2008",
+    "19.02.2010") rather than a genuine enumeration — confirmed real bug: a
+    bare date immediately followed by a capitalized word ("22.10.2008.
+    Moreover, respondent...") is common in ordinary prose and matches this
+    regex's \\d+(?:\\.\\d+)* shape exactly the same way a real numbered item
+    does. A 4-digit segment is virtually never a genuine ground/point/clause
+    number in any real numbering convention (which almost always uses 1-2
+    digit segments) — every GROUND_DIGIT_RE call site must reject a match
+    shaped this way."""
+    return any(len(seg) == 4 for seg in number_raw.split("."))
+# A SINGLE enclosed letter, any of A-Z (not just roman-valid ones) —
+# GROUND_ROMAN_RE already only matches genuinely multi-character roman
+# numerals unambiguously (II, III, IV, VII, XI, XXII, ...); the only real
+# ambiguity is a single letter that's ALSO a valid roman numeral (I, V, X,
+# L, C, D, M) appearing mid-sequence in an otherwise plain alphabetical
+# list ("(A)(B)(C)(D)(E)" — confirmed real case: "(C)"/"(D)" were
+# misparsed as roman 100/500 instead of the 3rd/4th list item). See
+# _resolve_ground_or_point_match, which decides between the two using the
+# sequence's own running state, never guessing from one item alone.
+_GROUND_SINGLE_LETTER_RE = re.compile(r"^\s*\(?(?P<letter>[A-Za-z])(?:\)\.?|\.)\s+[A-Z]")
+_ROMAN_VALID_LETTERS = set("IVXLCDM")
+
+# A LOWERCASE roman-numeral sub-list, closing paren only ("i)", "ii)",
+# "iii)", ...) — a distinct shape from GROUND_ROMAN_RE's uppercase,
+# either-paren-or-period enumeration, confirmed real case: sub-items i)
+# through vi) nested directly under a numbered clause ("2.1 The contract
+# shall be performed... in the following documents... i) HVPNL bidding
+# document... ii) HVPN Technical Specification..."), invisible entirely
+# under the previous regex set. See the `subpoint` family/gate below.
+_SUBPOINT_ROMAN_RE = re.compile(r"^\s*(?P<numeral>[ivxlcdm]+)\)\s+[A-Z]")
+
+
+def _resolve_ground_or_point_match(
+    text: str, last_ground_letter_ordinal: Optional[int],
+) -> Optional[Tuple[str, int, bool]]:
+    """Resolves a ground/point enumeration match against `text`, returning
+    (number_raw, match_end, is_sequential_letter) or None. Tries, in
+    order: a plain decimal number; a single enclosed letter, resolved as
+    the next sequential letter (continuing an already-started run, or
+    starting fresh when the letter isn't even a valid roman numeral so
+    there's no ambiguity to resolve) rather than a roman numeral whenever
+    the running state says so; otherwise a genuine (always
+    unambiguous, since it's never a single character) roman numeral."""
+    dm = GROUND_DIGIT_RE.match(text)
+    if dm and not _is_date_shaped_number(dm.group("number")):
+        return dm.group("number"), dm.end(), False
+    lm = _GROUND_SINGLE_LETTER_RE.match(text)
+    if lm:
+        letter = lm.group("letter")
+        ordinal = ord(letter.upper()) - ord("A") + 1
+        continues_run = (
+            last_ground_letter_ordinal is not None and ordinal == last_ground_letter_ordinal + 1
+        )
+        if continues_run or letter.upper() not in _ROMAN_VALID_LETTERS:
+            # The letter itself, not its ordinal — "point:c" reads
+            # naturally and, just as importantly, never collides with a
+            # genuine decimal ground/point "1", "2", "3" in the same or an
+            # overlapping scope the way a numeric ordinal string would.
+            return letter, lm.end(), True
+    rm = GROUND_ROMAN_RE.match(text)
+    if rm:
+        number_raw = rm.group("number")
+        if _is_roman(number_raw):
+            return number_raw, rm.end(), False
+    return None
 
 _GROUND_SCOPE_HEADINGS = re.compile(r"\b(GROUNDS?\s+OF\s+APPEAL|GROUNDS|PRAYER)\b", re.IGNORECASE)
 
@@ -63,9 +131,41 @@ EXTERNAL_LAW_D_RE = re.compile(r"\bsupra\b|\(\d{4}\)\s*\d+\s*SCC\b", re.IGNORECA
 # below, which handles it as a conditional trigger instead.
 SUBDOC_TRIGGER_RE = re.compile(
     r"(ANNEXURE|SCHEDULE|APPENDIX|GROUNDS\s+(?:OF|OR)\s+APPEAL|AFFIDAVIT|MEMO\s+OF\s+PARTIES|"
-    r"JUDGE?MENT|IN\s+THE\s+(?:HIGH\s+)?COURT\s+OF|VERSUS|VS\.?|IMPUGNED\s+(?:ORDER|JUDGE?MENT))",
+    r"JUDGE?MENT|RESPECTFULLY\s+SHOWETH|IN\s+THE\s+(?:HIGH\s+)?COURT\s+OF|"
+    r"IMPUGNED\s+(?:ORDER|JUDGE?MENT))",
     re.IGNORECASE,
 )
+# "VERSUS"/"VS." deliberately excluded — unlike the triggers above, it never
+# indicates a real structural heading in ANY case-captioned document; it's
+# always the party-separator inside a case caption (a general fact about the
+# word, not something specific to one document). A bare "Versus" line used
+# to fire this trigger and wipe out whatever real container was open —
+# confirmed real bug: it repeatedly stomped "MEMO OF PARTIES" and a genuine
+# case heading on adjacent pages of the same document.
+
+# A bare, otherwise-unheralded "FACTS"/"PRAYER" line — pleading-section
+# headings distinct enough (short, colon-optional, nothing else on the
+# line) not to need the noise-prefix tolerance SUBDOC_TRIGGER_RE gets;
+# unlike "GROUNDS OF APPEAL"/"PRAYER" above, a bare "FACTS" alone isn't in
+# SUBDOC_TRIGGER_RE since "facts" also appears constantly in ordinary
+# prose ("facts of the case") — this pattern's full-line anchoring is what
+# keeps it safe.
+_SHORT_PLEADING_HEADING_RE = re.compile(r"^\s*(FACTS|PRAYER)\s*:?\s*$", re.IGNORECASE)
+
+# The case-caption trigger alone ("In the High Court of...") carries no
+# distinguishing text of its own — the SAME caption legitimately repeats
+# before several different pleadings (an application, an affidavit,
+# another application) in one paper-book. When it fires, detect_subdoc_
+# trigger looks ahead a few blocks for whichever of these actually
+# distinguishes THIS occurrence, and labels the container with that
+# instead of the generic caption phrase.
+_CASE_CAPTION_TRIGGER_RE = re.compile(r"IN\s+THE\s+(?:HIGH\s+)?COURT\s+OF", re.IGNORECASE)
+_CASE_CAPTION_LABEL_HINT_RE = re.compile(
+    r"(CIVIL\s+MISC\.?\s*NO\.?\s*[\w./-]*|RESPECTFULLY\s+SHOWETH\s*:?|AFFIDAVIT\s+OF\s+[^\n.]*|"
+    r"IN\s+F\.?A\.?O\.?[^\n]*)",
+    re.IGNORECASE,
+)
+_CASE_CAPTION_LOOKAHEAD_BLOCKS = 5
 # "INDEX" legitimately means two different things: a bundle's own front
 # index (a genuine new-document boundary) vs. a table of contents living
 # inside an already-open Annexure/Schedule/Appendix (that container's own
@@ -74,6 +174,19 @@ SUBDOC_TRIGGER_RE = re.compile(
 # currently open at rank 0.
 _WEAK_SUBDOC_TRIGGER_RE = re.compile(r"\bINDEX\b", re.IGNORECASE)
 _SUBDOC_NOISE_PREFIX = 15  # chars — how much leading OCR noise a trigger can tolerate
+
+# A single real qualifying word (4+ alphabetic chars, nothing else)
+# immediately preceding a bare trigger keyword — "Price " before
+# "Schedule", "Work " before "Schedule:" — signals the trigger names a
+# MINOR sub-label of something else ("Price Schedule", a supply order's
+# own internal heading), not a top-level document division, even though
+# it's well within the noise-prefix tolerance above. General,
+# document-agnostic distinction, not tied to "Schedule" specifically:
+# real OCR noise (`ll`, `Q IN`, `4x4L`, `3S Dated ...` — confirmed real
+# samples _SUBDOC_NOISE_PREFIX exists to tolerate) never matches this
+# shape (too short, contains digits, or is more than one word), so the
+# existing noise tolerance for a genuine heading is unaffected.
+_QUALIFYING_WORD_BEFORE_TRIGGER_RE = re.compile(r"^\s*[A-Za-z]{4,}\s*$")
 
 # A plain decimal-numbered heading of a document's own clause structure
 # ("1. Article", "2.0 CONTRACT DOCUMENTS", "3.4 QUALITY PLANS") — a short
@@ -139,6 +252,8 @@ FAMILIES: Dict[str, Dict[str, Any]] = {
     "para":     {"rank": None, "numbered": True, "aliases": ["para", "paragraph"]},
     "clause":   {"rank": None, "numbered": True, "aliases": ["clause"]},
     "ground":   {"rank": None, "numbered": True, "aliases": ["ground"]},
+    "point":    {"rank": None, "numbered": True, "aliases": ["point"]},
+    "subpoint": {"rank": None, "numbered": True, "aliases": ["subpoint"]},
     "page":     {"rank": None, "numbered": True, "aliases": ["page"]},
 }
 
@@ -215,6 +330,33 @@ def _citation_confidence_reasons(text: str, match_end: int, include_unbounded: b
     if _RANGE_CONTINUATION_RE.match(remainder):
         reasons.append("range_shaped_continuation")
     return reasons
+
+
+# General, document-agnostic phrasing that introduces a QUOTED/REPRODUCED
+# clause from elsewhere — never tied to a specific clause number or this
+# document's own wording. Confirmed real bug: "...as per clause 9.0 ITB,
+# Vol-II, Contract, which reads as under:" immediately precedes "9.0
+# Local/Site conditions" reproduced verbatim inside a Ground of Appeal's
+# own argument — the regex has no way to know this isn't a real new
+# heading of THIS document without a signal like this one.
+_REPRODUCED_TEXT_INTRO_RE = re.compile(
+    r"(which\s+reads?\s+as\s+(?:under|follows)|reads?\s+as\s+(?:under|follows)|"
+    r"as\s+per\s+clause|which\s+read[s]?\s+as|reproduced\s+below|extracted\s+below)"
+    r"\s*:?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _preceded_by_reproduced_text_intro(preceding_text: Optional[str]) -> bool:
+    """Soft signal only — never a hard exclude (see this module's design
+    principles): the caller must still persist the match as its own
+    low-confidence candidate, just prevented from becoming a stack-
+    mutating ancestor (the existing push_blocking gate), so a human
+    reviewer can still see and judge it rather than have it silently
+    vanish."""
+    if not preceding_text:
+        return False
+    return bool(_REPRODUCED_TEXT_INTRO_RE.search(preceding_text.strip()))
 
 
 _DET_TAG_RE = re.compile(r"<\|det\|>(?P<type>\w+)\s*\[[^\]]*\]<\|/det\|>", re.DOTALL)
@@ -499,14 +641,27 @@ def _flatten_blocks(tokens: List[Dict[str, Any]]):
 
 # ─── Sub-document boundary & external-law exclusion ────────────────────────────
 
-def detect_subdoc_trigger(block_text: str, nested_stack: List[Dict[str, str]]) -> Optional[str]:
-    """Returns a formatted label for a GENERIC (unnumbered) sub-document
+def detect_subdoc_trigger(
+    block_text: str, nested_stack: List[Dict[str, str]], lookahead_texts: Tuple[str, ...] = (),
+) -> Optional[Tuple[str, bool]]:
+    """Returns (label, is_strong) for a GENERIC (unnumbered) sub-document
     trigger only — e.g. "Affidavit", "Judgment", a title-cased case-caption
     phrase — within a small bounded noise-prefix of the block's own
     beginning. Deliberately not anchored to the exact first character — real
     scanned pages routinely open a block with a stamp/docket-mark fragment
     before the real heading (confirmed: `ll`, `Q IN`, `4x4L`, `3S Dated ...`
-    in real samples).
+    in real samples). Returns None (not a tuple) when nothing fires at all.
+
+    `is_strong` distinguishes a confident, real section boundary — the
+    caller resets the whole stack, as always — from a keyword match
+    qualified by a single real leading word in the same block ("Price
+    Schedule", "Work Schedule:") that more likely names a minor sub-label
+    of whatever's already open than a genuine new top-level division (see
+    _QUALIFYING_WORD_BEFORE_TRIGGER_RE) — confirmed real bug: exactly this
+    shape opened a container that stayed open for 20 subsequent pages,
+    silently swallowing everything real in between. The caller persists a
+    non-strong match as its own low-confidence candidate without touching
+    the stack — flagged for a human to judge, never silently dropped.
 
     Returns None when no trigger fires, OR when the trigger is one of the
     NUMBERED sub-document families (annexure/schedule/appendix): those are
@@ -520,7 +675,16 @@ def detect_subdoc_trigger(block_text: str, nested_stack: List[Dict[str, str]]) -
     happens to appear inside its label.
 
     `nested_stack` is only consulted for the weak "INDEX" trigger — see
-    _WEAK_SUBDOC_TRIGGER_RE."""
+    _WEAK_SUBDOC_TRIGGER_RE.
+
+    `lookahead_texts` (the next few blocks' own text, caller-supplied) is
+    only consulted when the fired trigger is the case-caption pattern (see
+    _CASE_CAPTION_TRIGGER_RE) — that trigger's own matched text carries no
+    distinguishing content (the SAME caption legitimately repeats before
+    several different pleadings in one paper-book), so the label instead
+    comes from whichever later block actually distinguishes this
+    occurrence (a Civil Misc. No., "Respectfully Showeth", "Affidavit of
+    ...", an "In F.A.O. ..." line)."""
     if DECIMAL_HEADING_RE.match(block_text.strip()):
         return None
     m = SUBDOC_TRIGGER_RE.search(block_text)
@@ -529,6 +693,8 @@ def detect_subdoc_trigger(block_text: str, nested_stack: List[Dict[str, str]]) -
         m = _WEAK_SUBDOC_TRIGGER_RE.search(block_text)
         weak = True
         if not m or m.start() > _SUBDOC_NOISE_PREFIX:
+            if _SHORT_PLEADING_HEADING_RE.match(block_text):
+                return block_text.strip().rstrip(":").title(), True
             return None
     if weak and any(_HIERARCHY_RANK.get(s["family"]) == 0 for s in nested_stack):
         return None  # a bare "INDEX" heading while an Annexure/Schedule/
@@ -537,7 +703,93 @@ def detect_subdoc_trigger(block_text: str, nested_stack: List[Dict[str, str]]) -
     core_m = CORE_RE.match(block_text)
     if core_m and core_m.group("keyword").lower() in _SUBDOC_NUMBERED_FAMILIES:
         return None  # handled natively via _HIERARCHY_RANK below, not here
-    return " ".join(w.capitalize() for w in re.split(r"\s+", m.group(0).strip()))
+    if not weak and _CASE_CAPTION_TRIGGER_RE.search(m.group(0)):
+        for candidate in lookahead_texts:
+            hint_m = _CASE_CAPTION_LABEL_HINT_RE.search(candidate or "")
+            if hint_m:
+                return " ".join(w.capitalize() for w in re.split(r"\s+", hint_m.group(0).strip()))[:80], True
+        return " ".join(w.capitalize() for w in re.split(r"\s+", m.group(0).strip())), True
+
+    label = " ".join(w.capitalize() for w in re.split(r"\s+", m.group(0).strip()))
+    if weak:
+        return label, True
+    is_strong = not _QUALIFYING_WORD_BEFORE_TRIGGER_RE.match(block_text[:m.start()])
+    return label, is_strong
+
+
+def is_subdoc_root_candidate(text: str, family: Optional[str] = None) -> bool:
+    """Returns True if the heading represents a genuine top-level document boundary
+    (an independent document, annexure, schedule, exhibit, or major root boundary)
+    rather than a section heading within the active document."""
+    if family in _SUBDOC_NUMBERED_FAMILIES:
+        return True
+    if not text:
+        return False
+    stripped = text.strip()
+    if SUBDOC_TRIGGER_RE.search(stripped):
+        return True
+    if _WEAK_SUBDOC_TRIGGER_RE.search(stripped):
+        return True
+    if re.search(
+        r"\b(?:EXHIBIT|ATTACHMENT|ADDENDUM|AMENDMENT|AGREEMENT|TENDER|SPECIFICATION|BILL\s+OF\s+QUANTITIES|BOQ)\b",
+        stripped,
+        re.IGNORECASE,
+    ):
+        return True
+    return False
+
+
+_GENERIC_HEADING_MAX_WORDS = 6
+_GENERIC_HEADING_CONNECTORS = {"of", "for", "and", "the", "in", "to", "on", "at", "&", "or"}
+# Same general fact as SUBDOC_TRIGGER_RE's exclusion of "Versus"/"Vs." —
+# case-caption furniture, never a real heading in any document — applied
+# here too so the shape-only detector doesn't independently reintroduce
+# exactly the bug the trigger-list exclusion was meant to fix.
+_GENERIC_HEADING_EXCLUDED_WORDS = {"versus", "vs", "vs."}
+
+
+def _looks_like_generic_heading_shape(text: str) -> bool:
+    """General, document-agnostic SHAPE signal for an open-vocabulary
+    heading no fixed keyword list could ever enumerate in advance
+    ("Insurance:", "Contract Agreement:", "Taxes & Duties", "Bank
+    Guarantee for Contract Performance", "Summary Price Proposal" — real
+    confirmed misses, none sharing a common keyword). Requires either a
+    trailing colon, or every significant word capitalized/ALL-CAPS
+    throughout (short connector words exempted) — deliberately
+    conservative (<= 6 words, first word always capitalized) since this
+    signal has no numbering/keyword evidence behind it at all, shape
+    alone. Purely a detection signal — callers must still treat a match
+    as low-confidence and never let it become a stack-mutating ancestor
+    (see build_targets_for_page's residual-fallback usage)."""
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if stripped.rstrip(":.- ").lower() in _GENERIC_HEADING_EXCLUDED_WORDS:
+        return False
+    has_colon = stripped.endswith(":") or stripped.endswith(":-")
+    if stripped.endswith(":-"):
+        body = stripped[:-2]
+    elif has_colon:
+        body = stripped[:-1]
+    else:
+        body = stripped
+    words = body.strip().split()
+    if not words or len(words) > _GENERIC_HEADING_MAX_WORDS:
+        return False
+    first_core = re.sub(r"[^\w]", "", words[0])
+    if not first_core or not first_core[0].isupper():
+        return False
+    if has_colon:
+        return True
+    for w in words[1:]:
+        core = re.sub(r"[^\w]", "", w)
+        if not core:
+            continue
+        if core.lower() in _GENERIC_HEADING_CONNECTORS:
+            continue
+        if not core[0].isupper():
+            return False
+    return True
 
 
 def _alpha_ratio_ok(text: str) -> bool:
@@ -656,6 +908,16 @@ def _decimal_heading_match(
 _DECIMAL_NUMBER_HEAD_RE = re.compile(r"^\s*(?P<number>\d+(?:\.\d+)*)\.?(?:\s+|$)")
 
 
+def _leading_reference_number(text: str) -> Optional[str]:
+    m = _DECIMAL_NUMBER_HEAD_RE.match((text or "").strip())
+    if not m:
+        return None
+    segs = m.group("number").split(".")
+    while len(segs) > 1 and segs[-1] == "0":
+        segs.pop()
+    return ".".join(segs)
+
+
 def _headerless_decimal_match(
     text: str, nested_stack: List[Dict[str, Any]], is_list_item: bool
 ) -> Optional[Dict[str, Any]]:
@@ -728,6 +990,21 @@ def _ground_scope_active(nested_stack: List[Dict[str, str]]) -> bool:
     return any(s.get("family") == "ground" for s in nested_stack)
 
 
+def _pleading_scope_active(nested_stack: List[Dict[str, str]]) -> bool:
+    """Numbered/roman pleading paragraphs ("1. That the appellant is
+    filing...") are indexed as leaf `point` entries when they sit directly
+    under a generic, unnumbered sub-document boundary (a case-caption
+    block, an affidavit, a judgment, "Grounds of Appeal" itself before
+    Ground 10's own roman-numeral sub-grounds take over via
+    _ground_scope_active, checked first by every caller) — never inside a
+    numbered contract container (Annexure/Article/Section), where a "2.1"
+    is a real numbered clause, not a pleading point. Same rank-0-is-always-
+    index-0 reasoning as _ground_scope_active."""
+    if nested_stack and nested_stack[0].get("family") == "subdoc":
+        return True
+    return any(s.get("family") == "point" for s in nested_stack)
+
+
 def _disambiguate_label(label: str, counts: Dict[str, int]) -> str:
     """First occurrence of a generic (unnumbered) sub-document label is left
     unchanged; the 2nd, 3rd, ... get a distinguishing suffix — a numbered
@@ -782,6 +1059,36 @@ def build_targets_for_page(
     # rely on - see their docstrings.
     last_bare_integer: Optional[int] = scope.get("last_bare_integer")
     last_letter_ordinal: Optional[int] = scope.get("last_letter_ordinal")
+    # A quoted clause reproduced verbatim mid-argument often spans more than
+    # one numbered line ("9.0 Local/Site conditions" immediately followed by
+    # its own "9.1 ..." sub-clause, both part of the SAME quote) — only the
+    # first line is ever immediately preceded by the "which reads as under:"
+    # intro itself. Tracks the leading top-level segment of the most recent
+    # possible_reproduced_text match, page-local only (not carried in
+    # `scope`), so the very next numbered heading sharing that same
+    # top-level segment inherits the flag too, instead of being treated as a
+    # genuine new heading that pushes a real ancestor and resets
+    # last_decimal_ground.
+    last_reproduced_number: Optional[str] = None
+    # Separate from last_letter_ordinal above (that one's for the
+    # unrelated "A. INTRODUCTION"-style letterheading family) — tracks a
+    # running (A)(B)(C)... sequential-letter enumeration inside an active
+    # ground/point scope specifically, so a later roman-valid letter
+    # (C=100, D=500, ...) reached mid-run resolves as the next list item,
+    # not a wildly out-of-place roman numeral. See
+    # _resolve_ground_or_point_match.
+    last_ground_letter_ordinal: Optional[int] = scope.get("last_ground_letter_ordinal")
+    # The most recent DECIMAL ground/point seen in the currently active
+    # scope ("ground:10") — when a roman-numeral ground/point follows it
+    # (the document's own numbering-scheme transition: grounds 1-10 given
+    # as plain decimals, then continuing as roman numerals "(XI)",
+    # "(XII)", ...), the roman items nest as ITS children instead of
+    # flat siblings continuing the decimal sequence. Reset alongside
+    # last_bare_integer/last_letter_ordinal whenever a genuine new
+    # container opens (see both reset sites below) — a numbering-scheme
+    # transition inside one still-open scope is one thing; a real new
+    # section boundary is a different, unrelated event.
+    last_decimal_ground: Optional[Dict[str, str]] = scope.get("last_decimal_ground")
 
     candidates: List[Dict[str, Any]] = []
     occurrence_counts: Dict[str, int] = {}
@@ -833,8 +1140,44 @@ def build_targets_for_page(
         if not text:
             continue
 
-        trigger_label = detect_subdoc_trigger(text, nested_stack)
-        if trigger_label:
+        lookahead_texts = tuple(
+            _block_own_text(b) for b in blocks[block_idx + 1:block_idx + 1 + _CASE_CAPTION_LOOKAHEAD_BLOCKS]
+        )
+        trigger_result = detect_subdoc_trigger(text, nested_stack, lookahead_texts)
+        if trigger_result:
+            trigger_label, trigger_is_strong = trigger_result
+            if not trigger_is_strong:
+                # Qualified match ("Price Schedule", "Work Schedule:") — a
+                # minor sub-label of whatever's already open, not a real
+                # top-level division (see detect_subdoc_trigger's
+                # is_strong docstring). Recall-biased: still persisted as
+                # its own visible, low-confidence candidate for a human to
+                # keep or delete — never silently dropped — but it must
+                # NOT finalize/replace the genuinely open accumulator or
+                # itself become an ancestor anything nests under (that's
+                # the confirmed real bug: this exact shape opened a
+                # container that stayed open for 20 subsequent pages).
+                boundary_ordinal += 1
+                weak_key = f"subdoc:{boundary_ordinal}"
+                scope_key = "/".join(s["key"] for s in nested_stack)
+                scope_label = " › ".join(s["label"] for s in nested_stack)
+                candidates.append({
+                    "key": weak_key,
+                    "occurrence_index": 0,
+                    "snippet": text[:400],
+                    "truncated": False,
+                    "continues_on_page": None,
+                    "scope_key": scope_key,
+                    "scope_label": scope_label,
+                    "scope_chain": [dict(s) for s in nested_stack],
+                    "collapsed_key": collapse_key(weak_key),
+                    "fingerprint": text[:30],
+                    "heading_confidence": "low",
+                    "heading_confidence_reasons": ["qualified_generic_trigger"],
+                    "own_label": trigger_label,
+                })
+                continue
+
             # A generic boundary closes whatever was open before it, exactly
             # like a keyword-matched target does — without this, an
             # AFFIDAVIT/JUDGMENT heading with no accompanying core_m match
@@ -854,12 +1197,17 @@ def build_targets_for_page(
             nested_stack.append({"family": "subdoc", "key": f"subdoc:{boundary_ordinal}", "label": label})
             last_bare_integer = None
             last_letter_ordinal = None
+            last_ground_letter_ordinal = None
+            last_decimal_ground = None
+            continue
 
         core_m = CORE_RE.match(text)
         family = None
         number_raw = None
         prefix = None
         is_ground = False
+        is_point = False
+        is_seq_letter = False
         is_fuzzy = False
         match_end = None
 
@@ -875,16 +1223,54 @@ def build_targets_for_page(
                 is_fuzzy = True
                 match_end = _FUZZY_PREFIX_RE.match(text).end()
             elif _ground_scope_active(nested_stack):
-                gm = GROUND_DIGIT_RE.match(text) or GROUND_ROMAN_RE.match(text)
+                gm = _resolve_ground_or_point_match(text, last_ground_letter_ordinal)
                 if gm:
+                    number_raw, match_end, is_seq_letter = gm
                     family = "ground"
-                    number_raw = gm.group("number")
                     is_ground = True
-                    match_end = gm.end()
+            elif _pleading_scope_active(nested_stack):
+                gm = _resolve_ground_or_point_match(text, last_ground_letter_ordinal)
+                if gm:
+                    number_raw, match_end, is_seq_letter = gm
+                    family = "point"
+                    is_point = True
+            elif nested_stack and nested_stack[-1].get("family") == "numheading":
+                sm = _SUBPOINT_ROMAN_RE.match(text)
+                if sm:
+                    family = "subpoint"
+                    number_raw = sm.group("numeral").lower()
+                    match_end = sm.end()
+
+        if is_seq_letter:
+            last_ground_letter_ordinal = ord(number_raw) - ord("A") + 1
 
         if family and number_raw:
-            key = normalize_key(family if (is_ground or is_fuzzy) else core_m.group("keyword"), prefix, number_raw)
-            excluded = _is_backward_reference(text, match_end) or ((not is_ground) and _is_external_law(text))
+            if is_seq_letter:
+                # Bypass normalize_key entirely for this case: it treats
+                # ANY roman-shaped string as a roman numeral (a single "C"
+                # would become 100), which is exactly the misinterpretation
+                # _resolve_ground_or_point_match already decided against —
+                # the key must carry the letter itself, not a numeral.
+                key = f"{family}:{number_raw.lower()}"
+            elif (is_ground or is_point) and _is_roman(number_raw):
+                # Bypass normalize_key's decimal conversion here too: a real
+                # document can have decimal grounds/points 1-10 AND roman
+                # grounds/points reaching the same values (I=1, ..., X=10) in
+                # the SAME scope (confirmed real case — decimal background
+                # facts 1-10, then roman sub-grounds (I)-(X) nested under
+                # ground 10) — converting the roman item to its arabic value
+                # would collide with the real decimal item of the same
+                # number, corrupting both. The roman string itself is always
+                # unique against a decimal key.
+                key = f"{family}:{number_raw.lower()}"
+            elif family == "subpoint":
+                key = normalize_key(family, prefix, number_raw)
+            else:
+                key = normalize_key(family if (is_ground or is_point or is_fuzzy) else core_m.group("keyword"), prefix, number_raw)
+            is_subpoint = family == "subpoint"
+            excluded = _is_backward_reference(text, match_end) or (
+                (not (is_ground or is_point or is_subpoint)) and _is_external_law(text)
+            )
 
             finalize(closed_by_new_target=True)
 
@@ -956,6 +1342,8 @@ def build_targets_for_page(
                     # transition, this is a real sub-document boundary.
                     last_bare_integer = None
                     last_letter_ordinal = None
+                    last_ground_letter_ordinal = None
+                    last_decimal_ground = None
 
                 # Full ancestor chain (including the sub-document tier, now
                 # unified into the same nested_stack), not just the deepest
@@ -969,8 +1357,23 @@ def build_targets_for_page(
                 # a synthetic subdoc:N for a generic trigger) is already
                 # unique, so two different sub-documents naturally produce
                 # different joined strings without one.
-                scope_key = "/".join(s["key"] for s in nested_stack)
-                scope_label = " › ".join(s["label"] for s in nested_stack)
+                effective_stack = nested_stack
+                if (is_ground or is_point) and (is_seq_letter or _is_roman(number_raw)) and last_decimal_ground:
+                    # A roman-numeral OR sequential-letter ground/point
+                    # continuing a decimal one in the SAME scope — nest
+                    # under that specific decimal item (a synthetic entry,
+                    # local to this row only, never pushed onto the real
+                    # nested_stack: ground/point stay leaves, this doesn't
+                    # make them containers). Both are numbering-style
+                    # transitions from the same decimal parent; there's no
+                    # principled reason to nest one but not the other.
+                    base_stack = last_decimal_ground.get("stack") or nested_stack
+                    effective_stack = [dict(s) for s in base_stack] + [
+                        {"family": family, "key": last_decimal_ground["key"], "label": last_decimal_ground["label"]}
+                    ]
+
+                scope_key = "/".join(s["key"] for s in effective_stack)
+                scope_label = " › ".join(s["label"] for s in effective_stack)
 
                 open_acc = {
                     "key": key,
@@ -978,10 +1381,18 @@ def build_targets_for_page(
                     "blocks": [block],
                     "scope_key": scope_key,
                     "scope_label": scope_label,
-                    "scope_chain": [dict(s) for s in nested_stack],
+                    "scope_chain": [dict(s) for s in effective_stack],
                     "fingerprint": text[:30],
                     "confidence_reasons": confidence_reasons,
                 }
+                if family in ("point", "subpoint"):
+                    open_acc["own_label"] = text[:80].strip()
+
+                if (is_ground or is_point) and not is_seq_letter:
+                    if _is_roman(number_raw):
+                        pass  # a roman continuation never itself becomes the new "last decimal"
+                    else:
+                        last_decimal_ground = {"key": key, "label": _format_label_from_key(key)}
 
                 if family in _HIERARCHY_RANK and not push_blocking:
                     nested_stack.append({"family": family, "key": key, "label": _format_label_from_key(key)})
@@ -1021,6 +1432,14 @@ def build_targets_for_page(
                     confidence_reasons.append(f"layout_{ltype}")
                 elif ltype == "text":
                     confidence_reasons.append("non_heading_layout_type")
+            is_reproduced = block_idx > 0 and _preceded_by_reproduced_text_intro(_block_own_text(blocks[block_idx - 1]))
+            if not is_reproduced and last_reproduced_number is not None:
+                is_reproduced = dm["number"].split(".")[0] == last_reproduced_number.split(".")[0]
+            if is_reproduced:
+                confidence_reasons.append("possible_reproduced_text")
+                last_reproduced_number = dm["number"]
+            else:
+                last_reproduced_number = None
 
             # Pop from the top only while the top entry is itself a
             # numbered-heading entry whose own segments are NOT a proper
@@ -1159,6 +1578,45 @@ def build_targets_for_page(
                 nested_stack.append({"family": "subdoc", "key": key, "label": text[:60]})
                 continue
 
+        # Residual fallback #2: a short, isolated, generic-shaped line
+        # (colon-terminated or title-cased/ALL-CAPS) with no number, no
+        # keyword match, and no visual layout signal either — general
+        # TEXT-SHAPE detector for Root Cause B's open vocabulary, so it
+        # works on any job regardless of whether OCR grounding was
+        # enabled. Deliberately a pure leaf (never pushed onto
+        # nested_stack, unlike the layout-tag fallback above, which has
+        # real visual evidence behind it) — purely additive and
+        # recall-biased: a false positive here is just an extra
+        # low-confidence row a human can delete; it can never itself
+        # become a false ancestor other content gets wrongly nested
+        # under.
+        if (
+            _looks_like_generic_heading_shape(text)
+            and not _is_external_law(text)
+            and not _is_backward_reference(text, 0)
+        ):
+            finalize(closed_by_new_target=True)
+            boundary_ordinal += 1
+            key = f"subdoc:{boundary_ordinal}"
+            scope_key = "/".join(s["key"] for s in nested_stack)
+            scope_label = " › ".join(s["label"] for s in nested_stack)
+            candidates.append({
+                "key": key,
+                "occurrence_index": 0,
+                "snippet": text[:400],
+                "truncated": False,
+                "continues_on_page": None,
+                "scope_key": scope_key,
+                "scope_label": scope_label,
+                "scope_chain": [dict(s) for s in nested_stack],
+                "collapsed_key": collapse_key(key),
+                "fingerprint": text[:30],
+                "heading_confidence": "low",
+                "heading_confidence_reasons": ["generic_heading_shape"],
+                "own_label": text.strip().rstrip(":").rstrip("-").strip()[:80],
+            })
+            continue
+
         if open_acc is not None:
             open_acc["blocks"].append(block)
 
@@ -1167,6 +1625,7 @@ def build_targets_for_page(
     new_scope = {
         "stack": nested_stack, "boundary_ordinal": boundary_ordinal, "label_occurrence_counts": label_occurrence_counts,
         "last_bare_integer": last_bare_integer, "last_letter_ordinal": last_letter_ordinal,
+        "last_ground_letter_ordinal": last_ground_letter_ordinal, "last_decimal_ground": last_decimal_ground,
     }
     return candidates, new_scope
 
@@ -1273,6 +1732,147 @@ def parse_page_blocks(page_text: str) -> List[str]:
     without reaching into three separate private helpers itself."""
     tokens, _ = _get_parser().parse(page_text or "")
     return [_block_own_text(b) for b in _flatten_blocks(tokens)]
+
+
+def build_layout_annotated_text(clean_text: str, raw_text: Optional[str]) -> str:
+    """Builds a page's text annotated with the OCR engine's own per-block
+    layout classification (see parse_layout_blocks) — for the AI-assisted
+    indexer's PROMPT INPUT ONLY (ai_reference_index.py). Grounding and
+    persistence must keep using the plain `clean_text` unchanged, never
+    this annotated form, so a heading string the AI echoes back can still
+    be located against real page blocks.
+
+    Falls back to `clean_text` unchanged, silently, whenever `raw_text` is
+    absent or its parsed layout-block count doesn't line up 1:1 with
+    `clean_text`'s own parsed blocks — never guess which block a layout
+    type belongs to. Same layout_aligned gate build_targets_for_page's own
+    confidence scoring already relies on."""
+    if not raw_text:
+        return clean_text
+    layout_blocks = parse_layout_blocks(raw_text)
+    blocks = parse_page_blocks(clean_text)
+    if not layout_blocks or len(layout_blocks) != len(blocks):
+        return clean_text
+    parts = []
+    for block_text, lb in zip(blocks, layout_blocks):
+        ltype = (lb.get("type") or "").strip().upper() or "TEXT"
+        parts.append(f"[OCR-LAYOUT: {ltype}]\n{block_text}")
+    return "\n\n".join(parts)
+
+
+def detect_pleading_points_for_page(
+    page_text: str, scope: Dict[str, Any], existing_candidates: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, str]]]:
+    """Augments an already-detected page (AI or rule) with numbered/roman
+    pleading paragraphs ("1. That the appellant is filing...") as indexed
+    leaf `point`/`ground` entries — purely additive, deterministic, reusing
+    GROUND_DIGIT_RE/GROUND_ROMAN_RE exactly as build_targets_for_page's own
+    ground-detection branch does. The AI prompt is deliberately never asked
+    to report these itself (a numbered sentence with a finite verb is
+    correctly excluded there as "not a heading"); this is the server-side
+    mechanism that actually indexes them.
+
+    Returns (results, last_decimal_ground) — the caller must fold the
+    returned `last_decimal_ground` back into the persisted scope for the
+    NEXT page. This function is very often the ONLY place a decimal ground/
+    point ever gets detected at all (the AI, per its prompt, is never asked
+    to report these itself) — confirmed real case: ground 10's own decimal
+    heading was found here, not by the AI, so if this function's finding
+    didn't propagate forward, page 19's AI-reported roman sub-grounds had
+    nothing to nest under at all.
+
+    `scope` is this page's own END-OF-PAGE scope (i.e. after whatever
+    process built `existing_candidates` has already run) — a documented
+    simplification: a container opened and closed entirely within this one
+    page won't be reflected for blocks that came before it closed within
+    that same page. Flagged here rather than silently assumed correct.
+
+    `existing_candidates` are the candidate rows already produced for this
+    page — used both to skip a block already classified as a real heading
+    (fingerprint dedup) and to continue this page's own per-key occurrence
+    numbering rather than restarting at 0 and colliding with an existing
+    row for the same key."""
+    nested_stack = (scope or {}).get("stack") or []
+    if _ground_scope_active(nested_stack):
+        family = "ground"
+    elif _pleading_scope_active(nested_stack):
+        family = "point"
+    else:
+        return [], (scope or {}).get("last_decimal_ground")
+
+    already_claimed_fingerprints = {c.get("fingerprint") for c in existing_candidates if c.get("fingerprint")}
+    occurrence_counts: Dict[str, int] = {}
+    for c in existing_candidates:
+        k = c.get("key")
+        if k:
+            occurrence_counts[k] = occurrence_counts.get(k, 0) + 1
+
+    # Inherited from apply_heading_events_to_scope's own tracking (updated
+    # there when the AI itself reports a decimal ground/point) — a roman
+    # match found here nests under it the same way build_targets_for_page's
+    # main loop does, instead of landing flat as an unrelated sibling.
+    last_decimal_ground: Optional[Dict[str, str]] = (scope or {}).get("last_decimal_ground")
+
+    results: List[Dict[str, Any]] = []
+    for block_text in parse_page_blocks(page_text):
+        text = (block_text or "").strip()
+        if not text:
+            continue
+        fingerprint = text[:30]
+        if fingerprint in already_claimed_fingerprints:
+            continue
+        dm = GROUND_DIGIT_RE.match(text)
+        if dm and _is_date_shaped_number(dm.group("number")):
+            dm = None
+        gm = dm or GROUND_ROMAN_RE.match(text)
+        if not gm:
+            continue
+        if _is_backward_reference(text, gm.end()):
+            continue
+
+        number_raw = gm.group("number")
+        is_roman = _is_roman(number_raw)
+        if is_roman:
+            # Same collision build_targets_for_page's main loop guards
+            # against: normalize_key would convert a roman ground/point to
+            # its arabic value, colliding with a real decimal ground/point
+            # of the same number in the same scope.
+            key = f"{family}:{number_raw.lower()}"
+        else:
+            key = normalize_key(family, None, number_raw)
+        occ = occurrence_counts.get(key, 0)
+        occurrence_counts[key] = occ + 1
+        confidence_reasons = _citation_confidence_reasons(text, gm.end())
+
+        effective_stack = nested_stack
+        if is_roman and last_decimal_ground:
+            base_stack = last_decimal_ground.get("stack") or nested_stack
+            effective_stack = [dict(s) for s in base_stack] + [
+                {"family": family, "key": last_decimal_ground["key"], "label": last_decimal_ground["label"]}
+            ]
+
+        results.append({
+            "key": key,
+            "occurrence_index": occ,
+            "snippet": text[:400],
+            "truncated": False,
+            "continues_on_page": None,
+            "scope_key": "/".join(s["key"] for s in effective_stack),
+            "scope_label": " › ".join(s["label"] for s in effective_stack),
+            "scope_chain": [dict(s) for s in effective_stack],
+            "collapsed_key": collapse_key(key),
+            "fingerprint": fingerprint,
+            "heading_confidence": "low" if confidence_reasons else "high",
+            "heading_confidence_reasons": confidence_reasons,
+            "own_label": text[:80] if family == "point" else None,
+            "detection_source": "rule",
+            "detection_model": None,
+            "start_line_hint": None,
+        })
+
+        if not is_roman:
+            last_decimal_ground = {"key": key, "label": _format_label_from_key(key)}
+    return results, last_decimal_ground
 
 
 def mint_key_for_heading(
@@ -1398,6 +1998,44 @@ def validate_scope_shape(scope: Dict[str, Any]) -> None:
             raise ValueError(f"stack[{i}] is a numheading entry missing num_segments")
 
 
+# AI-reported events carrying any of these reasons (see
+# ai_reference_index.locate_heading_block/_ground_and_resolve_chunk) either
+# failed to ground convincingly against real page text, or ground cleanly
+# but onto text immediately preceded by a "which reads as under:"-style
+# intro (a clause quoted verbatim mid-argument, not a real heading — the
+# AI-path analogue of build_targets_for_page's own possible_reproduced_text
+# signal, since the model doesn't always apply its own quoted-text
+# instruction correctly). Either way, this heading must never be trusted as
+# a stack anchor (see apply_heading_events_to_scope's skip_stack_mutation
+# gate, mirroring the rule engine's own "a flagged match does neither pop
+# nor push" precedent at build_targets_for_page).
+_GROUNDING_PUSH_BLOCKING_REASONS = {"ai_unlocated", "ai_fuzzy_grounded", "possible_reproduced_text"}
+
+_ENUM_MARKER_RE = re.compile(r"^\s*\(?(?P<marker>[0-9]+(?:\.[0-9]+)*|[A-Za-z]+)(?:\)\.?|\.)\s+")
+
+
+def _enumeration_marker_style(text: str) -> Optional[str]:
+    """Classifies a heading's leading enumeration marker into a coarse
+    STYLE bucket only ("decimal", "lower_roman", "upper_letter_or_roman")
+    — not its exact value, so "(i)" and "(ii)" match without needing to
+    know they're 1 and 2. Used only as a safety net for events that already
+    went through mint_key_for_heading's generic path (forced_family is
+    None) — a real ground/point leaf already has its own correct,
+    value-aware nesting via last_decimal_ground/effective_stack and never
+    needs this coarser check."""
+    m = _ENUM_MARKER_RE.match(text or "")
+    if not m:
+        return None
+    marker = m.group("marker")
+    if marker[0].isdigit():
+        return "decimal"
+    if not marker.isalpha():
+        return None
+    if marker.islower():
+        return "lower_roman"
+    return "upper_letter_or_roman"
+
+
 def apply_heading_events_to_scope(
     events: List[Dict[str, Any]], seed_scope: Optional[Dict[str, Any]], page_num: int, has_next_page: bool,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
@@ -1431,6 +2069,19 @@ def apply_heading_events_to_scope(
     label_occurrence_counts: Dict[str, int] = dict(scope.get("label_occurrence_counts", {}))
     last_bare_integer = scope.get("last_bare_integer")
     last_letter_ordinal = scope.get("last_letter_ordinal")
+    # AI-path analogue of build_targets_for_page's last_decimal_ground: the
+    # most recent DECIMAL ground/point reported in the current scope — a
+    # roman-numeral ground/point that follows nests under it (synthetically,
+    # never pushed onto the real stack — ground/point stay leaves) instead
+    # of landing flat as an unrelated sibling.
+    last_decimal_ground: Optional[Dict[str, Any]] = scope.get("last_decimal_ground")
+    outer_decimal_ground: Optional[Dict[str, Any]] = scope.get("outer_decimal_ground")
+    # AI-path analogue of build_targets_for_page's own last_ground_letter_ordinal
+    # — tracks a running (A)(B)(C)... sequential-letter enumeration inside an
+    # active ground/point scope, so a later roman-valid letter (C=100, D=500,
+    # I=1, L=50, M=1000, ...) reached mid-run resolves as the next list item,
+    # not a wildly out-of-place roman numeral. See _resolve_ground_or_point_match.
+    last_ground_letter_ordinal: Optional[int] = scope.get("last_ground_letter_ordinal")
 
     candidates: List[Dict[str, Any]] = []
     occurrence_counts: Dict[str, int] = {}
@@ -1441,18 +2092,188 @@ def apply_heading_events_to_scope(
     # can otherwise never see at all (see compute_scope_ranges' own docstring
     # and _compute_scope_ranges_uncached's consumption of this field for why).
     closed_this_page: List[Dict[str, Any]] = []
+    # Page-local safety net for the sibling-chaining bug: consecutive
+    # generic-path events (not forced_family) sharing the same coarse
+    # enumeration marker STYLE (e.g. "(i)", "(ii)", "(iii)") are almost
+    # always flat siblings of each other, never nested one under the
+    # previous one — but the AI's own reported depth/parent_ref
+    # occasionally chains them into a runaway deepening stack anyway.
+    # Not persisted into new_scope: same accepted page-local limitation as
+    # the reproduced-text-continuation fix.
+    prev_enum_style: Optional[str] = None
+    prev_enum_depth: Optional[int] = None
 
     for ev in events:
         text = ev["heading_text"]
-        family, key, label, num_segments, boundary_ordinal = mint_key_for_heading(
-            text, boundary_ordinal, label_occurrence_counts,
-            family_hint=ev.get("family_hint"), number_hint=ev.get("number_hint"),
-        )
+        stripped_text = (text or "").strip()
+
+        # Forced-family override, checked BEFORE mint_key_for_heading and
+        # against nested_stack exactly as it stands prior to this event's
+        # own mutation: a numbered/roman list item reported by the AI
+        # inside an active Grounds-of-Appeal or generic-pleading scope is a
+        # `ground`/`point` leaf, never a fresh top-level container — the
+        # bug this closes: an AI-reported "(VII) That the tribunal..."
+        # with no resolved parent otherwise fell through to
+        # mint_key_for_heading's generic subdoc bucket and got minted as
+        # its own top-level section, staying open for dozens of subsequent
+        # pages. mint_key_for_heading itself is never given the chance to
+        # re-interpret these — its own fuzzy/family-hint cascade has no
+        # opinion on ground/point shapes anyway.
+        #
+        # Uses _resolve_ground_or_point_match (build_targets_for_page's own
+        # resolver) rather than raw GROUND_DIGIT_RE/GROUND_ROMAN_RE matching
+        # — confirmed real bug: a sequential-letter list ("(A)"..."(O)")
+        # where some letters are also valid roman numerals (C, D, I, L, M)
+        # had those specific letters misclassified as roman and forced into
+        # this leaf family, while the non-roman-valid letters
+        # (A, B, E, F, G, H, J, K, N, O) fell through to mint_key_for_heading's
+        # generic "subdoc" container bucket and got pushed as real ancestors
+        # — so a later roman-valid letter appeared to nest under whichever
+        # non-roman letter was most recently pushed, every time.
+        forced_family = None
+        if _ground_scope_active(nested_stack):
+            forced_family = "ground"
+        elif _pleading_scope_active(nested_stack):
+            forced_family = "point"
+
+        is_roman_ground_or_point = False
+        is_seq_letter = False
+        if forced_family:
+            resolved = _resolve_ground_or_point_match(stripped_text, last_ground_letter_ordinal)
+            if resolved is None and forced_family in ("point", "ground"):
+                # Bare integer paragraph without trailing period (e.g. "29 In M/s Navodaya..."):
+                bare_m = re.match(r"^\s*\(?(?P<number>\d+)\s+[A-Z]", stripped_text)
+                if bare_m and not _is_date_shaped_number(bare_m.group("number")):
+                    resolved = (bare_m.group("number"), bare_m.end(), False)
+                else:
+                    # Bare integer string or integer with dot/paren alone (e.g. "16", "16.", "(16)")
+                    bare_digit_m = re.match(r"^\s*\(?(?P<number>\d+)(?:\.|\))?\s*$", stripped_text)
+                    if bare_digit_m and not _is_date_shaped_number(bare_digit_m.group("number")):
+                        resolved = (bare_digit_m.group("number"), bare_digit_m.end(), False)
+            if resolved is None:
+                forced_family = None
+
+            else:
+                number_raw, _match_end, is_seq_letter = resolved
+                if is_seq_letter:
+                    last_ground_letter_ordinal = ord(number_raw) - ord("A") + 1
+                    # Bypass normalize_key entirely for this case: it treats
+                    # ANY roman-shaped string as a roman numeral (a single
+                    # "C" would become 100) — the key must carry the letter
+                    # itself, not a numeral.
+                    key = f"{forced_family}:{number_raw.lower()}"
+                else:
+                    is_roman_ground_or_point = _is_roman(number_raw)
+                    if is_roman_ground_or_point:
+                        # Same collision this family's build_targets_for_page
+                        # counterpart guards against: normalize_key would
+                        # convert a roman ground/point to its arabic value,
+                        # colliding with a real decimal ground/point of the
+                        # same number in the same scope. Keep the roman
+                        # string itself as the key.
+                        key = f"{forced_family}:{number_raw.lower()}"
+                    else:
+                        key = normalize_key(forced_family, None, number_raw)
+                label = _format_label_from_key(key)
+                family, num_segments = forced_family, None
+        if not forced_family:
+            family, key, label, num_segments, boundary_ordinal = mint_key_for_heading(
+                text, boundary_ordinal, label_occurrence_counts,
+                family_hint=ev.get("family_hint"), number_hint=ev.get("number_hint"),
+            )
 
         depth = ev.get("depth")
         if depth is None:
             depth = len(nested_stack)
         depth = max(0, min(depth, len(nested_stack)))
+
+        # Rank-0 root container protection:
+        # If an active root container is open (rank == 0, e.g. "subdoc", "annexure", "schedule", "appendix"),
+        # an incoming event must NOT evict the root document by resolving to depth 0 unless the incoming
+        # event is itself a genuine document boundary / root candidate.
+        if depth == 0 and len(nested_stack) >= 1:
+            root_family = nested_stack[0].get("family")
+            root_is_subdoc = root_family in ("subdoc", "annexure", "schedule", "appendix")
+            if root_is_subdoc and not is_subdoc_root_candidate(text, family):
+                depth = 1
+
+        # Leaf-family / low-confidence gate — the AI-path analogue of the
+        # rule engine's "a leaf (rank is None) just reads whatever's
+        # currently on the stack" invariant (build_targets_for_page only
+        # ever pushes/pops for a family in _HIERARCHY_RANK, i.e. rank is
+        # not None). Without this, apply_heading_events_to_scope pushed
+        # EVERY event unconditionally regardless of family, so a leaf
+        # (ground/point/clause/para) — or any event whose own grounding
+        # couldn't be trusted — could truncate the stack and evict a real
+        # ancestor, or itself become a false top-level container that
+        # everything after it gets mis-scoped underneath.
+        family_def = FAMILIES.get(family)
+        is_true_leaf = family_def is not None and family_def.get("rank") is None
+        reasons = ev.get("heading_confidence_reasons") or []
+        push_blocking = any(r in _GROUNDING_PUSH_BLOCKING_REASONS for r in reasons)
+        skip_stack_mutation = is_true_leaf or push_blocking
+        if skip_stack_mutation:
+            depth = len(nested_stack)
+
+        # Sibling-chaining safety net (generic path only — a real
+        # ground/point leaf is untouched, it already nests correctly via
+        # last_decimal_ground/effective_stack above). If this item's marker
+        # style matches the immediately preceding same-style item's AND the
+        # AI resolved it as exactly one level DEEPER than that item, flatten
+        # it back to that item's own depth instead — a same-style run is
+        # almost always a flat list, never a self-nesting chain.
+        if not forced_family:
+            enum_style = _enumeration_marker_style(stripped_text)
+            if (
+                enum_style is not None
+                and enum_style == prev_enum_style
+                and prev_enum_depth is not None
+                and depth == prev_enum_depth + 1
+            ):
+                depth = prev_enum_depth
+            prev_enum_style = enum_style
+            prev_enum_depth = depth if enum_style is not None else None
+        else:
+            prev_enum_style = None
+            prev_enum_depth = None
+
+        # Integer sequence resumption:
+        # If an incoming numbered heading is a single integer N (e.g. "20"), check if any open ancestor
+        # was an integer item P that opened a sub-structure. If P < N <= P + 3 (e.g. P=19, N=20),
+        # this heading is continuing the outer integer sequence and must close the sub-structure,
+        # resuming at P's depth (as a sibling of P).
+        incoming_int = None
+        if num_segments and len(num_segments) == 1:
+            try:
+                incoming_int = int(num_segments[0])
+            except (TypeError, ValueError):
+                pass
+        else:
+            lead_num = _leading_reference_number(stripped_text)
+            if lead_num and lead_num.isdigit():
+                incoming_int = int(lead_num)
+
+        if incoming_int is not None and len(nested_stack) > 1:
+            for d in range(len(nested_stack) - 1, 0, -1):
+                ancestor = nested_stack[d]
+                anc_segs = ancestor.get("num_segments")
+                anc_int = None
+                if anc_segs and len(anc_segs) == 1:
+                    try:
+                        anc_int = int(anc_segs[0])
+                    except (TypeError, ValueError):
+                        pass
+                else:
+                    anc_lead = _leading_reference_number(ancestor.get("label", ""))
+                    if anc_lead and anc_lead.isdigit():
+                        anc_int = int(anc_lead)
+                if anc_int is not None:
+                    if anc_int < incoming_int <= anc_int + 3:
+                        depth = d
+                        break
+                    elif incoming_int > anc_int and d == len(nested_stack) - 1:
+                        # Cannot nest a higher integer inside a lower integer (e.g. 20 inside 5)
+                        depth = min(depth, d)
 
         # Repeat guard: a running header re-detected on a later page,
         # resolving to the SAME depth+key as what's already open there, is
@@ -1479,8 +2300,43 @@ def apply_heading_events_to_scope(
         occ = occurrence_counts.get(key, 0)
         occurrence_counts[key] = occ + 1
 
-        scope_key = "/".join(s["key"] for s in nested_stack)
-        scope_label = " › ".join(s["label"] for s in nested_stack)
+        # Mirrors build_targets_for_page's effective_stack: a roman or
+        # sequential-letter ground/point continuing a decimal one in the
+        # SAME scope nests under that specific decimal item — a synthetic
+        # entry, local to this event only, never pushed onto the real
+        # nested_stack.
+        effective_stack = nested_stack
+        if forced_family and (is_roman_ground_or_point or is_seq_letter) and last_decimal_ground:
+            base_stack = last_decimal_ground.get("stack")
+            if base_stack is None:
+                base_stack = nested_stack
+            effective_stack = [dict(s) for s in base_stack] + [
+                {"family": forced_family, "key": last_decimal_ground["key"], "label": last_decimal_ground["label"]}
+            ]
+        elif forced_family and not (is_roman_ground_or_point or is_seq_letter) and incoming_int is not None:
+            if outer_decimal_ground is not None:
+                outer_p = outer_decimal_ground.get("int_val")
+                if outer_p is not None and outer_p < incoming_int <= outer_p + 3:
+                    # Resumes outer sequence (e.g. 20 resumes 19)
+                    outer_decimal_ground = None
+                    effective_stack = nested_stack
+                else:
+                    base_stack = outer_decimal_ground.get("stack") or nested_stack
+                    effective_stack = [dict(s) for s in base_stack] + [
+                        {"family": forced_family, "key": outer_decimal_ground["key"], "label": outer_decimal_ground["label"]}
+                    ]
+            elif last_decimal_ground is not None:
+                prev_p = last_decimal_ground.get("int_val")
+                if prev_p is not None and prev_p >= 2 and incoming_int == 1:
+                    # Starts decimal sub-list (1. follows 19.)
+                    outer_decimal_ground = last_decimal_ground
+                    base_stack = outer_decimal_ground.get("stack") or nested_stack
+                    effective_stack = [dict(s) for s in base_stack] + [
+                        {"family": forced_family, "key": outer_decimal_ground["key"], "label": outer_decimal_ground["label"]}
+                    ]
+
+        scope_key = "/".join(s["key"] for s in effective_stack)
+        scope_label = " › ".join(s["label"] for s in effective_stack)
 
         # Must match frontend/src/components/StructureTree.jsx's
         # OWN_LABEL_FAMILIES exactly — those are the synthetic-key families
@@ -1494,6 +2350,8 @@ def apply_heading_events_to_scope(
         own_label = ev.get("own_label_override")
         if own_label is None and family in ("numheading", "letterheading", "subdoc"):
             own_label = label
+        if own_label is None and family == "point":
+            own_label = stripped_text[:80]
 
         candidates.append({
             "key": key,
@@ -1503,7 +2361,7 @@ def apply_heading_events_to_scope(
             "continues_on_page": None,
             "scope_key": scope_key,
             "scope_label": scope_label,
-            "scope_chain": [dict(s) for s in nested_stack],
+            "scope_chain": [dict(s) for s in effective_stack],
             "collapsed_key": collapse_key(key),
             "fingerprint": ev.get("fingerprint", ""),
             "heading_confidence": ev.get("heading_confidence", "high"),
@@ -1514,20 +2372,40 @@ def apply_heading_events_to_scope(
             "start_line_hint": ev.get("start_line_hint"),
         })
 
-        stack_entry: Dict[str, Any] = {"family": family, "key": key, "label": label, "source": "ai"}
-        if num_segments is not None:
-            stack_entry["num_segments"] = num_segments
-        if ev.get("end_page") is not None:
-            stack_entry["end_page"] = ev["end_page"]
-        nested_stack.append(stack_entry)
+        if forced_family:
+            # A roman or sequential-letter continuation never itself becomes
+            # the new "last decimal" — only a genuine decimal match does.
+            if not is_roman_ground_or_point and not is_seq_letter:
+                last_decimal_ground = {
+                    "key": key,
+                    "label": label,
+                    "stack": [dict(s) for s in effective_stack[:-1]] if effective_stack != nested_stack else [dict(s) for s in nested_stack],
+                    "int_val": incoming_int,
+                }
+        elif not skip_stack_mutation:
+            # A genuine new/real container obviously starts fresh numbering
+            # (and lettering) too — a numbering-scheme transition inside one
+            # still-open scope is one thing; a real new section boundary is
+            # a different, unrelated event.
+            last_decimal_ground = None
+            outer_decimal_ground = None
+            last_ground_letter_ordinal = None
 
-        if family == "numheading" and num_segments and len(num_segments) == 1:
-            try:
-                last_bare_integer = int(num_segments[0])
-            except (TypeError, ValueError):
-                pass
-        if family == "letterheading":
-            last_letter_ordinal = ord(key.rsplit(":", 1)[-1].upper()) - ord("A") + 1
+        if not skip_stack_mutation:
+            stack_entry: Dict[str, Any] = {"family": family, "key": key, "label": label, "source": "ai"}
+            if num_segments is not None:
+                stack_entry["num_segments"] = num_segments
+            if ev.get("end_page") is not None:
+                stack_entry["end_page"] = ev["end_page"]
+            nested_stack.append(stack_entry)
+
+            if family == "numheading" and num_segments and len(num_segments) == 1:
+                try:
+                    last_bare_integer = int(num_segments[0])
+                except (TypeError, ValueError):
+                    pass
+            if family == "letterheading":
+                last_letter_ordinal = ord(key.rsplit(":", 1)[-1].upper()) - ord("A") + 1
 
     # Close, now that this page's own events have had a chance to use it as
     # ancestor context, any entry whose AI-asserted end_page is THIS page —
@@ -1539,6 +2417,14 @@ def apply_heading_events_to_scope(
     # depth — would silently shift. A child is by definition nested inside a
     # closing parent and must close with it regardless of its own end_page.
     close_from = next((d for d, s in enumerate(nested_stack) if s.get("end_page") == page_num), None)
+    if close_from is not None:
+        # If the container at close_from has an active sequential letter or roman enumeration in progress
+        # (e.g. (A)-(E) at bottom of page continuing to next page), do not close it prematurely.
+        if last_ground_letter_ordinal is not None and last_decimal_ground:
+            anc_keys = {s["key"] for s in (last_decimal_ground.get("stack") or [])}
+            anc_keys.add(last_decimal_ground.get("key"))
+            if any(s.get("key") in anc_keys for s in nested_stack[close_from:]):
+                close_from = None
     if close_from is not None:
         for d, removed in enumerate(nested_stack[close_from:], start=close_from):
             closed_this_page.append({
@@ -1552,6 +2438,9 @@ def apply_heading_events_to_scope(
         "stack": nested_stack, "boundary_ordinal": boundary_ordinal,
         "label_occurrence_counts": label_occurrence_counts,
         "last_bare_integer": last_bare_integer, "last_letter_ordinal": last_letter_ordinal,
+        "last_decimal_ground": last_decimal_ground,
+        "outer_decimal_ground": outer_decimal_ground,
+        "last_ground_letter_ordinal": last_ground_letter_ordinal,
         "closed_this_page": closed_this_page,
     }
     return candidates, new_scope
@@ -1760,7 +2649,7 @@ def _compute_scope_ranges_uncached(job_id: str, total_pages: int) -> List[Dict[s
 
 async def reindex_job(
     job_id: str, force_mode: Optional[str] = None, start_page: Optional[int] = None,
-    text_source: str = "clean",
+    chunk_pages_override: Optional[int] = None,
 ):
     """Dispatches to the rule-based or AI-based full reindex depending on
     the job's frozen engine_params.ai_indexing_enabled (or force_mode, for
@@ -1772,11 +2661,16 @@ async def reindex_job(
     cheap enough that a partial-rebuild optimization isn't worth the extra
     code path.
 
-    `text_source` ("clean" default, or "raw") is likewise AI-only — lets a
-    manual rebuild use Unlimited-OCR's raw `<|det|>`-tagged text as the AI's
-    input instead of the cleaned text, for A/B comparison. The rule-based
-    path already has its own separate layout signal (parse_layout_blocks /
-    layout_aligned) and ignores this."""
+    `chunk_pages_override`, also AI-path-only, is passed straight through to
+    ai_reference_index.reindex_job_with_ai — see its docstring.
+
+    There is no caller-facing choice between Unlimited-OCR's raw `<|det|>`-
+    tagged capture and the plain cleaned text as indexing input — the AI
+    path (ai_reference_index._page_text / build_layout_annotated_text)
+    picks automatically, per page, so a job only ever gets ONE reference
+    index, never two built from different inputs to compare/keep. The
+    rule-based path already has its own separate layout signal
+    (parse_layout_blocks / layout_aligned)."""
     if job_id in _active_reindex_jobs:
         return
     _active_reindex_jobs.add(job_id)
@@ -1788,7 +2682,9 @@ async def reindex_job(
         mode = force_mode or ("ai" if engine_params.get("ai_indexing_enabled") else "rule")
         if mode == "ai":
             import ai_reference_index
-            await ai_reference_index.reindex_job_with_ai(job_id, start_page=start_page, text_source=text_source)
+            await ai_reference_index.reindex_job_with_ai(
+                job_id, start_page=start_page, chunk_pages_override=chunk_pages_override,
+            )
         else:
             await _reindex_job_rule_based(job_id)
     finally:

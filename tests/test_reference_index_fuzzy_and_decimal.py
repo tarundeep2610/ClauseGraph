@@ -201,7 +201,7 @@ def test_tag_type_gates_decimal_detection_when_layout_aligned():
 # ─── Section 3: detect_subdoc_trigger fixes ────────────────────────────────
 
 def test_bare_index_fires_with_nothing_open():
-    assert detect_subdoc_trigger("INDEX", []) == "Index"
+    assert detect_subdoc_trigger("INDEX", []) == ("Index", True)
 
 
 def test_bare_index_does_not_fire_with_annexure_already_open():
@@ -218,9 +218,37 @@ def test_decimal_heading_containing_schedule_never_fires_subdoc_trigger():
 def test_strong_triggers_unaffected_by_stack_state():
     # detect_subdoc_trigger's label is derived from the matched trigger
     # substring only ("AFFIDAVIT" -> "Affidavit"), not the whole block.
-    assert detect_subdoc_trigger("AFFIDAVIT of John Doe", []) == "Affidavit"
+    # is_strong stays True here since nothing real qualifies "AFFIDAVIT"
+    # itself (the extra text - "of John Doe" - comes AFTER the match, not
+    # before it as a leading qualifying word).
+    assert detect_subdoc_trigger("AFFIDAVIT of John Doe", []) == ("Affidavit", True)
     stack = [{"family": "annexure", "key": "annexure:a-1", "label": "Annexure A-1"}]
-    assert detect_subdoc_trigger("AFFIDAVIT of John Doe", stack) == "Affidavit"
+    assert detect_subdoc_trigger("AFFIDAVIT of John Doe", stack) == ("Affidavit", True)
+
+
+def test_qualified_generic_trigger_is_not_strong():
+    """The confirmed real bug: a leading real word before a bare SCHEDULE/
+    ANNEXURE/APPENDIX trigger ("Price Schedule", "Work Schedule:") signals
+    a minor sub-label, not a real top-level division — must come back
+    is_strong=False so the caller never resets the whole stack for it."""
+    assert detect_subdoc_trigger("Price Schedule", []) == ("Schedule", False)
+    assert detect_subdoc_trigger("Work Schedule:", []) == ("Schedule", False)
+
+
+def test_standalone_schedule_variants_are_still_strong():
+    # The matched trigger text is just "SCHEDULE" either way (the regex
+    # doesn't capture a trailing "-1A"/number) - what matters is nothing
+    # REAL precedes it, so both stay is_strong=True.
+    assert detect_subdoc_trigger("SCHEDULE-1A", []) == ("Schedule", True)
+    assert detect_subdoc_trigger("SCHEDULE", []) == ("Schedule", True)
+
+
+def test_bare_versus_never_fires_a_trigger():
+    """"Versus" is party-separator furniture in every case caption, never
+    a real structural heading — removed from SUBDOC_TRIGGER_RE entirely."""
+    assert detect_subdoc_trigger("Versus", []) is None
+    stack = [{"family": "subdoc", "key": "subdoc:1", "label": "Memo Of Parties"}]
+    assert detect_subdoc_trigger("Versus", stack) is None
 
 
 # ─── Section: residual layout-only fallback (no number, no keyword) ───────
@@ -322,13 +350,23 @@ def test_end_to_end_real_job_reproduces_the_actual_document_hierarchy():
         all_candidates.extend(candidates)
 
     by_key = {c["key"]: c for c in all_candidates}
-    assert set(by_key.keys()) == {
+    # The full numbered hierarchy must be present and unchanged — checked
+    # as a subset, not exact equality, since the general generic-heading-
+    # shape fallback (recall-biased, added for open-vocabulary headings
+    # like "CONTRACT AGREEMENT"/"INDEX" elsewhere in this same document)
+    # now also flags plenty of surrounding title-page/signature-block text
+    # ("NAME : H. G. CHHABRA", "IN THE PRESENCE OF", ...) as its own
+    # low-confidence `subdoc:N` leaves in this fixture. That's the accepted
+    # tradeoff (false positives are fine, a missed heading is not) — and
+    # since every one is a pure leaf, never pushed onto the stack, it
+    # cannot corrupt the real hierarchy asserted below.
+    assert {
         "annexure:a-1", "numheading:1", "numheading:1.1", "numheading:2.0",
         "numheading:2.1", "numheading:3.0", "numheading:3.1", "numheading:3.2",
         "numheading:3.3", "numheading:3.4", "numheading:3.4.1", "numheading:3.4.2",
         "numheading:3.5", "numheading:3.6", "numheading:3.7", "numheading:3.8",
         "numheading:4.0", "numheading:4.1",
-    }
+    }.issubset(by_key.keys())
 
     # Root survives the "INDEX" page (the subdoc-trigger hijack regression).
     assert by_key["annexure:a-1"]["scope_label"] == ""

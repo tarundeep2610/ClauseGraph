@@ -336,6 +336,196 @@ def test_validate_scope_shape_rejects_missing_fields():
         })
 
 
+# ─── Leaf-family / low-confidence gate (fix for the real bug: a stray
+# AI-reported roman-numeral ground item minted as its own top-level subdoc
+# container, staying open for ~40 subsequent pages) ─────────────────────────
+
+
+def test_ai_reported_roman_numeral_ground_item_becomes_a_leaf_not_a_top_level_container():
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:2", "label": "Grounds Of Appeal"}])
+    # Deliberately wrong depth=0 — if the leaf gate didn't kick in, this
+    # would truncate the stack to root and evict "Grounds Of Appeal".
+    events = [_event("(VII) That the Ld. Arbitral Tribunal erred.", depth=0)]
+    candidates, new_scope = ri.apply_heading_events_to_scope(events, seed, page_num=21, has_next_page=True)
+
+    assert candidates[0]["key"] == "ground:vii"
+    assert new_scope["stack"] == [{"family": "subdoc", "key": "subdoc:2", "label": "Grounds Of Appeal"}]
+    assert not any(s["key"] == "ground:vii" for s in new_scope["stack"])
+
+
+def test_ai_reported_roman_ground_does_not_collide_with_a_same_valued_decimal_ground():
+    """Direct repro of the confirmed real bug (job bb417471's "Grounds of
+    Appeal"): a decimal ground ("10.") and a roman ground of the SAME value
+    ("(X)") reported by the AI in the same scope must mint distinct keys —
+    apply_heading_events_to_scope's forced-family branch had the identical
+    normalize_key decimal-conversion bug as build_targets_for_page's own
+    main loop, independently."""
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:2", "label": "Grounds Of Appeal"}])
+    events = [
+        _event("10. That the tenth ground.", depth=0),
+        _event("(X) That the tenth actual ground.", depth=0),
+    ]
+    candidates, _ = ri.apply_heading_events_to_scope(events, seed, page_num=18, has_next_page=True)
+    keys = [c["key"] for c in candidates]
+    assert keys == ["ground:10", "ground:x"], keys
+
+
+def test_ai_reported_sequential_letter_list_stays_flat_even_when_some_letters_are_roman_valid():
+    """Confirmed real bug (jobs bb417471 and 9c3dc6e6, the Judgment's
+    "Challenge to the Arbitral Award" (A)-(O) list): apply_heading_events_
+    to_scope's forced-family branch used raw GROUND_DIGIT_RE/GROUND_ROMAN_RE
+    matching instead of the sequential-letter-aware
+    _resolve_ground_or_point_match. Letters that are also valid roman
+    numerals (C, D, I, L, M) were misclassified as roman and forced into
+    the ground/point LEAF family, while non-roman-valid letters (A, B, E,
+    ...) fell through to mint_key_for_heading's generic "subdoc" CONTAINER
+    bucket and got pushed as real ancestors — so (C) ended up nesting under
+    whichever non-roman letter was most recently pushed, e.g. (B). All of
+    (A) through (E) must instead resolve as one flat sequential-letter run,
+    every one a leaf, none pushed as an ancestor of the others."""
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:2", "label": "Challenge to the Arbitral Award"}])
+    events = [
+        _event("(A) That the award is based on no evidence.", depth=0),
+        _event("(B) The Arbitral Tribunal has erred in ignoring the material.", depth=0),
+        _event("(C) The Arbitral Tribunal has erroneously held respondent No.1 liable.", depth=0),
+        _event("(D) Arbitral Tribunal has erroneously condoned the grave lapse.", depth=0),
+        _event("(E) The Arbitral Tribunal did not take into account the nature.", depth=0),
+    ]
+    candidates, new_scope = ri.apply_heading_events_to_scope(events, seed, page_num=42, has_next_page=True)
+    by_key = {c["key"]: c for c in candidates}
+
+    assert set(by_key.keys()) == {"point:a", "point:b", "point:c", "point:d", "point:e"}
+    for key in by_key:
+        assert by_key[key]["scope_key"] == "subdoc:2", (key, by_key[key]["scope_key"])
+    # None of them became a real ancestor — the stack is untouched.
+    assert new_scope["stack"] == [{"family": "subdoc", "key": "subdoc:2", "label": "Challenge to the Arbitral Award"}]
+
+
+def test_ai_reported_letter_marker_with_redundant_trailing_period_stays_flat():
+    """Confirmed real bug (bb417471's "(XIV)." and 9c3dc6e6's "(N)."): a
+    redundant trailing period after the closing parenthesis wasn't matched
+    by any ground/point regex, so that item fell through to
+    mint_key_for_heading's generic subdoc-container bucket and got pushed
+    as a real ancestor — so (O) right after it nested under (N) instead of
+    staying its flat sibling."""
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:2", "label": "Challenge to the Arbitral Award"}])
+    events = [
+        _event("(N). Fourteenth sub-ground.", depth=0),
+        _event("(O) Fifteenth sub-ground.", depth=0),
+    ]
+    candidates, new_scope = ri.apply_heading_events_to_scope(events, seed, page_num=42, has_next_page=True)
+    by_key = {c["key"]: c for c in candidates}
+
+    assert set(by_key.keys()) == {"point:n", "point:o"}
+    for key in by_key:
+        assert by_key[key]["scope_key"] == "subdoc:2", (key, by_key[key]["scope_key"])
+    assert new_scope["stack"] == [{"family": "subdoc", "key": "subdoc:2", "label": "Challenge to the Arbitral Award"}]
+
+
+def test_ai_reported_genuine_roman_run_with_no_preceding_letters_still_resolves_as_roman():
+    """Regression guard: a real roman-numeral enumeration that starts fresh
+    (no letter run already established) must still resolve as roman, not
+    be mistaken for sequential letters."""
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:2", "label": "Grounds Of Appeal"}])
+    events = [
+        _event("(I) First ground.", depth=0),
+        _event("(II) Second ground.", depth=0),
+        _event("(III) Third ground.", depth=0),
+    ]
+    candidates, _ = ri.apply_heading_events_to_scope(events, seed, page_num=19, has_next_page=True)
+    keys = [c["key"] for c in candidates]
+    assert keys == ["ground:i", "ground:ii", "ground:iii"], keys
+
+
+def test_ai_reported_roman_grounds_nest_under_the_preceding_decimal_ground_and_decimal_resumes_as_sibling():
+    """AI-path analogue of Round 9's rule-engine fix: a decimal ground
+    ("10.") followed by roman grounds ("(I)", "(X)") followed by another
+    decimal ("11.") — the roman items must nest under ground:10 specifically
+    (not land flat as unrelated siblings), and the next decimal item must
+    resume as ground:10's sibling, not a child of the roman sub-list.
+    Confirmed real bug: apply_heading_events_to_scope had the roman/decimal
+    key-collision fix but no nesting mechanism at all, unlike its
+    build_targets_for_page counterpart."""
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:2", "label": "Grounds Of Appeal"}])
+    events = [
+        _event("10. That the tenth ground.", depth=0),
+        _event("(I) First actual ground.", depth=0),
+        _event("(X) Tenth actual ground.", depth=0),
+        _event("11. That the appellant has not filed a similar appeal.", depth=0),
+    ]
+    candidates, _ = ri.apply_heading_events_to_scope(events, seed, page_num=19, has_next_page=True)
+    by_key = {c["key"]: c for c in candidates}
+
+    assert by_key["ground:10"]["scope_key"] == "subdoc:2"
+    assert by_key["ground:i"]["scope_key"] == "subdoc:2/ground:10"
+    assert by_key["ground:x"]["scope_key"] == "subdoc:2/ground:10"
+    assert by_key["ground:11"]["scope_key"] == "subdoc:2"
+
+
+def test_ai_reported_sequential_letter_grounds_nest_under_the_preceding_decimal_ground():
+    """User-clarified real hierarchy (job 9c3dc6e6): a decimal point/ground
+    that introduces a sub-list ("3. ... on following grounds:") followed by
+    a sequential-letter run ("(A)"-"(C)") must nest the letters under that
+    decimal item specifically — not stay flat siblings of it — exactly like
+    a genuine roman-numeral continuation already does. Before this fix,
+    apply_heading_events_to_scope's effective_stack nesting only triggered
+    for is_roman_ground_or_point, explicitly excluding is_seq_letter."""
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:2", "label": "Challenge to the Arbitral Award"}])
+    events = [
+        _event("3. The Award is under challenge on following grounds:", depth=0),
+        _event("(A) First sub-ground under point 3.", depth=0),
+        _event("(B) Second sub-ground under point 3.", depth=0),
+        _event("(C) Third sub-ground under point 3.", depth=0),
+    ]
+    candidates, _ = ri.apply_heading_events_to_scope(events, seed, page_num=19, has_next_page=True)
+    by_key = {c["key"]: c for c in candidates}
+
+    assert by_key["point:3"]["scope_key"] == "subdoc:2"
+    for key in ("point:a", "point:b", "point:c"):
+        assert by_key[key]["scope_key"] == "subdoc:2/point:3", key
+
+
+def test_ai_reported_plain_numbered_pleading_paragraph_becomes_a_point_leaf():
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:1", "label": "Respectfully Showeth"}])
+    events = [_event("1. That the appellant is filing the accompanying appeal.", depth=0)]
+    candidates, new_scope = ri.apply_heading_events_to_scope(events, seed, page_num=7, has_next_page=True)
+
+    assert candidates[0]["key"] == "point:1"
+    assert candidates[0]["own_label"] == "1. That the appellant is filing the accompanying appeal."
+    assert new_scope["stack"] == [{"family": "subdoc", "key": "subdoc:1", "label": "Respectfully Showeth"}]
+
+
+def test_leaf_family_ai_heading_never_evicts_a_real_ancestor():
+    """General case (not ground/point): mint_key_for_heading resolves
+    "Clause 5" to family "clause" (rank None, a leaf) — must never truncate
+    a real Article/Section ancestor, even with depth=0."""
+    seed = _seeded_scope([
+        {"family": "article", "key": "article:2", "label": "Article 2"},
+        {"family": "section", "key": "section:3", "label": "Section 3"},
+    ])
+    events = [_event("Clause 5", depth=0)]
+    candidates, new_scope = ri.apply_heading_events_to_scope(events, seed, page_num=9, has_next_page=True)
+
+    assert candidates[0]["key"] == "clause:5"
+    assert [s["key"] for s in new_scope["stack"]] == ["article:2", "section:3"]
+
+
+def test_grounding_low_confidence_event_does_not_anchor_as_ancestor():
+    """A non-leaf (numheading) event whose grounding couldn't be trusted
+    (ai_unlocated/ai_fuzzy_grounded) must not truncate/push — it gets a
+    candidate row (attached under whatever's genuinely open) but is never
+    itself an ancestor real descendants could be wrongly scoped under."""
+    seed = _seeded_scope([{"family": "annexure", "key": "annexure:a-1", "label": "Annexure A-1"}])
+    events = [_event(
+        "3.4 QUALITY PLANS", depth=0, heading_confidence_reasons=["ai_fuzzy_grounded"],
+    )]
+    candidates, new_scope = ri.apply_heading_events_to_scope(events, seed, page_num=69, has_next_page=True)
+
+    assert candidates[0]["key"] == "numheading:3.4"
+    assert [s["key"] for s in new_scope["stack"]] == ["annexure:a-1"]
+    assert candidates[0]["scope_chain"] == [{"family": "annexure", "key": "annexure:a-1", "label": "Annexure A-1"}]
+
+
 def test_ai_stack_shape_matches_rule_based_shape_for_compute_scope_ranges():
     """The key cross-chunk-boundary property: a container opened via the AI
     path and one opened via the rule path must diff identically under
@@ -351,3 +541,93 @@ def test_ai_stack_shape_matches_rule_based_shape_for_compute_scope_ranges():
     assert ai_scope["stack"][0]["num_segments"] == rule_scope["stack"][0]["num_segments"]
     for field_name in ("boundary_ordinal", "label_occurrence_counts", "last_bare_integer", "last_letter_ordinal"):
         assert field_name in ai_scope and field_name in rule_scope
+
+
+# ─── Sibling-chaining safety net (_enumeration_marker_style) ───────────────
+# Confirmed real bug (job 9c3dc6e6's Conclusion "(i)-(vii)" award list): the
+# AI itself is probabilistic about reporting parent_ref for flat enumerated
+# lists — the prompt fix (ENUMERATED LIST ITEMS ARE SIBLINGS OF EACH OTHER)
+# improves but does not guarantee correct depth/parent_ref, so this is a
+# deterministic, generic-path-only safety net: consecutive same-style
+# markers reported as "one level deeper than the previous one" are flattened
+# back to that previous item's own depth.
+
+
+def test_ai_runaway_lower_roman_chain_is_flattened_to_flat_siblings():
+    """Direct repro of the confirmed real bug shape: (i) is reported as a
+    child of "Conclusion" (depth=1), but each subsequent item is reported
+    one level DEEPER than the one before it (depth=2, 3, 4, ...) as if each
+    nests under the previous — none of them go through forced_family (no
+    ground/pleading scope is active), so without the safety net they'd
+    chain into a runaway-deepening stack. All seven must resolve to the
+    SAME scope_key, as flat siblings of "Conclusion"."""
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:1", "label": "Conclusion"}])
+    events = [
+        _event("(i) The Tribunal shall pay Rs. 10,00,000 as damages.", depth=1),
+        _event("(ii) The Tribunal shall further pay costs of the arbitration.", depth=2),
+        _event("(iii) Interest shall accrue at 9% per annum.", depth=3),
+        _event("(iv) The counter-claim is dismissed.", depth=4),
+        _event("(v) Both parties shall bear their own costs.", depth=5),
+        _event("(vi) The award is final and binding.", depth=6),
+        _event("(vii) The registry shall communicate this order.", depth=7),
+    ]
+    candidates, new_scope = ri.apply_heading_events_to_scope(events, seed, page_num=17, has_next_page=True)
+
+    scope_keys = {c["scope_key"] for c in candidates}
+    assert scope_keys == {"subdoc:1"}, scope_keys
+    # Only the LAST same-style item survives onto the persisted stack — each
+    # earlier one was truncated away as the next sibling was pushed at the
+    # same depth, exactly like any other flat run of siblings.
+    assert [s["key"] for s in new_scope["stack"]][:1] == ["subdoc:1"]
+
+
+def test_ai_enum_chain_break_by_an_unrelated_heading_is_not_flattened_across():
+    """Regression guard: a genuine unrelated heading between two same-style
+    runs resets the tracking — a NEW "(i)"-style list starting fresh under
+    a real deeper heading must nest under THAT heading, not get flattened
+    all the way back to the outer "Conclusion" scope."""
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:1", "label": "Conclusion"}])
+    events = [
+        _event("(i) The Tribunal shall pay damages.", depth=1),
+        _event("FURTHER DIRECTIONS", depth=1),
+        _event("(i) First direction issued by the registry.", depth=2),
+    ]
+    candidates, _ = ri.apply_heading_events_to_scope(events, seed, page_num=17, has_next_page=True)
+    by_fingerprint_order = candidates
+
+    first_i, further_directions, second_i = by_fingerprint_order
+    assert first_i["scope_key"] == "subdoc:1"
+    assert further_directions["scope_key"] == "subdoc:1"
+    # The second "(i)" nests under the fresh "FURTHER DIRECTIONS" container,
+    # not flattened back to "Conclusion" — the intervening unrelated heading
+    # must have reset the same-style tracking.
+    assert second_i["scope_key"] == f"subdoc:1/{further_directions['key']}"
+
+
+def test_ai_enum_chain_single_lone_item_is_untouched():
+    """No preceding same-style item at all — nothing to flatten against."""
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:1", "label": "Conclusion"}])
+    events = [_event("(i) The Tribunal shall pay damages.", depth=1)]
+    candidates, _ = ri.apply_heading_events_to_scope(events, seed, page_num=17, has_next_page=True)
+    assert candidates[0]["scope_key"] == "subdoc:1"
+
+
+def test_ai_enum_chain_a_genuinely_different_style_nests_one_level_deeper_undisturbed():
+    """A real deeper heading following an enumerated run — one that does
+    NOT match _enumeration_marker_style at all (plain text, no leading
+    marker) — is unaffected by the safety net and nests exactly where the
+    AI reported it."""
+    seed = _seeded_scope([{"family": "article", "key": "article:1", "label": "Article 1"}])
+    events = [
+        _event("(i) The Tribunal shall pay damages.", depth=1),
+        _event("(ii) The Tribunal shall further pay costs.", depth=2),
+        _event("PENALTY CLAUSE", depth=2),
+    ]
+    candidates, _ = ri.apply_heading_events_to_scope(events, seed, page_num=17, has_next_page=True)
+    by_key_last = candidates[-1]
+    second_item = candidates[1]
+    # (ii) was flattened to a sibling of (i) under "Article 1" ...
+    assert second_item["scope_key"] == "article:1"
+    # ... but "PENALTY CLAUSE" genuinely nests one level under (ii), since it
+    # doesn't match the marker-style safety net at all.
+    assert by_key_last["scope_key"] == f"article:1/{second_item['key']}"

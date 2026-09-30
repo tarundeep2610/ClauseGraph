@@ -96,8 +96,133 @@ def test_prompt_requires_exact_number_copying():
     assert '"1." into "1.4"' in STRUCTURE_SYSTEM_PROMPT
 
 
+def test_prompt_disambiguates_repeating_case_captions_from_running_headers():
+    """A repeated court-caption block ("In the High Court of...") can
+    legitimately introduce a DIFFERENT pleading each time (confirmed real
+    miss: "RESPECTFULLY SHOWETH:" and a separate affidavit, both behind the
+    same repeated caption, went entirely undetected) — distinct from the
+    pure repeated-running-header case just above it, which must still be
+    skipped."""
+    assert "REPEATING CASE-CAPTION BLOCKS" in STRUCTURE_SYSTEM_PROMPT
+    assert "RESPECTFULLY SHOWETH" in STRUCTURE_SYSTEM_PROMPT
+    assert "Affidavit of Ishwar Chand Balan" in STRUCTURE_SYSTEM_PROMPT
+
+
+def test_prompt_teaches_ocr_layout_annotations():
+    """The OCR engine's own visual layout classification (see
+    reference_index.build_layout_annotated_text /
+    ai_reference_index._locate_heading_in_chunk) is surfaced to the model
+    as a `[OCR-LAYOUT: ...]` tag — the model must be told what it means and
+    to keep reporting heading_text verbatim regardless."""
+    assert "OCR-LAYOUT" in STRUCTURE_SYSTEM_PROMPT
+    assert "[OCR-LAYOUT: HEADER]" in STRUCTURE_SYSTEM_PROMPT
+    assert "layout classifier" in STRUCTURE_SYSTEM_PROMPT
+
+
+def test_prompt_states_the_recall_over_precision_principle():
+    """2.0: the general design principle governing every subsequent rule —
+    when uncertain, report and flag, never silently omit."""
+    assert "REPORT, DON'T OMIT, WHEN UNCERTAIN" in STRUCTURE_SYSTEM_PROMPT
+    assert "trivial for a human" in STRUCTURE_SYSTEM_PROMPT
+    assert "uncertainty be a reason to leave something out" in STRUCTURE_SYSTEM_PROMPT
+
+
+def test_prompt_generalizes_open_vocabulary_headings_beyond_fixed_examples():
+    """2.3: the shape rule is stated in words, and worked examples are
+    explicitly captioned as illustrations, not an exhaustive checklist."""
+    assert "ILLUSTRATIONS of this shape" in STRUCTURE_SYSTEM_PROMPT
+    assert "never seen in these examples" in STRUCTURE_SYSTEM_PROMPT
+    assert "Insurance:" in STRUCTURE_SYSTEM_PROMPT
+    assert "Bank Guarantee for Contract" in STRUCTURE_SYSTEM_PROMPT
+    assert "minor supporting document" in STRUCTURE_SYSTEM_PROMPT
+
+
+def test_prompt_teaches_quoted_reproduced_clause_text_is_not_a_heading():
+    """2.1: report it (recall-biased), but never nest later headings under it."""
+    assert "which reads as under:" in STRUCTURE_SYSTEM_PROMPT
+    assert "QUOTED/REPRODUCED VERBATIM" in STRUCTURE_SYSTEM_PROMPT
+    assert "not a child of \"9.0\"" in STRUCTURE_SYSTEM_PROMPT
+
+
+def test_prompt_teaches_sequential_letters_vs_roman_numerals():
+    assert "SEQUENTIAL LETTERS ARE NOT ROMAN NUMERALS" in STRUCTURE_SYSTEM_PROMPT
+    assert "not roman numeral 100" in STRUCTURE_SYSTEM_PROMPT
+    assert "CHILDREN of the" in STRUCTURE_SYSTEM_PROMPT
+
+
+def test_prompt_teaches_enumerated_list_items_are_siblings_not_nested_under_the_previous_one():
+    assert "ENUMERATED LIST ITEMS ARE SIBLINGS OF EACH OTHER" in STRUCTURE_SYSTEM_PROMPT
+    assert "NOT a child of (F)" in STRUCTURE_SYSTEM_PROMPT
+
+
+def test_prompt_has_a_lowercase_roman_worked_example_for_sibling_lists():
+    """Finding 2a: the sibling-list section previously had only one worked
+    example (uppercase letters) — the Conclusion's "(i)-(vii)" award list
+    kept mis-chaining in practice, so a second, lowercase-roman-specific
+    worked example was added right alongside it."""
+    assert "(iii) is NOT a child of (ii)" in STRUCTURE_SYSTEM_PROMPT
+    assert "lowercase\n  roman numerals in parens" in STRUCTURE_SYSTEM_PROMPT
+
+
+def test_prompt_has_the_numbered_paragraph_gap_self_check():
+    """Finding 1b: the enumeration-completeness self-check now explicitly
+    covers the document's own running paragraph numbers, not just
+    lettered/roman sub-lists."""
+    assert 'paragraph "3."' in STRUCTURE_SYSTEM_PROMPT
+    assert 'paragraph "16."' in STRUCTURE_SYSTEM_PROMPT
+
+
+def test_prompt_describes_continuous_cross_heading_paragraph_numbering():
+    """Finding 1b: a document's numbered paragraphs can run continuously
+    across several section headings without ever restarting — confirmed
+    real recall gap where paragraphs 4-15 (spanning several headings) were
+    entirely skipped."""
+    assert "CONTINUOUSLY ACROSS several" in STRUCTURE_SYSTEM_PROMPT
+    assert "never resets just because a new heading appeared" in STRUCTURE_SYSTEM_PROMPT
+
+
+def test_prompt_teaches_colon_dash_arrow_list_introducing_lines():
+    """Finding 6: a general, shape-based heuristic — a short line ending in
+    a colon/dash/arrow introduces the list that follows it — generalized
+    with examples deliberately unrelated to the arbitration-judgment
+    vocabulary already in the prompt, so it doesn't overfit to one PDF."""
+    assert 'A SHORT LINE ENDING IN ":", "-", OR "->" OFTEN INTRODUCES THE LIST THAT FOLLOWS' in STRUCTURE_SYSTEM_PROMPT
+    assert "The inspection revealed the following defects:" in STRUCTURE_SYSTEM_PROMPT
+    assert "Delivery shall proceed in the" in STRUCTURE_SYSTEM_PROMPT
+    assert "following stages -" in STRUCTURE_SYSTEM_PROMPT
+    assert "The vendor's" in STRUCTURE_SYSTEM_PROMPT
+    assert "obligations are as follows ->" in STRUCTURE_SYSTEM_PROMPT
+
+
+def test_prompt_states_versus_is_never_a_heading():
+    assert "NEVER itself a heading" in STRUCTURE_SYSTEM_PROMPT
+
+
+def test_prompt_distinguishes_incidental_keyword_usage_from_a_real_divider():
+    assert "MINOR sub-label of that supporting document" in STRUCTURE_SYSTEM_PROMPT
+    assert "Price Schedule" in STRUCTURE_SYSTEM_PROMPT
+
+
 def test_prompt_survives_assembly_into_a_real_chunk_prompt():
     chunk = ChunkPlan(pages=[PageInput(page_num=1, text="ANNEXURE A-1\n\nsome text")])
     system_prompt, user_prompt = build_structure_prompt(chunk)
     assert system_prompt == STRUCTURE_SYSTEM_PROMPT
     assert "NOUN-PHRASE TEST" in system_prompt
+
+
+def test_include_pleading_points_appends_the_new_section_only_when_opted_in():
+    """Round 10's opt-in test flag — the live default prompt (no kwarg, or
+    explicitly False) must be byte-for-byte unchanged; only passing
+    include_pleading_points=True appends the new section."""
+    chunk = ChunkPlan(pages=[PageInput(page_num=1, text="GROUNDS OF APPEAL\n\n1. First ground.")])
+
+    default_system_prompt, _ = build_structure_prompt(chunk)
+    assert default_system_prompt == STRUCTURE_SYSTEM_PROMPT
+
+    explicit_off_system_prompt, _ = build_structure_prompt(chunk, include_pleading_points=False)
+    assert explicit_off_system_prompt == STRUCTURE_SYSTEM_PROMPT
+
+    on_system_prompt, _ = build_structure_prompt(chunk, include_pleading_points=True)
+    assert on_system_prompt != STRUCTURE_SYSTEM_PROMPT
+    assert "NUMBERED PLEADING POINTS AND GROUNDS ARE HEADINGS TOO" in on_system_prompt
+    assert "OVERRIDES THE EXCLUSION ABOVE" in on_system_prompt

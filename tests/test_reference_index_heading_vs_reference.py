@@ -162,12 +162,13 @@ def test_families_table_derives_the_same_rank_and_alias_values_every_existing_te
         "art": "article", "article": "article",
         "para": "para", "paragraph": "para",
         "clause": "clause", "annexure": "annexure", "schedule": "schedule",
-        "appendix": "appendix", "page": "page", "ground": "ground",
+        "appendix": "appendix", "page": "page", "ground": "ground", "point": "point",
+        "subpoint": "subpoint",
     }
     assert _SUBDOC_NUMBERED_FAMILIES == {"annexure", "schedule", "appendix"}
     assert set(FAMILIES.keys()) == {
         "annexure", "schedule", "appendix", "subdoc", "article", "section",
-        "para", "clause", "ground", "page",
+        "para", "clause", "ground", "point", "subpoint", "page",
     }
 
 

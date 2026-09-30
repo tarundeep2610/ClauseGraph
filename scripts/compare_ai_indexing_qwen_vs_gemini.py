@@ -72,7 +72,9 @@ def _copy_columns(cursor: sqlite3.Cursor, table: str, job_id: str) -> "list[dict
     return [dict(zip(cols, row)) for row in cursor.fetchall()]
 
 
-def duplicate_job(job_id: str, chunk_pages: "int | None" = None) -> str:
+def duplicate_job(
+    job_id: str, chunk_pages: "int | None" = None, pleading_points_via_ai: "bool | None" = None,
+) -> str:
     """Copies the job's ocr_jobs row + uploaded PDF + all ocr_pages rows
     under a fresh job_id, resetting every indexing-related field. Does NOT
     copy ocr_reference_targets or ocr_page_attempts — the duplicate starts
@@ -81,7 +83,11 @@ def duplicate_job(job_id: str, chunk_pages: "int | None" = None) -> str:
     `chunk_pages`, when given, is written into the duplicate's own
     engine_params["ai_index_chunk_pages"] — reindex_job_with_ai() already
     honors that per-job override (ai_reference_index.py), so this needs no
-    other code changes to try a smaller/larger chunk size."""
+    other code changes to try a smaller/larger chunk size.
+
+    `pleading_points_via_ai`, when given, is written into
+    engine_params["ai_index_pleading_points_via_ai"] — Round 10's opt-in
+    full-AI-handoff test flag (reindex_job_with_ai already honors it)."""
     conn = sqlite3.connect(database.DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -111,12 +117,15 @@ def duplicate_job(job_id: str, chunk_pages: "int | None" = None) -> str:
     job["ai_index_report"] = "{}"
     job["reference_index_version"] = 0
     job["reference_index_frontier"] = 0
-    if chunk_pages is not None:
+    if chunk_pages is not None or pleading_points_via_ai is not None:
         try:
             engine_params = json.loads(job.get("engine_params") or "{}")
         except Exception:
             engine_params = {}
-        engine_params["ai_index_chunk_pages"] = chunk_pages
+        if chunk_pages is not None:
+            engine_params["ai_index_chunk_pages"] = chunk_pages
+        if pleading_points_via_ai is not None:
+            engine_params["ai_index_pleading_points_via_ai"] = pleading_points_via_ai
         job["engine_params"] = json.dumps(engine_params)
 
     job_cols = list(job.keys())

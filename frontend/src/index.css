@@ -442,7 +442,8 @@ input[type="range"]::-webkit-slider-thumb {
   margin-left: auto; background: transparent; border: none; color: var(--muted);
   cursor: pointer; padding: 2px 4px; border-radius: 4px; opacity: 0; transition: opacity 0.15s;
 }
-.structure-tree-node-header:hover .structure-tree-node-jump { opacity: 1; }
+.structure-tree-node-header:hover .structure-tree-node-jump,
+.structure-tree-leaf:hover .structure-tree-node-jump { opacity: 1; }
 .structure-tree-node-jump:hover { color: var(--accent); background: rgba(255,255,255,0.08); }
 
 .structure-tree-node-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; }

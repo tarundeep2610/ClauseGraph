@@ -143,10 +143,15 @@ AI_INDEX_MODEL = os.environ.get("AI_INDEX_MODEL", "gemini-2.5-flash")
 AI_INDEX_BASE_URL = os.environ.get("AI_INDEX_BASE_URL", "")
 AI_INDEX_API_KEY = os.environ.get("AI_INDEX_API_KEY", "")
 
-AI_INDEX_CHUNK_PAGES = int(os.environ.get("AI_INDEX_CHUNK_PAGES", "10"))
+AI_INDEX_CHUNK_PAGES = int(os.environ.get("AI_INDEX_CHUNK_PAGES", "5"))
 AI_INDEX_CHUNK_OVERLAP_PAGES = int(os.environ.get("AI_INDEX_CHUNK_OVERLAP_PAGES", "2"))
 AI_INDEX_CHUNK_CHARS_MAX = int(os.environ.get("AI_INDEX_CHUNK_CHARS_MAX", "60000"))
 AI_INDEX_PAGE_CHARS_MAX = int(os.environ.get("AI_INDEX_PAGE_CHARS_MAX", "12000"))
+# How many neighboring pages (each direction, within the same chunk) to
+# search when grounding an AI-reported heading whose claimed start_page
+# doesn't actually contain matching text — see
+# ai_reference_index._locate_heading_in_chunk.
+AI_INDEX_GROUND_PAGE_WINDOW = int(os.environ.get("AI_INDEX_GROUND_PAGE_WINDOW", "3"))
 if AI_INDEX_CHUNK_PAGES < 1:
     raise RuntimeError("AI_INDEX_CHUNK_PAGES must be >= 1.")
 

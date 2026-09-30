@@ -330,7 +330,9 @@ describe('StructureTree — tree built from the flat, materialized-path candidat
     // activePage=430 force-expanded Article 2, revealing Section 3.
     expect(screen.getByText('Section 3')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Article 2'));
+    // Article 2 has a scope range, so its row click now means "jump" — only
+    // its chevron toggles expand/collapse.
+    fireEvent.click(screen.getByTestId('structure-toggle-root/annexure:a-2/article:2'));
     expect(screen.queryByText('Section 3')).not.toBeInTheDocument();
 
     // Same activePage/scopeRanges — a re-render must not re-expand what the
@@ -414,6 +416,95 @@ describe('StructureTree — tree built from the flat, materialized-path candidat
     expect(screen.getByText('Clause 4.1')).toBeInTheDocument();
   });
 
+  it('clicking a container row with a scope range calls onJumpContainer with its start page, without toggling expand/collapse', () => {
+    const store = storeFromRows({
+      427: {
+        'clause:4.1': [candidate({
+          key: 'clause:4.1', anchor_id: 'clause-leaf', page: 427,
+          scope_chain: [{ family: 'annexure', key: 'annexure:a-2', label: 'Annexure A-2' }],
+        })],
+      },
+    });
+    const scopeRanges = [{ key: 'annexure:a-2', start_page: 427, end_page: 446, depth: 0 }];
+    const onJumpContainer = vi.fn();
+    render(
+      <StructureTree
+        referenceStore={store}
+        onSelect={vi.fn()}
+        onSelectContainer={vi.fn()}
+        onJumpContainer={onJumpContainer}
+        scopeRanges={scopeRanges}
+      />
+    );
+    fireEvent.click(screen.getByText('Annexure A-2'));
+    expect(onJumpContainer).toHaveBeenCalledWith({ startPage: 427, endPage: 446, label: 'Annexure A-2' });
+    // Still expanded — a row click on a node with a range means "jump," not "toggle."
+    expect(screen.getByText('Clause 4.1')).toBeInTheDocument();
+  });
+
+  it('clicking a container row with no scope range still jumps, falling back to its own earliest known page', () => {
+    const sharedChain = [{ family: 'article', key: 'article:2', label: 'Article 2' }];
+    const store = storeFromRows({
+      2: {
+        'clause:4.1': [candidate({ key: 'clause:4.1', anchor_id: 'occ-0', page: 2, occurrence_index: 0, scope_chain: sharedChain })],
+      },
+      5: {
+        'clause:4.2': [candidate({ key: 'clause:4.2', anchor_id: 'occ-1', page: 5, occurrence_index: 0, scope_chain: sharedChain })],
+      },
+    });
+    const onJumpContainer = vi.fn();
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} onJumpContainer={onJumpContainer} />);
+
+    // "Article 2" has no backend-computed scope range (no scopeRanges prop
+    // passed at all) — the row still jumps, falling back to its own
+    // earliest known page (2, from Clause 4.1) instead of doing nothing.
+    fireEvent.click(screen.getByText('Article 2'));
+    expect(onJumpContainer).toHaveBeenCalledWith({ startPage: 2, endPage: 2, label: 'Article 2' });
+  });
+
+  it('clicking a container row toggles expand/collapse when no onJumpContainer callback is provided at all', () => {
+    const sharedChain = [{ family: 'article', key: 'article:2', label: 'Article 2' }];
+    const store = storeFromRows({
+      2: {
+        'clause:4.1': [candidate({ key: 'clause:4.1', anchor_id: 'occ-0', page: 2, occurrence_index: 0, scope_chain: sharedChain })],
+      },
+      5: {
+        'clause:4.2': [candidate({ key: 'clause:4.2', anchor_id: 'occ-1', page: 5, occurrence_index: 0, scope_chain: sharedChain })],
+      },
+    });
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} />);
+
+    // "Article 2" (depth 0) is auto-expanded, so its children are already visible.
+    expect(screen.getByText('Clause 4.1')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Article 2'));
+    expect(screen.queryByText('Clause 4.1')).not.toBeInTheDocument();
+  });
+
+  it('clicking a leaf\'s magnifying-glass button calls onOpenReference without also calling onSelect', () => {
+    const onSelect = vi.fn();
+    const onOpenReference = vi.fn();
+    const store = storeFromRows({
+      2: {
+        'clause:4.1': [candidate({ key: 'clause:4.1', anchor_id: 'leaf-1', page: 2, scope_chain: [] })],
+      },
+    });
+    render(<StructureTree referenceStore={store} onSelect={onSelect} onOpenReference={onOpenReference} />);
+
+    fireEvent.click(screen.getByTestId('structure-view-leaf-leaf-1'));
+
+    expect(onOpenReference).toHaveBeenCalledTimes(1);
+    expect(onOpenReference.mock.calls[0][0]).toMatchObject({ anchor_id: 'leaf-1', page: 2, key: 'clause:4.1' });
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('does not render a leaf\'s magnifying-glass button when onOpenReference is not provided', () => {
+    const store = storeFromRows({
+      2: { 'clause:4.1': [candidate({ key: 'clause:4.1', anchor_id: 'leaf-1', page: 2, scope_chain: [] })] },
+    });
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} />);
+    expect(screen.queryByTestId('structure-view-leaf-leaf-1')).not.toBeInTheDocument();
+  });
+
   it('calls onSelect with the exact candidate when a leaf is clicked', () => {
     const onSelect = vi.fn();
     const store = storeFromRows({
@@ -455,9 +546,14 @@ describe('StructureTree — edit/delete affordances', () => {
         'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'annexure-leaf', page: 427, occurrence_index: 0, scope_chain: [] })],
       },
     });
+    // A real backend-computed scope range keeps this node in the full
+    // container treatment even though it has no detected children of its
+    // own — see the "shows edit/delete on a leaf row" test below for the
+    // no-range, single-occurrence, no-children case instead.
+    const scopeRanges = [{ key: 'annexure:a-2', start_page: 427, end_page: 446, depth: 0 }];
     const onEditItem = vi.fn();
     const onDeleteItem = vi.fn();
-    render(<StructureTree referenceStore={store} onSelect={vi.fn()} onEditItem={onEditItem} onDeleteItem={onDeleteItem} />);
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} scopeRanges={scopeRanges} onEditItem={onEditItem} onDeleteItem={onDeleteItem} />);
 
     fireEvent.click(screen.getByTestId('structure-edit-root/annexure:a-2'));
     expect(onEditItem).toHaveBeenCalledWith(expect.objectContaining({ itemKey: 'annexure:a-2', page: 427, occurrenceIndex: 0, isManual: false }));
@@ -511,8 +607,146 @@ describe('StructureTree — edit/delete affordances', () => {
       427: { 'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'annexure-leaf', page: 427, scope_chain: [] })] },
     });
     render(<StructureTree referenceStore={store} onSelect={vi.fn()} />);
-    expect(screen.queryByTestId('structure-edit-root/annexure:a-2')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('structure-delete-root/annexure:a-2')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('structure-edit-leaf-annexure-leaf')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('structure-delete-leaf-annexure-leaf')).not.toBeInTheDocument();
+  });
+});
+
+describe('StructureTree — universal magnifying-glass/jump target, with a fallback when there is no backend range', () => {
+  it('a container-tier node with a real scope range keeps its full container treatment even with no detected children', () => {
+    const store = storeFromRows({
+      427: {
+        'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'annexure-leaf', page: 427, scope_chain: [] })],
+      },
+    });
+    const scopeRanges = [{ key: 'annexure:a-2', start_page: 427, end_page: 446, depth: 0 }];
+    const onSelectContainer = vi.fn();
+    const onJumpContainer = vi.fn();
+    render(
+      <StructureTree
+        referenceStore={store}
+        onSelect={vi.fn()}
+        onSelectContainer={onSelectContainer}
+        onJumpContainer={onJumpContainer}
+        scopeRanges={scopeRanges}
+      />
+    );
+    // Still a container row (not folded into a leaf) — chevron, range
+    // suffix, and the container-style jump/magnifying-glass testid all present.
+    expect(screen.getByTestId('structure-toggle-root/annexure:a-2')).toBeInTheDocument();
+    expect(screen.getByText('Annexure A-2').parentElement).toHaveTextContent('(pages 427–446)');
+
+    fireEvent.click(screen.getByTestId('structure-jump-root/annexure:a-2'));
+    expect(onSelectContainer).toHaveBeenCalledWith({ startPage: 427, endPage: 446, label: 'Annexure A-2' });
+
+    fireEvent.click(screen.getByText('Annexure A-2'));
+    expect(onJumpContainer).toHaveBeenCalledWith({ startPage: 427, endPage: 446, label: 'Annexure A-2' });
+  });
+
+  it('a non-ranged node with more than one occurrence keeps its chevron and expands, instead of folding', () => {
+    const store = storeFromRows({
+      2: {
+        'clause:4.1': [
+          candidate({ key: 'clause:4.1', anchor_id: 'occ-0', page: 2, occurrence_index: 0, scope_chain: [] }),
+          candidate({ key: 'clause:4.1', anchor_id: 'occ-1', page: 5, occurrence_index: 1, scope_chain: [] }),
+        ],
+      },
+    });
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} />);
+    expect(screen.getByTestId('structure-toggle-root/clause:4.1')).toBeInTheDocument();
+    expect(screen.getByTestId('structure-leaf-occ-0')).toBeInTheDocument();
+    expect(screen.getByTestId('structure-leaf-occ-1')).toBeInTheDocument();
+  });
+
+  it('a non-ranged, childless, single-occurrence node uses its own page as the jump/preview fallback, and its edit heading matches the displayed chain-formatted label', () => {
+    const store = storeFromRows({
+      427: { 'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'annexure-leaf', page: 427, occurrence_index: 0, scope_chain: [] })] },
+    });
+    const onSelect = vi.fn();
+    const onOpenReference = vi.fn();
+    const onEditItem = vi.fn();
+    render(
+      <StructureTree
+        referenceStore={store}
+        onSelect={onSelect}
+        onOpenReference={onOpenReference}
+        onEditItem={onEditItem}
+      />
+    );
+    // No chevron — nothing left to expand.
+    expect(screen.queryByTestId('structure-toggle-root/annexure:a-2')).not.toBeInTheDocument();
+    expect(screen.getByText('Annexure A-2')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('structure-leaf-annexure-leaf'));
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ anchor_id: 'annexure-leaf', page: 427 });
+
+    fireEvent.click(screen.getByTestId('structure-view-leaf-annexure-leaf'));
+    expect(onOpenReference.mock.calls[0][0]).toMatchObject({ anchor_id: 'annexure-leaf', page: 427 });
+
+    fireEvent.click(screen.getByTestId('structure-edit-leaf-annexure-leaf'));
+    // "annexure" isn't in OWN_LABEL_FAMILIES, so a plain leafItemDescriptor
+    // would say "a-2" — the displayed, chain-formatted label ("Annexure
+    // A-2") is what the edit modal should actually prefill.
+    expect(onEditItem).toHaveBeenCalledWith(expect.objectContaining({ heading: 'Annexure A-2', page: 427 }));
+  });
+
+  it('a non-ranged, single-occurrence node with a real nested child folds its own occurrence into the header, but keeps a chevron to reveal that child', () => {
+    const store = storeFromRows({
+      6: {
+        'clause:4.1': [candidate({ key: 'clause:4.1', anchor_id: 'clause-leaf', page: 6, occurrence_index: 0, scope_chain: [] })],
+      },
+      7: {
+        'point:a': [candidate({
+          key: 'point:a', anchor_id: 'point-a-leaf', page: 7, own_label: 'Point (a)',
+          scope_chain: [{ family: 'clause', key: 'clause:4.1', label: 'Clause 4.1' }],
+        })],
+      },
+    });
+    const onSelect = vi.fn();
+    const onOpenReference = vi.fn();
+    render(<StructureTree referenceStore={store} onSelect={onSelect} onOpenReference={onOpenReference} />);
+
+    // "Clause 4.1" is depth 0, auto-expanded — no separate "Page 6" row for
+    // its own occurrence, just its one real child underneath.
+    expect(screen.getByTestId('structure-toggle-root/clause:4.1')).toBeInTheDocument();
+    expect(screen.getByText('Point (a)')).toBeInTheDocument();
+    expect(screen.queryByText('Page 6')).not.toBeInTheDocument();
+
+    // The row's own click/magnifying-glass still carry Clause 4.1's own
+    // occurrence (anchor-precise), not a generic container range.
+    fireEvent.click(screen.getByTestId('structure-leaf-clause-leaf'));
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ anchor_id: 'clause-leaf', page: 6 });
+
+    fireEvent.click(screen.getByTestId('structure-view-leaf-clause-leaf'));
+    expect(onOpenReference.mock.calls[0][0]).toMatchObject({ anchor_id: 'clause-leaf', page: 6 });
+  });
+
+  it('a genuinely zero-occurrence grouping node still gets a working jump (via its own earliest known page) but no edit/delete', () => {
+    // "article:2" only ever appears as an ANCESTOR in a descendant's
+    // scope_chain — it has no own detected row of its own.
+    const store = storeFromRows({
+      6: {
+        'clause:4.1': [candidate({
+          key: 'clause:4.1', anchor_id: 'clause-leaf', page: 6,
+          scope_chain: [{ family: 'article', key: 'article:2', label: 'Article 2' }],
+        })],
+      },
+    });
+    const onJumpContainer = vi.fn();
+    render(
+      <StructureTree
+        referenceStore={store}
+        onSelect={vi.fn()}
+        onJumpContainer={onJumpContainer}
+        onEditItem={vi.fn()}
+        onDeleteItem={vi.fn()}
+      />
+    );
+    expect(screen.queryByTestId('structure-edit-root/article:2')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('structure-delete-root/article:2')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Article 2'));
+    expect(onJumpContainer).toHaveBeenCalledWith({ startPage: 6, endPage: 6, label: 'Article 2' });
   });
 });
 
@@ -541,14 +775,17 @@ describe('StructureTree — hierarchy overrides (drag-and-drop reparent/reorder)
 
     // Annexure A-2's node keeps its original id (a stable identity, not a
     // recomputed path) but now renders nested inside Annexure A-1's
-    // children.
-    const a1Node = screen.getByTestId('structure-node-root/annexure:a-1');
-    const a2Node = screen.getByTestId('structure-node-root/annexure:a-2');
+    // children. Each has exactly one occurrence of its own (and, after the
+    // move, a child too), so each folds into a leaf-styled row.
+    const a1Node = screen.getByTestId('structure-leaf-a1-leaf');
+    const a2Node = screen.getByTestId('structure-leaf-a2-leaf');
     expect(a1Node).toContainElement(a2Node);
 
     // Its own child (Clause 1) came along too — collapsed by default now
     // that Annexure A-2 sits at depth 1, not depth 0, so expand it first.
-    fireEvent.click(screen.getByText('Annexure A-2'));
+    // Annexure A-2's own row click now means "jump" (it folded into a leaf
+    // row), so expanding requires its chevron specifically, not its label.
+    fireEvent.click(screen.getByTestId('structure-toggle-root/annexure:a-2'));
     expect(screen.getByText('Clause 1')).toBeInTheDocument();
   });
 
@@ -565,8 +802,10 @@ describe('StructureTree — hierarchy overrides (drag-and-drop reparent/reorder)
     const parentOverrides = { 'clause:4.2': 'clause:4.1' };
     render(<StructureTree referenceStore={store} onSelect={vi.fn()} parentOverrides={parentOverrides} />);
 
-    const parentNode = screen.getByTestId('structure-node-root/clause:4.1');
-    const childNode = screen.getByTestId('structure-node-root/clause:4.2');
+    // Clause 4.1 has exactly one occurrence of its own (with or without a
+    // child), so it folds into a leaf-styled row too — same as Clause 4.2.
+    const parentNode = screen.getByTestId('structure-leaf-clause-leaf');
+    const childNode = screen.getByTestId('structure-leaf-clause-4-2-leaf');
     expect(parentNode).toContainElement(childNode);
   });
 
@@ -575,7 +814,8 @@ describe('StructureTree — hierarchy overrides (drag-and-drop reparent/reorder)
     const parentOverrides = { 'annexure:a-1': 'annexure:does-not-exist' };
     render(<StructureTree referenceStore={store} onSelect={vi.fn()} parentOverrides={parentOverrides} />);
     // Falls back to its natural (root-level) position — no crash, no vanish.
-    expect(screen.getByTestId('structure-node-root/annexure:a-1')).toBeInTheDocument();
+    // (A bare, childless single occurrence renders as a leaf-styled row.)
+    expect(screen.getByTestId('structure-leaf-a1-leaf')).toBeInTheDocument();
   });
 
   it('a sort override reorders siblings, with an un-positioned sibling appended in default page order', () => {
@@ -589,11 +829,12 @@ describe('StructureTree — hierarchy overrides (drag-and-drop reparent/reorder)
     const sortOverrides = { '': ['annexure:a-2', 'annexure:a-1'] };
     render(<StructureTree referenceStore={store} onSelect={vi.fn()} sortOverrides={sortOverrides} />);
 
-    const nodeIds = screen.getAllByTestId(/^structure-node-root\/annexure:a-\d$/).map((el) => el.dataset.testid);
+    // Each is a bare, childless single occurrence — rendered as a leaf-styled row.
+    const nodeIds = screen.getAllByTestId(/^structure-leaf-a\d-leaf$/).map((el) => el.dataset.testid);
     expect(nodeIds).toEqual([
-      'structure-node-root/annexure:a-2',
-      'structure-node-root/annexure:a-1',
-      'structure-node-root/annexure:a-3',
+      'structure-leaf-a2-leaf',
+      'structure-leaf-a1-leaf',
+      'structure-leaf-a3-leaf',
     ]);
   });
 

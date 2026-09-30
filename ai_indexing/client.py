@@ -5,6 +5,7 @@ including the circuit breaker) — which means "stop the whole AI pass for
 this job."
 """
 
+import asyncio
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -18,6 +19,7 @@ from ai_indexing.errors import (
     AIIndexingDisabledError,
     AIIndexError,
     AIInvalidOutputError,
+    AIRateLimitError,
     classify,
     is_fallbackable,
 )
@@ -67,6 +69,7 @@ class StructureIndexer:
         carry_context: Optional[CarryContext] = None,
         document_hint: str = "",
         cancel_check=None,
+        include_pleading_points: bool = False,
     ) -> ChunkStructureResult:
         page_nums = chunk.page_nums
         if self._consecutive_failures >= self.failure_limit:
@@ -78,6 +81,7 @@ class StructureIndexer:
         provider = await get_provider(self.resolved.provider_config)
         system_prompt, user_prompt = build_structure_prompt(
             chunk, carry_context=carry_context, document_hint=document_hint,
+            include_pleading_points=include_pleading_points,
         )
 
         attempts = 0
@@ -96,6 +100,35 @@ class StructureIndexer:
                 )
             except AIConfigError:
                 raise  # terminal — propagate to the caller
+            except AIRateLimitError as e:
+                last_error = e
+                if getattr(e, "is_daily_quota", False):
+                    self._consecutive_failures = self.failure_limit
+                    break
+                # Temporary per-minute burst rate limit (RPM/TPM) — wait for reset and retry once
+                wait_s = max(5.0, min(float(e.retry_after or 30.0) + 2.0, 75.0))
+                print(f"[AI Indexing] Rate limit on pages {page_nums}. Waiting {wait_s:.1f}s for reset before retry...")
+                sleep_deadline = time.monotonic() + wait_s
+                cancelled = False
+                while time.monotonic() < sleep_deadline:
+                    if cancel_check and cancel_check():
+                        cancelled = True
+                        break
+                    await asyncio.sleep(min(1.0, max(0.1, sleep_deadline - time.monotonic())))
+                if cancelled:
+                    return ChunkStructureResult(
+                        outcome=ChunkOutcome.CANCELLED, page_nums=page_nums,
+                        provider=self.resolved.provider_config.provider,
+                        model=self.resolved.provider_config.model, attempts=attempts,
+                    )
+                # Retry the completion call after the temporary limit has cleared
+                try:
+                    completion = await provider.complete(
+                        system_prompt=system_prompt, user_prompt=user_prompt, cancel_check=cancel_check,
+                    )
+                except Exception as retry_err:
+                    last_error = retry_err
+                    break
             except AIIndexError as e:
                 last_error = e
                 if not is_fallbackable(e):

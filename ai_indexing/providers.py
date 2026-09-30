@@ -86,10 +86,20 @@ def _require_https_or_local(base_url: str) -> None:
         raise AIConfigError(f"base_url is not a valid URL: {base_url!r}") from e
     if parsed.scheme == "https":
         return
-    if parsed.scheme == "http" and parsed.host in ("localhost", "127.0.0.1", "::1"):
-        return
+    if parsed.scheme == "http":
+        host = (parsed.host or "").lower()
+        if host in ("localhost", "127.0.0.1", "::1", "host.docker.internal") or host.endswith(".local") or host.endswith(".internal"):
+            return
+        import ipaddress
+        try:
+            ip = ipaddress.ip_address(host)
+            if ip.is_private or ip.is_loopback:
+                return
+        except ValueError:
+            if "." not in host:  # Docker compose internal service name (e.g. "ollama", "gpu-ocr-api")
+                return
     raise AIConfigError(
-        f"base_url must be https, or plain http only for localhost/127.0.0.1 — got {base_url!r}."
+        f"base_url must be https, or plain http only for localhost/127.0.0.1/host.docker.internal — got {base_url!r}."
     )
 
 
@@ -131,7 +141,7 @@ class BaseProvider(abc.ABC):
                 return result
             except (AIRateLimitError, AITimeoutError, AIUnreachableError, AIRemoteError) as e:
                 last_exc = e
-                if attempt >= config.AI_INDEX_MAX_TRANSPORT_RETRIES:
+                if attempt >= config.AI_INDEX_MAX_TRANSPORT_RETRIES or getattr(e, "is_daily_quota", False):
                     raise
                 delay = e.retry_after if getattr(e, "retry_after", None) else min(2 ** attempt, 30)
                 await asyncio.sleep(delay)
@@ -207,9 +217,16 @@ class _OpenAIChatProvider(BaseProvider):
         except openai_sdk.AuthenticationError as e:
             raise AIAuthError(f"{self.name} rejected the API key: {e}", provider=self.name) from e
         except openai_sdk.RateLimitError as e:
-            retry_after = _parse_retry_after(str(e))
-            raise AIRateLimitError(f"{self.name} rate-limited this request: {e}",
-                                    provider=self.name, retry_after=retry_after) from e
+            err_str = str(e)
+            is_daily_quota = any(
+                k in err_str.lower()
+                for k in ("generaterequestsperday", "requestsperday", "limit: 500")
+            ) or ("perday" in err_str.lower())
+            retry_after = None if is_daily_quota else _parse_retry_after(err_str)
+            err = AIRateLimitError(f"{self.name} rate-limited this request: {e}",
+                                    provider=self.name, retry_after=retry_after)
+            err.is_daily_quota = is_daily_quota
+            raise err from e
         except openai_sdk.APITimeoutError as e:
             raise AITimeoutError(f"{self.name} request timed out: {e}", provider=self.name) from e
         except openai_sdk.APIConnectionError as e:
@@ -240,12 +257,19 @@ class _OpenAIChatProvider(BaseProvider):
         )
 
 
-_RETRY_DELAY_RE = re.compile(r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+(?:\.\d+)?)s", re.IGNORECASE)
+_RETRY_DELAY_PATTERNS = [
+    re.compile(r"retryDelay['\"]?\s*[:=]\s*['\"]?(\d+(?:\.\d+)?)s?", re.IGNORECASE),
+    re.compile(r"retry\s+in\s+(\d+(?:\.\d+)?)s?", re.IGNORECASE),
+    re.compile(r"retry[-_]after['\"]?\s*[:=]\s*['\"]?(\d+(?:\.\d+)?)", re.IGNORECASE),
+]
 
 
 def _parse_retry_after(text: str) -> Optional[float]:
-    m = _RETRY_DELAY_RE.search(text or "")
-    return float(m.group(1)) if m else None
+    for pat in _RETRY_DELAY_PATTERNS:
+        m = pat.search(text or "")
+        if m:
+            return float(m.group(1))
+    return None
 
 
 class GeminiProvider(_OpenAIChatProvider):

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { renderMarkdown, renderPageMarkdown } from '../utils/markdown';
 import RetryPagesModal from './RetryPagesModal';
 import PdfCanvasViewer from './PdfCanvasViewer';
@@ -74,6 +74,11 @@ export default function ViewerPanel({
   const showResult = viewMode === 'split' || viewMode === 'result';
   const [retryModalOpen, setRetryModalOpen] = useState(false);
   const [pdfPageOverride, setPdfPageOverride] = useState(null);
+  // Set by a Structure-sidebar leaf jump that carries an anchor_id — cleared
+  // once the scroll-to-anchor effect below has acted on it (or immediately,
+  // for a jump with no anchor, e.g. a container jump).
+  const [pendingAnchorId, setPendingAnchorId] = useState(null);
+  const resultContentRef = useRef(null);
   // The Structure tree is a persistent sidebar (collapsed by default), not a
   // competing view mode — it stays available no matter which of
   // Split/PDF/Result the reader has open, since jumping to a reference and
@@ -165,14 +170,43 @@ export default function ViewerPanel({
     if (onCurrentPageChange) onCurrentPageChange(currentPdfPage);
   }, [currentPdfPage, onCurrentPageChange]);
 
+  // Scrolls the Result pane to a leaf jump's exact position once its page's
+  // content has actually rendered — the same xref-anchor span the reading
+  // modal already scrolls to (see StructureReadingModal.jsx), scoped to this
+  // pane's own subtree since the same anchor id can exist in both places at
+  // once. Waits out the "Loading page N…" transient naturally: this effect
+  // just re-checks whenever currentPageBlock changes.
+  useEffect(() => {
+    if (!pendingAnchorId || !currentPageBlock) return;
+    const el = resultContentRef.current?.querySelector(`#${CSS.escape(pendingAnchorId)}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setPendingAnchorId(null);
+  }, [pendingAnchorId, currentPageBlock]);
+
   function handlePdfPageChange(page) {
     setPdfPageOverride(page);
   }
 
-  // Clicking a Structure-sidebar leaf or a container's jump button both open
-  // the reading modal instead of moving the main viewer — the main pane's
-  // pdfPageOverride is left completely untouched, so closing the modal
-  // leaves the reader exactly where they were.
+  // A Structure-sidebar row click now moves the main viewer itself — a leaf
+  // jumps straight to its page (and, once that page's content is on screen,
+  // scrolls to its exact anchor position via the effect below); a container
+  // jumps to its range's first page. The reading modal (opened only via each
+  // row's dedicated magnifying-glass button, see handleStructureSelect /
+  // handleStructureContainerJump below) remains the way to preview a page or
+  // section without disturbing where the reader actually is.
+  function handleStructureJumpToPage(candidate) {
+    setPdfPageOverride(candidate.page);
+    setPendingAnchorId(candidate.anchor_id || null);
+  }
+
+  function handleStructureJumpContainer(range) {
+    setPdfPageOverride(range.startPage);
+    setPendingAnchorId(null);
+  }
+
+  // Opens the reading modal instead of moving the main viewer — the main
+  // pane's pdfPageOverride is left completely untouched, so closing the
+  // modal leaves the reader exactly where they were.
   function handleStructureSelect(candidate) {
     const target = { startPage: candidate.page, endPage: candidate.page, label: `Page ${candidate.page}`, anchorId: candidate.anchor_id };
     setReadingTarget(target);
@@ -339,8 +373,10 @@ export default function ViewerPanel({
             <div className="view-box-content">
               <StructureTree
                 referenceStore={referenceStore}
-                onSelect={handleStructureSelect}
+                onSelect={handleStructureJumpToPage}
+                onOpenReference={handleStructureSelect}
                 onSelectContainer={handleStructureContainerJump}
+                onJumpContainer={handleStructureJumpContainer}
                 scopeRanges={scopeRanges}
                 activePage={currentPdfPage}
                 onEditItem={onEditStructureItem ? openEditItemModal : undefined}
@@ -382,7 +418,7 @@ export default function ViewerPanel({
               <span style={{ fontSize: '0.73rem', color: progressColor }}>{progressLabel}</span>
             </div>
             {hasSelection && currentPageBlock ? (
-              <div className="view-box-content markdown-body" onClick={handleMarkdownClick}>
+              <div ref={resultContentRef} className="view-box-content markdown-body" onClick={handleMarkdownClick}>
                 <div id={`page-block-${currentPageBlock.page}`} className="ocr-page-block" data-testid={`page-block-${currentPageBlock.page}`}>
                   <h3 style={{ display: 'flex', alignItems: 'center', margin: '0 0 8px' }}>
                     Page {currentPageBlock.page}
