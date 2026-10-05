@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ViewerPanel from './ViewerPanel';
 import { createReferenceStore, mergeDelta } from '../utils/referenceStore';
+import { getPageMentions } from '../utils/markdown';
 
 // PdfCanvasViewer itself (pdf.js rendering) is tested in its own file — here
 // it's stubbed so ViewerPanel's own wiring (which page is passed down, the
@@ -15,9 +16,17 @@ vi.mock('./PdfCanvasViewer', () => ({
   ),
 }));
 
-function storeWithDelta(changedPages, version = 1) {
+// Wraps the real getPageMentions in a spy (not a stub — ViewerPanel's badge
+// rendering still needs real mentions) purely so the memoization test below
+// can assert it isn't called more often than the page/store actually change.
+vi.mock('../utils/markdown', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, getPageMentions: vi.fn(actual.getPageMentions) };
+});
+
+function storeWithDelta(changedPages, version = 1, changedMentions = {}) {
   const store = createReferenceStore();
-  mergeDelta(store, { reference_index_version: version, changed_pages: changedPages });
+  mergeDelta(store, { reference_index_version: version, changed_pages: changedPages, changed_mentions: changedMentions });
   return store;
 }
 
@@ -782,5 +791,64 @@ describe('ViewerPanel — Structure add/edit/delete modals', () => {
 
     fireEvent.click(screen.getByTestId('structure-reading-modal-backdrop'));
     expect(screen.queryByTestId('structure-reading-modal')).not.toBeInTheDocument();
+  });
+});
+
+describe('ViewerPanel — on-page reference badges', () => {
+  it('renders a badge for a resolvable mention on the current page, and clicking it opens the reading modal for the target', () => {
+    const store = storeWithDelta(
+      { 61: { 'annexure:a-1': [{ anchor_id: 'a1', collapsed_key: 'annexure:a1', key: 'annexure:a-1', page: 61 }] } },
+      1,
+      { 1: [{ key: 'annexure:a-1', raw_text: 'Annexure A-1', resolution: 'exact' }] }
+    );
+    const onRequestStructureContent = vi.fn();
+    const job = jobWithPages([{ page: 1, text: 'Annexure A-1 to A-5, which are very essential.' }]);
+    render(
+      <ViewerPanel
+        {...baseProps}
+        viewMode="split"
+        pdfSrc="blob:fake-url"
+        jobDetails={job}
+        referenceStore={store}
+        scopeRanges={[]}
+        onRequestStructureContent={onRequestStructureContent}
+      />
+    );
+    fireEvent.click(screen.getByTestId('page-reference-badge-annexure:a-1'));
+
+    // Main PDF pane is untouched — same "opens the modal instead of moving
+    // the main viewer" behavior as a Structure-tree leaf's magnifier button.
+    expect(screen.getByTestId('mock-pdf-page')).toHaveTextContent('1');
+    expect(onRequestStructureContent).toHaveBeenCalledWith({ startPage: 61, endPage: 61, label: 'Page 61', anchorId: 'a1' });
+  });
+
+  it('shows no badge on a page with no resolvable mentions', () => {
+    const store = createReferenceStore();
+    const job = jobWithPages([{ page: 1, text: 'Nothing here refers to anything else.' }]);
+    render(<ViewerPanel {...baseProps} viewMode="split" pdfSrc="blob:fake-url" jobDetails={job} referenceStore={store} scopeRanges={[]} />);
+    expect(screen.queryByTestId('page-reference-badges')).not.toBeInTheDocument();
+  });
+});
+
+describe('ViewerPanel — pageMentions memoization', () => {
+  it('does not recompute pageMentions on a render where only unrelated state changes', () => {
+    const store = storeWithDelta(
+      { 61: { 'annexure:a-1': [{ anchor_id: 'a1', collapsed_key: 'annexure:a1', key: 'annexure:a-1', page: 61 }] } },
+      1,
+      { 1: [{ key: 'annexure:a-1', raw_text: 'Annexure A-1', resolution: 'exact' }] }
+    );
+    const job = jobWithPages([{ page: 1, text: 'Annexure A-1 to A-5.' }]);
+    getPageMentions.mockClear();
+    render(
+      <ViewerPanel {...baseProps} viewMode="split" pdfSrc="blob:fake-url" jobDetails={job} referenceStore={store} scopeRanges={[]} />
+    );
+    const callsAfterMount = getPageMentions.mock.calls.length;
+    expect(callsAfterMount).toBeGreaterThan(0);
+
+    // Toggling the structure sidebar re-renders ViewerPanel without changing
+    // currentPdfPage, the page text, or the referenceStore — the useMemo
+    // dependency fix must keep getPageMentions from re-running here.
+    fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
+    expect(getPageMentions.mock.calls.length).toBe(callsAfterMount);
   });
 });

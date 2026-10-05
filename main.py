@@ -10,7 +10,7 @@ import math
 import collections
 import urllib.parse
 import asyncio
-from typing import Optional
+from typing import Any, Dict, Optional
 from contextlib import asynccontextmanager
 import pypdfium2 as pdfium
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query, BackgroundTasks
@@ -883,11 +883,136 @@ def get_job_references(
     # practice overrides never need to touch a page:N row, this is purely
     # about ordering safety.
     changed_pages = structure_overrides.apply_to_references_delta(job_id, changed_pages)
+    changed_mentions = database.get_reference_mentions_since(job_id, since_version)
 
     return {
         "reference_index_version": database.get_reference_index_version(job_id),
         "changed_pages": changed_pages,
+        "changed_mentions": changed_mentions,
     }
+
+
+@app.get("/api/jobs/{job_id}/references/rule-diff")
+def get_job_references_rule_diff(job_id: str, principal: Principal = Depends(_require_user)):
+    """Compares current active reference targets against stored rule-detection snapshot."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if reference_index.is_reindex_active(job_id):
+        raise HTTPException(status_code=409, detail="Reindex is currently in progress")
+
+    active_targets = database.get_reference_targets_for_job(job_id)
+    snapshots = database.get_all_page_rule_snapshots_for_job(job_id)
+
+    active_by_page: Dict[int, Dict[str, Dict[str, Any]]] = {}
+    for t in active_targets:
+        p = t["page"]
+        active_by_page.setdefault(p, {})[t["key"]] = t
+
+    pages_diff: Dict[int, Dict[str, int]] = {}
+    total_added = 0
+    total_removed = 0
+    total_rescoped = 0
+
+    all_pages = sorted(set(active_by_page.keys()) | set(snapshots.keys()))
+    for p in all_pages:
+        active_page = active_by_page.get(p, {})
+        snap = snapshots.get(p)
+        snap_cands = {c["key"]: c for c in snap.get("candidates", [])} if snap else {}
+
+        added = sum(1 for k in active_page if k not in snap_cands)
+        removed = sum(1 for k in snap_cands if k not in active_page)
+        rescoped = sum(
+            1 for k, act in active_page.items()
+            if k in snap_cands and act.get("scope_key") != snap_cands[k].get("scope_key")
+        )
+
+        total_added += added
+        total_removed += removed
+        total_rescoped += rescoped
+        pages_diff[p] = {
+            "added": added,
+            "removed": removed,
+            "rescoped": rescoped,
+        }
+
+    return {
+        "job_id": job_id,
+        "total_added": total_added,
+        "total_removed": total_removed,
+        "total_rescoped": total_rescoped,
+        "pages": pages_diff,
+    }
+
+
+@app.post("/api/jobs/{job_id}/references/revert-to-rule")
+async def revert_job_references_to_rule(job_id: str, principal: Principal = Depends(_require_user)):
+    """Reverts reference targets to the rule-detected baseline snapshot and rebuilds mentions."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if reference_index.is_reindex_active(job_id):
+        raise HTTPException(status_code=409, detail="Reindex is currently in progress")
+
+    snapshots = database.get_all_page_rule_snapshots_for_job(job_id)
+    if not snapshots:
+        # Pre-Phase-3 job without snapshot: re-run rule path
+        await reference_index.reindex_job(job_id, force_mode="rule")
+        return {
+            "status": "ok",
+            "fallback": "reindexed_rule_based",
+            "reference_index_version": database.get_reference_index_version(job_id),
+        }
+
+    # Restore from snapshots
+    for page in database.get_pages(job_id):
+        page_num = page["page_num"]
+        snap = snapshots.get(page_num)
+        if snap:
+            reference_index._persist_page_index(
+                job_id,
+                page_num,
+                page.get("text") or "",
+                snap.get("candidates", []),
+                snap.get("new_scope"),
+                provisional=False,
+                detection_source="rule",
+            )
+        else:
+            cands, new_scope = reference_index.build_targets_for_page(
+                page.get("text") or "",
+                seed_scope=None,
+                has_next_page=False,
+            )
+            reference_index._persist_page_index(
+                job_id,
+                page_num,
+                page.get("text") or "",
+                cands,
+                new_scope,
+                provisional=False,
+                detection_source="rule",
+            )
+
+    reference_index.build_mention_index_for_job(job_id)
+    return {
+        "status": "ok",
+        "fallback": None,
+        "reference_index_version": database.get_reference_index_version(job_id),
+    }
+
+
+@app.post("/api/jobs/{job_id}/references/build-mentions")
+def build_job_mentions(job_id: str, principal: Principal = Depends(_require_user)):
+    """Manual/backfill trigger to compute and persist mentions for a job."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if reference_index.is_reindex_active(job_id):
+        raise HTTPException(status_code=409, detail="Reindex is currently in progress")
+
+    reference_index.build_mention_index_for_job(job_id)
+    return {"status": "ok", "reference_index_version": database.get_reference_index_version(job_id)}
 
 
 # ─── Structure tree overrides (user add/edit/delete/reparent/reorder on top
@@ -1067,49 +1192,86 @@ def move_structure_item(job_id: str, body: dict, principal: Principal = Depends(
     already-existing keys — so unlike every other mutation above, no
     per-page reference_index_touched_version is stamped; bumping
     reference_index_version alone is what invalidates the scope-ranges
-    cache and signals a change to polling clients."""
+    cache and signals a change to polling clients.
+
+    Identity is (key, page, occurrence_index), not the bare key alone — the
+    same bare key can repeat in one document (e.g. two "point:5" occurrences
+    under different ancestors), and a bare-key identity silently misapplies
+    a move to whichever occurrence an index pass visits last. `page`/
+    `occurrence_index` default to the wildcard sentinel (-1) only for the
+    (legacy-shaped) root target, where no specific occurrence is meaningful."""
     job = database.get_job(job_id, include_pages=False)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
     item_key = body.get("item_key")
+    item_page = body.get("item_page")
+    item_occurrence_index = body.get("item_occurrence_index")
     new_parent_key = body.get("new_parent_key")
+    new_parent_page = body.get("new_parent_page")
+    new_parent_occurrence_index = body.get("new_parent_occurrence_index")
     ordered_siblings = body.get("ordered_siblings")
-    if not item_key or new_parent_key is None or ordered_siblings is None:
+    if not item_key or item_page is None or item_occurrence_index is None or new_parent_key is None or ordered_siblings is None:
         raise HTTPException(
-            status_code=400, detail="item_key, new_parent_key, and ordered_siblings are required",
+            status_code=400,
+            detail="item_key, item_page, item_occurrence_index, new_parent_key, and ordered_siblings are required",
         )
-    if new_parent_key == item_key:
+    # Root has no specific occurrence; any other parent must carry one, same
+    # as the item itself — a parent-side bare key would reintroduce the
+    # exact ambiguity this endpoint exists to remove.
+    if new_parent_key != "" and (new_parent_page is None or new_parent_occurrence_index is None):
+        raise HTTPException(
+            status_code=400, detail="new_parent_page and new_parent_occurrence_index are required unless new_parent_key is root",
+        )
+    if new_parent_key == "":
+        new_parent_page, new_parent_occurrence_index = -1, -1
+    if new_parent_key == item_key and new_parent_page == item_page and new_parent_occurrence_index == item_occurrence_index:
         raise HTTPException(status_code=400, detail="new_parent_key must not equal item_key")
 
-    # Cycle check: walk "up" from new_parent_key via override-resolved
-    # parents only, falling back to root ("") for any key with no override —
-    # a key that was never moved has no parent-override edge to traverse, so
-    # the walk terminates immediately at root for it. Only a chain of PRIOR
-    # moves can ever form a cycle, so this walk alone is sufficient without
-    # deriving anything from scope_chain.
-    cursor_key = new_parent_key
+    # Cycle check: walk "up" from new_parent via override-resolved parents
+    # only, falling back to root ("") for any (key, page, occurrence_index)
+    # with no override — a key that was never moved has no parent-override
+    # edge to traverse, so the walk terminates immediately at root for it.
+    # Only a chain of PRIOR moves can ever form a cycle, so this walk alone
+    # is sufficient without deriving anything from scope_chain.
+    cursor_key, cursor_page, cursor_occ = new_parent_key, new_parent_page, new_parent_occurrence_index
     seen = set()
     while cursor_key:
-        if cursor_key == item_key:
+        if cursor_key == item_key and cursor_page == item_page and cursor_occ == item_occurrence_index:
             raise HTTPException(status_code=400, detail="cannot move an item under its own descendant")
-        if cursor_key in seen:
+        identity = (cursor_key, cursor_page, cursor_occ)
+        if identity in seen:
             break  # defensive: would mean a cycle already existed in stored data
-        seen.add(cursor_key)
-        cursor_key = structure_overrides.resolve_effective_parent(job_id, cursor_key, "")
+        seen.add(identity)
+        cursor_key, cursor_page, cursor_occ = structure_overrides.resolve_effective_parent(
+            job_id, cursor_key, cursor_page, cursor_occ, "",
+        )
 
-    structure_overrides.set_parent(job_id, item_key, new_parent_key)
-    structure_overrides.set_sibling_order(job_id, new_parent_key, ordered_siblings)
+    structure_overrides.set_parent(
+        job_id, item_key, item_page, item_occurrence_index,
+        new_parent_key, new_parent_page, new_parent_occurrence_index,
+    )
+    ordered_items = [
+        (s["item_key"], s["item_page"], s["item_occurrence_index"]) for s in ordered_siblings
+    ]
+    structure_overrides.set_sibling_order(job_id, new_parent_key, new_parent_page, new_parent_occurrence_index, ordered_items)
     database.bump_reference_index_version(job_id)
 
-    return {"item_key": item_key, "new_parent_key": new_parent_key, "ordered_siblings": ordered_siblings}
+    return {
+        "item_key": item_key, "item_page": item_page, "item_occurrence_index": item_occurrence_index,
+        "new_parent_key": new_parent_key, "new_parent_page": new_parent_page,
+        "new_parent_occurrence_index": new_parent_occurrence_index, "ordered_siblings": ordered_siblings,
+    }
 
 
 @app.get("/api/jobs/{job_id}/structure-hierarchy-overrides")
 def get_structure_hierarchy_overrides(job_id: str, principal: Principal = Depends(_require_user)):
     """Plain passthrough of the parent/sort override tables — no merge
     logic, the frontend applies these on top of the natural scope_chain-
-    derived tree itself."""
+    derived tree itself. Returned as flat row lists, not pre-grouped maps —
+    the frontend already computes each node's own (key, page,
+    occurrence_index) while building the tree, so there's no need to encode
+    a matching compound-identity scheme in both Python and JS."""
     job = database.get_job(job_id, include_pages=False)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")

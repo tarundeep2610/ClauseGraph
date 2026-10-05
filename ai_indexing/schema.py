@@ -40,6 +40,41 @@ def sanitize_heading_text(text: str) -> str:
     return text.strip()
 
 
+VALID_REJECTION_REASONS = {
+    "external_citation",
+    "reproduced_text",
+    "body_sentence",
+    "table_or_toc",
+    "running_header",
+    "duplicate_of_prior",
+    "not_on_page",
+}
+
+
+class AIPriorRejection(BaseModel):
+    prior_id: str = Field(default="")
+    reason_code: str = Field(default="unspecified")
+    evidence_quote: str = Field(default="")
+
+    model_config = {"extra": "ignore"}
+
+    @field_validator("prior_id", mode="before")
+    @classmethod
+    def _coerce_prior_id(cls, v):
+        return str(v).strip() if v else ""
+
+    @field_validator("reason_code", mode="before")
+    @classmethod
+    def _coerce_reason_code(cls, v):
+        code = str(v).strip().lower() if v else "unspecified"
+        return code if code in VALID_REJECTION_REASONS else "unspecified"
+
+    @field_validator("evidence_quote", mode="before")
+    @classmethod
+    def _truncate_quote(cls, v):
+        return str(v).strip()[:120] if v else ""
+
+
 class AIHeading(BaseModel):
     heading_text: str = Field(default="")
     start_page: int = 0
@@ -48,18 +83,28 @@ class AIHeading(BaseModel):
     still_open_at_chunk_end: bool = False
     parent_ref: Optional[str] = None
     level: int = 1
-    # The AI's own best-guess resolution of a heading it recognizes despite
-    # OCR garbling (e.g. heading_text="AmexureAl", family_hint="annexure",
-    # number_hint="A-1") — heading_text itself must stay verbatim (it's
-    # matched against the real OCR block for anchoring), so a corrected
-    # reading can only ever be reported here, additively. Both null when
-    # the model isn't confident, or the heading is genuinely unnumbered.
-    # Resolved in reference_index.mint_key_for_heading via _resolve_ai_hint,
-    # tried before blind regex fuzzy-matching.
     family_hint: Optional[str] = None
     number_hint: Optional[str] = None
+    prior_id: Optional[str] = None
+    evidence_quote: Optional[str] = None
+    heading_confidence: Optional[str] = None
+    heading_confidence_reasons: Optional[List[str]] = None
 
     model_config = {"extra": "ignore"}  # a provider adding a field must not fail the chunk
+
+    @field_validator("prior_id", mode="before")
+    @classmethod
+    def _truncate_prior_id(cls, v):
+        if v is None or v == "":
+            return None
+        return str(v).strip()[:32]
+
+    @field_validator("evidence_quote", mode="before")
+    @classmethod
+    def _truncate_evidence_quote(cls, v):
+        if v is None or v == "":
+            return None
+        return str(v).strip()[:120]
 
     @field_validator("heading_text", mode="before")
     @classmethod
@@ -125,8 +170,19 @@ class AIHeading(BaseModel):
 class AIStructureChunk(BaseModel):
     headings: List[AIHeading] = Field(default_factory=list)
     notes: str = Field(default="", max_length=500)
+    confirmed_prior_ids: List[str] = Field(default_factory=list)
+    rejected_priors: List[AIPriorRejection] = Field(default_factory=list)
 
     model_config = {"extra": "ignore"}
+
+    @field_validator("confirmed_prior_ids", mode="before")
+    @classmethod
+    def _coerce_confirmed_prior_ids(cls, v):
+        if not v:
+            return []
+        if isinstance(v, list):
+            return [str(x).strip() for x in v if str(x).strip()]
+        return []
 
 
 @dataclass
@@ -198,4 +254,43 @@ def normalize_chunk(
                 "possible page-attribution failure."
             )
 
-    return AIStructureChunk(headings=kept, notes=chunk.notes), report
+    return AIStructureChunk(
+        headings=kept,
+        notes=chunk.notes,
+        confirmed_prior_ids=chunk.confirmed_prior_ids,
+        rejected_priors=chunk.rejected_priors,
+    ), report
+
+
+VALID_MENTION_ACTIONS = {"confirm", "reject", "unsuppress"}
+
+
+class AIMentionReview(BaseModel):
+    mention_id: str = Field(default="")
+    action: str = Field(default="confirm")
+    evidence_quote: str = Field(default="")
+
+    model_config = {"extra": "ignore"}
+
+    @field_validator("mention_id", mode="before")
+    @classmethod
+    def _coerce_mention_id(cls, v):
+        return str(v).strip() if v else ""
+
+    @field_validator("action", mode="before")
+    @classmethod
+    def _coerce_action(cls, v):
+        a = str(v).strip().lower() if v else "confirm"
+        return a if a in VALID_MENTION_ACTIONS else "confirm"
+
+    @field_validator("evidence_quote", mode="before")
+    @classmethod
+    def _truncate_quote(cls, v):
+        return str(v).strip()[:120] if v else ""
+
+
+class AIMentionChunk(BaseModel):
+    reviews: List[AIMentionReview] = Field(default_factory=list)
+
+    model_config = {"extra": "ignore"}
+

@@ -215,7 +215,7 @@ class _OpenAIChatProvider(BaseProvider):
                 **kwargs, timeout=self.cfg.request_timeout_s,
             )
         except openai_sdk.AuthenticationError as e:
-            raise AIAuthError(f"{self.name} rejected the API key: {e}", provider=self.name) from e
+            raise AIAuthError(f"{self.name} rejected the API key: {e}") from e
         except openai_sdk.RateLimitError as e:
             err_str = str(e)
             is_daily_quota = any(
@@ -245,7 +245,7 @@ class _OpenAIChatProvider(BaseProvider):
         except openai_sdk.APIStatusError as e:
             status = getattr(e, "status_code", None)
             if status in (401, 403):
-                raise AIAuthError(f"{self.name} rejected the API key: {e}", provider=self.name) from e
+                raise AIAuthError(f"{self.name} rejected the API key: {e}") from e
             raise AIRemoteError(f"{self.name} returned {status}: {e}",
                                  provider=self.name, status_code=status) from e
 
@@ -304,7 +304,16 @@ class RokkaAIProvider(BaseProvider):
     so it couldn't serve two credentials; (2) a job whose own status became
     "failed" polled all the way to the timeout instead of raising
     immediately — this raises AIRemoteError the moment a terminal failure
-    status is observed."""
+    status is observed.
+
+    Real response envelope (confirmed against a live server), every body
+    wrapped the same way regardless of endpoint:
+      {"success": bool, "status_code": int, "prompt_msg": str,
+       "data": {...}, "meta": {...}}
+    Submit: POST /api/v1/query -> 202, data = {"job_id": "job_..."}.
+    Poll:   GET /api/v1/jobs/{job_id} -> data = {"status": "done", "answer": "..."}
+            (or "status": "failed"/"error").
+    Auth is the x-rokkaai-key / x-rokkaai-mode header pair, not Bearer."""
 
     name = "rokkaai"
 
@@ -317,25 +326,45 @@ class RokkaAIProvider(BaseProvider):
             raise AIConfigError("An API key is required for the RokkaAI provider.")
 
     def _headers(self) -> Dict[str, str]:
-        return {"Authorization": f"Bearer {self.cfg.api_key.get_secret_value()}"}
+        return {
+            "x-rokkaai-key": self.cfg.api_key.get_secret_value(),
+            "x-rokkaai-mode": "general",
+            "Content-Type": "application/json",
+        }
+
+    @staticmethod
+    def _unwrap_data(resp: httpx.Response) -> Dict[str, Any]:
+        body = resp.json()
+        data = body.get("data")
+        if not isinstance(data, dict):
+            raise AIRemoteError(f"RokkaAI response had no usable 'data' envelope: {resp.text}")
+        return data
 
     async def _submit(self, client: httpx.AsyncClient, query: str, system_prompt: str) -> str:
         try:
             resp = await client.post(
                 f"{self.cfg.base_url.rstrip('/')}/api/v1/query",
-                json={"query": query, "data": [{"type": "text", "value": system_prompt}]},
+                json={
+                    "query": query,
+                    "model_name": self.cfg.model,
+                    "data": [{"type": "text", "value": system_prompt}],
+                },
                 headers=self._headers(),
             )
         except httpx.RequestError as e:
             raise AIUnreachableError(f"Cannot reach RokkaAI: {e}", provider=self.name) from e
         if resp.status_code in (401, 403):
-            raise AIAuthError("RokkaAI rejected the API key.", provider=self.name)
+            raise AIAuthError("RokkaAI rejected the API key.")
         if resp.status_code == 429:
             raise AIRateLimitError("RokkaAI rate-limited this request.", provider=self.name)
         if resp.status_code >= 400:
             raise AIRemoteError(f"RokkaAI returned {resp.status_code}: {resp.text}",
                                  provider=self.name, status_code=resp.status_code)
-        return resp.json()["job_id"]
+        data = self._unwrap_data(resp)
+        job_id = data.get("job_id")
+        if not job_id:
+            raise AIRemoteError(f"RokkaAI submit response had no job_id: {resp.text}", provider=self.name)
+        return job_id
 
     async def _poll(self, client: httpx.AsyncClient, job_id: str) -> str:
         deadline = time.monotonic() + self.cfg.poll_timeout_s
@@ -352,11 +381,11 @@ class RokkaAIProvider(BaseProvider):
             except httpx.RequestError as e:
                 raise AIUnreachableError(f"Cannot reach RokkaAI while polling: {e}", provider=self.name) from e
             if resp.status_code in (401, 403):
-                raise AIAuthError("RokkaAI rejected the API key.", provider=self.name)
-            data = resp.json()
+                raise AIAuthError("RokkaAI rejected the API key.")
+            data = self._unwrap_data(resp)
             status = data.get("status")
             if status == "done":
-                return data.get("result") or ""
+                return data.get("answer") or ""
             if status in ("failed", "error"):
                 raise AIRemoteError(data.get("error") or "RokkaAI job failed with no error detail.",
                                      provider=self.name)

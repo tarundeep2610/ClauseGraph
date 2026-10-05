@@ -40,6 +40,8 @@ class ChunkStructureResult:
     outcome: ChunkOutcome
     page_nums: List[int]
     headings: List[Any] = field(default_factory=list)  # List[ai_indexing.schema.AIHeading]
+    confirmed_prior_ids: List[str] = field(default_factory=list)
+    rejected_priors: List[Any] = field(default_factory=list)
     provider: str = ""
     model: str = ""
     duration_ms: int = 0
@@ -70,6 +72,8 @@ class StructureIndexer:
         document_hint: str = "",
         cancel_check=None,
         include_pleading_points: bool = False,
+        rule_prior: Optional[List[dict]] = None,
+        review_rule_prior: bool = False,
     ) -> ChunkStructureResult:
         page_nums = chunk.page_nums
         if self._consecutive_failures >= self.failure_limit:
@@ -82,6 +86,8 @@ class StructureIndexer:
         system_prompt, user_prompt = build_structure_prompt(
             chunk, carry_context=carry_context, document_hint=document_hint,
             include_pleading_points=include_pleading_points,
+            rule_prior=rule_prior,
+            review_rule_prior=review_rule_prior,
         )
 
         attempts = 0
@@ -150,9 +156,12 @@ class StructureIndexer:
                     break
                 else:
                     self._consecutive_failures = 0
-                    outcome = ChunkOutcome.OK if ai_chunk.headings else ChunkOutcome.EMPTY
+                    has_content = bool(ai_chunk.headings or ai_chunk.confirmed_prior_ids or ai_chunk.rejected_priors)
+                    outcome = ChunkOutcome.OK if has_content else ChunkOutcome.EMPTY
                     return ChunkStructureResult(
                         outcome=outcome, page_nums=page_nums, headings=list(ai_chunk.headings),
+                        confirmed_prior_ids=list(ai_chunk.confirmed_prior_ids),
+                        rejected_priors=list(ai_chunk.rejected_priors),
                         provider=completion.provider, model=completion.model,
                         duration_ms=completion.duration_ms, attempts=attempts,
                         normalization=norm_report.to_dict(),

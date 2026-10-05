@@ -61,7 +61,13 @@ async def trigger_ai_reindex_safe(job_id: str, start_page: "int | None" = None):
     back to rule-derived ones with no re-AI-detection."""
     try:
         job = database.get_job(job_id, include_pages=False)
-        if not job or not (job.get("engine_params") or {}).get("ai_indexing_enabled"):
+        if not job:
+            return
+        if not (job.get("engine_params") or {}).get("ai_indexing_enabled"):
+            reference_index.build_mention_index_for_job(job_id)
+            if (job.get("engine_params") or {}).get("ai_index_review_mentions"):
+                import ai_reference_index
+                await ai_reference_index.review_mentions_for_job(job_id, job.get("engine_params"))
             return
         await reference_index.reindex_job(job_id, start_page=start_page)
     except Exception as e:

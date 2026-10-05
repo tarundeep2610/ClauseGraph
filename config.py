@@ -172,3 +172,7 @@ AI_GEMINI_BASE_URL = os.environ.get(
     "AI_GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
 AI_ROKKAAI_POLL_INTERVAL_SECONDS = float(os.environ.get("AI_ROKKAAI_POLL_INTERVAL_SECONDS", "3"))
 AI_ROKKAAI_POLL_TIMEOUT_SECONDS = float(os.environ.get("AI_ROKKAAI_POLL_TIMEOUT_SECONDS", "600"))
+
+AI_INDEX_REVIEW_RULE_PRIOR = os.environ.get("AI_INDEX_REVIEW_RULE_PRIOR", "false").strip().lower() == "true"
+AI_INDEX_REVIEW_PRIOR_CHARS_MAX = int(os.environ.get("AI_INDEX_REVIEW_PRIOR_CHARS_MAX", "10000"))
+AI_INDEX_REVIEW_MAX_PRIOR_ROWS = int(os.environ.get("AI_INDEX_REVIEW_MAX_PRIOR_ROWS", "150"))

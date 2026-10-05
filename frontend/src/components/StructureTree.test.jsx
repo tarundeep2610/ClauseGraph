@@ -770,7 +770,10 @@ describe('StructureTree — hierarchy overrides (drag-and-drop reparent/reorder)
       },
     });
     // Move Annexure A-2 (and its child Clause 1) to become a child of Annexure A-1.
-    const parentOverrides = { 'annexure:a-2': 'annexure:a-1' };
+    const parentOverrides = [{
+      item_key: 'annexure:a-2', item_page: 50, item_occurrence_index: 0,
+      new_parent_key: 'annexure:a-1', new_parent_page: 10, new_parent_occurrence_index: 0,
+    }];
     render(<StructureTree referenceStore={store} onSelect={vi.fn()} parentOverrides={parentOverrides} />);
 
     // Annexure A-2's node keeps its original id (a stable identity, not a
@@ -799,7 +802,10 @@ describe('StructureTree — hierarchy overrides (drag-and-drop reparent/reorder)
       },
     });
     // Move Clause 4.2 to become a child of Clause 4.1 (previously a bare leaf).
-    const parentOverrides = { 'clause:4.2': 'clause:4.1' };
+    const parentOverrides = [{
+      item_key: 'clause:4.2', item_page: 10, item_occurrence_index: 0,
+      new_parent_key: 'clause:4.1', new_parent_page: 6, new_parent_occurrence_index: 0,
+    }];
     render(<StructureTree referenceStore={store} onSelect={vi.fn()} parentOverrides={parentOverrides} />);
 
     // Clause 4.1 has exactly one occurrence of its own (with or without a
@@ -811,7 +817,10 @@ describe('StructureTree — hierarchy overrides (drag-and-drop reparent/reorder)
 
   it('an orphaned parent override (target no longer exists) is silently inert', () => {
     const store = twoSiblingAnnexures();
-    const parentOverrides = { 'annexure:a-1': 'annexure:does-not-exist' };
+    const parentOverrides = [{
+      item_key: 'annexure:a-1', item_page: 10, item_occurrence_index: 0,
+      new_parent_key: 'annexure:does-not-exist', new_parent_page: -1, new_parent_occurrence_index: -1,
+    }];
     render(<StructureTree referenceStore={store} onSelect={vi.fn()} parentOverrides={parentOverrides} />);
     // Falls back to its natural (root-level) position — no crash, no vanish.
     // (A bare, childless single occurrence renders as a leaf-styled row.)
@@ -826,7 +835,10 @@ describe('StructureTree — hierarchy overrides (drag-and-drop reparent/reorder)
     });
     // Default page order would be A-1, A-2, A-3 — override puts A-2 first;
     // A-3 has no explicit position and should land after the positioned ones.
-    const sortOverrides = { '': ['annexure:a-2', 'annexure:a-1'] };
+    const sortOverrides = [
+      { scope_key: '', scope_page: -1, scope_occurrence_index: -1, item_key: 'annexure:a-2', item_page: 50, item_occurrence_index: 0, sort_index: 0 },
+      { scope_key: '', scope_page: -1, scope_occurrence_index: -1, item_key: 'annexure:a-1', item_page: 10, item_occurrence_index: 0, sort_index: 1 },
+    ];
     render(<StructureTree referenceStore={store} onSelect={vi.fn()} sortOverrides={sortOverrides} />);
 
     // Each is a bare, childless single occurrence — rendered as a leaf-styled row.
@@ -836,6 +848,46 @@ describe('StructureTree — hierarchy overrides (drag-and-drop reparent/reorder)
       'structure-leaf-a1-leaf',
       'structure-leaf-a3-leaf',
     ]);
+  });
+
+  it('a parent override on one occurrence of a repeated key does not affect the other occurrence', () => {
+    // The exact real-world bug this identity scheme fixes: the same bare
+    // key ("point:5") genuinely occurs twice in one document, under two
+    // different ancestors. A move targeting ONE occurrence (disambiguated
+    // by page + occurrence_index) must never touch the other.
+    const store = storeFromRows({
+      7: {
+        'point:5': [candidate({
+          key: 'point:5', anchor_id: 'point5-page7', page: 7,
+          scope_chain: [{ family: 'subdoc', key: 'subdoc:6', label: "Respondent's case" }],
+        })],
+      },
+      13: {
+        'point:5': [candidate({
+          key: 'point:5', anchor_id: 'point5-page13', page: 13,
+          scope_chain: [{ family: 'point', key: 'point:19', label: 'Point 19' }],
+        })],
+      },
+      20: {
+        'subdoc:99': [candidate({ key: 'subdoc:99', anchor_id: 'target-leaf', page: 20, scope_chain: [] })],
+      },
+    });
+    // Move ONLY the page-13 occurrence of point:5 under subdoc:99.
+    const parentOverrides = [{
+      item_key: 'point:5', item_page: 13, item_occurrence_index: 0,
+      new_parent_key: 'subdoc:99', new_parent_page: 20, new_parent_occurrence_index: 0,
+    }];
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} parentOverrides={parentOverrides} />);
+
+    const targetNode = screen.getByTestId('structure-leaf-target-leaf');
+    const movedLeaf = screen.getByTestId('structure-leaf-point5-page13');
+    expect(targetNode).toContainElement(movedLeaf);
+
+    // The page-7 occurrence is untouched — still under its original parent,
+    // never swallowed or overwritten by the other occurrence's move.
+    const page7Leaf = screen.getByTestId('structure-leaf-point5-page7');
+    expect(targetNode).not.toContainElement(page7Leaf);
+    expect(screen.getByText("Respondent's case")).toBeInTheDocument();
   });
 
   it('renders a "move to top level" root drop zone only when onMoveItem is provided', () => {

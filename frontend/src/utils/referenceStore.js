@@ -13,6 +13,7 @@ export function createReferenceStore() {
     pageIndex: new Map(),      // page -> { key -> [rawCandidate, ...] } (as received from the server)
     byExactKey: new Map(),     // key -> [{...candidate, page, key}, ...]
     byCollapsedKey: new Map(), // collapsed_key -> Set<key>
+    mentionsByPage: new Map(), // page -> [{key, raw_text, resolution, ...}, ...]
   };
 }
 
@@ -55,7 +56,7 @@ function addPageContribution(store, page, byKey) {
 }
 
 // Merges a /references response (or an equivalent {reference_index_version,
-// changed_pages} object) into the store in place. Mutates and returns `store`.
+// changed_pages, changed_mentions} object) into the store in place. Mutates and returns `store`.
 export function mergeDelta(store, delta) {
   if (!delta) return store;
   const changed = delta.changed_pages || {};
@@ -64,6 +65,11 @@ export function mergeDelta(store, delta) {
     removePageContribution(store, page);
     store.pageIndex.set(page, byKey);
     addPageContribution(store, page, byKey);
+  }
+  const changedMentions = delta.changed_mentions || {};
+  for (const [pageStr, mentions] of Object.entries(changedMentions)) {
+    const page = Number(pageStr);
+    store.mentionsByPage.set(page, mentions || []);
   }
   if (typeof delta.reference_index_version === 'number') {
     store.version = delta.reference_index_version;
@@ -77,16 +83,17 @@ export function getPageCandidates(store, page) {
 }
 
 // A representative scope_key for a page (used only to sort a mention's candidates
-// by proximity to the reader's current position) — the first one found among that
-// page's own candidates. Pages very rarely straddle more than one scope, and this
-// is a sort hint, not a correctness-bearing value, so "first found" is an accepted
-// approximation rather than something needing a full scope-boundary derivation.
+// by proximity to the reader's current position).
 //
-// `ranges` (optional, Part B's GET /scope-ranges response) is the fallback for a
-// page with no candidates of its own at all — previously such a page lost all
-// proximity-ranking context entirely; findRangeForPage recovers the deepest
-// container actually covering it, derived from the persisted per-page stack.
+// Inverted order: `ranges` (Part B's GET /scope-ranges response) derives from the
+// persisted end_of_page_scope stack and is authoritative across page spans; consult
+// it first. Fall back to the first scope_key found among this page's own candidates
+// only when ranges are missing or don't cover the page.
 export function getPageScopeKey(store, page, ranges) {
+  if (ranges) {
+    const range = findRangeForPage(ranges, page);
+    if (range) return range.scope_key;
+  }
   const byKey = store.pageIndex.get(page);
   if (byKey) {
     for (const arr of Object.values(byKey)) {
@@ -100,18 +107,50 @@ export function getPageScopeKey(store, page, ranges) {
       }
     }
   }
-  if (ranges) {
-    const range = findRangeForPage(ranges, page);
-    if (range) return range.scope_key;
-  }
   return null;
+}
+
+// The AI structure indexer mints generic keys for numbered headings it can't
+// attribute to a specific vocabulary word (`numheading:9.0`, `point:3`), while
+// mention-matching only recognizes the literal words below. A mention in one
+// of these families that finds no same-family target is still very likely
+// pointing at one of these generic targets under the same number — verified
+// against job bb417471-561c-4029-bb21-3bdcf74e7dcb, which has zero clause:*/
+// section:*/article:*/schedule:*/appendix:* targets at all, yet real in-text
+// citations like "clause 9.0 ITB" and "para 1 & 2 of above affidavit" that
+// clearly mean an indexed numheading:9.0 / point:1 target. `annexure`,
+// `ground`, `page` are deliberately absent — those families already mint
+// matching target keys directly and don't need a fallback.
+const FAMILY_FALLBACKS = {
+  clause: ['numheading'],
+  section: ['numheading'],
+  article: ['numheading'],
+  schedule: ['numheading'],
+  appendix: ['numheading'],
+  para: ['point', 'numheading'],
+};
+
+// A fallback-family lookup for number N must also try N's integer/`.0` dual
+// form — verified against real data, not theoretical: job bb417471 has
+// `numheading:9.0` on page 25 (the real contract clause "9.0 Local/ Site
+// conditions") and a *distinct* `numheading:9` on page 48 that is a genuine
+// page-margin-stamp misfire (own_label "9", snippet "-9:-..."). A bare
+// string-equality lookup for a "clause 9" mention would either miss the real
+// page-25 target entirely or surface only the bogus page-48 stamp; trying
+// both forms surfaces both, and proximity sorting at display time naturally
+// ranks the real nearby one first.
+function numberDualForms(number) {
+  if (/\.0$/.test(number)) return [number, number.slice(0, -2)];
+  if (!number.includes('.')) return [number, `${number}.0`];
+  return [number];
 }
 
 // Resolves a normalized mention key against the accumulated index: `exact` is
 // every candidate stored under that exact key; `approximate` is every candidate
 // reached only via a shared collapsed_key under a DIFFERENT real key (an
 // OCR-tolerant fallback — e.g. a mention of "Clause 11" also surfacing a real,
-// distinct "Clause 1.1" if the document has one). Always both computed, never
+// distinct "Clause 1.1" if the document has one), or via a cross-family
+// numeric fallback (see FAMILY_FALLBACKS above). Always both computed, never
 // one gated on the other being empty — stratification happens at display time.
 export function resolveMention(store, key) {
   const exact = store.byExactKey.get(key) || [];
@@ -125,7 +164,40 @@ export function resolveMention(store, key) {
       approximate.push(...(store.byExactKey.get(k) || []));
     }
   }
-  return { exact, approximate };
+
+  const sepIdx = key.indexOf(':');
+  if (sepIdx !== -1) {
+    const family = key.slice(0, sepIdx);
+    const number = key.slice(sepIdx + 1);
+    const fallbackFamilies = FAMILY_FALLBACKS[family];
+    if (fallbackFamilies) {
+      for (const fam of fallbackFamilies) {
+        for (const n of numberDualForms(number)) {
+          approximate.push(...(store.byExactKey.get(`${fam}:${n}`) || []));
+        }
+      }
+    }
+  }
+
+  return { exact, approximate: dedupeCandidates(approximate) };
+}
+
+// Cheap insurance, not a currently-live bug: no concrete duplicate is
+// constructible against the lookup paths above (the collapsed-key and
+// cross-family-fallback paths land on structurally disjoint keys), but a
+// future fallback addition or an overlapping FAMILY_FALLBACKS entry could
+// silently regress this, and the failure mode (a single real target showing
+// up as a 2-row dropdown) is bad enough to guard for near-zero cost.
+function dedupeCandidates(list) {
+  const seen = new Set();
+  const out = [];
+  for (const c of list) {
+    const id = `${c.key}::${c.page}::${c.anchor_id ?? c.occurrence_index}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(c);
+  }
+  return out;
 }
 
 // All accumulated candidates, for the Structure tab's tree builder — excludes

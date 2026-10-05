@@ -196,85 +196,138 @@ def list_manual_items(job_id: str) -> List[Dict[str, Any]]:
 
 
 # ─── Parent (reparent) overrides (ocr_structure_parent_overrides) ─────────
+#
+# A node's identity for move/reparent purposes is (key, page, occurrence_index)
+# — NOT the bare key alone. The same bare key can appear more than once in one
+# document (a repeated heading like "point:5" under two different ancestors),
+# and a bare-key identity silently misapplies a move to whichever occurrence
+# happens to be visited last when the override is resolved. -1 is a non-NULL
+# "any occurrence of this key" wildcard sentinel (never a real page number),
+# used for pre-migration legacy rows and never written by a NEW move (the
+# client always resolves and sends a real page/occurrence_index — see
+# main.py's move_structure_item). Every lookup here tries an EXACT
+# (key, page, occurrence_index) match first, falling back to the (-1, -1)
+# wildcard row for that key — never the reverse order, so a later real,
+# disambiguated override always takes precedence over an old wildcard one
+# for the specific occurrence it targets.
 
-def set_parent(job_id: str, item_key: str, new_parent_key: str, updated_at: Optional[str] = None) -> None:
+_WILDCARD = -1
+
+
+def set_parent(
+    job_id: str, item_key: str, item_page: int, item_occurrence_index: int,
+    new_parent_key: str, new_parent_page: int = _WILDCARD, new_parent_occurrence_index: int = _WILDCARD,
+    updated_at: Optional[str] = None,
+) -> None:
     conn = get_db_connection()
     cursor = conn.cursor()
     now = updated_at or _now()
     cursor.execute("""
-        INSERT INTO ocr_structure_parent_overrides (job_id, item_key, new_parent_key, updated_at)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(job_id, item_key) DO UPDATE SET
+        INSERT INTO ocr_structure_parent_overrides (
+            job_id, item_key, item_page, item_occurrence_index,
+            new_parent_key, new_parent_page, new_parent_occurrence_index, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(job_id, item_key, item_page, item_occurrence_index) DO UPDATE SET
             new_parent_key = excluded.new_parent_key,
+            new_parent_page = excluded.new_parent_page,
+            new_parent_occurrence_index = excluded.new_parent_occurrence_index,
             updated_at = excluded.updated_at
-    """, (job_id, item_key, new_parent_key, now))
+    """, (job_id, item_key, item_page, item_occurrence_index, new_parent_key, new_parent_page, new_parent_occurrence_index, now))
     conn.commit()
     conn.close()
 
 
-def get_parent_overrides(job_id: str) -> Dict[str, str]:
+def get_parent_overrides(job_id: str) -> List[Dict[str, Any]]:
+    """Every parent-override row, raw — the frontend builds its own identity
+    index from these (it already computes a node's (key, page,
+    occurrence_index) while building the tree, so there's no need to encode
+    a matching compound-string scheme in both Python and JS)."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT item_key, new_parent_key FROM ocr_structure_parent_overrides WHERE job_id = ?",
-        (job_id,),
-    )
-    result = {row[0]: row[1] for row in cursor.fetchall()}
+    cursor.execute("""
+        SELECT item_key, item_page, item_occurrence_index,
+               new_parent_key, new_parent_page, new_parent_occurrence_index
+        FROM ocr_structure_parent_overrides WHERE job_id = ?
+    """, (job_id,))
+    rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
-    return result
+    return rows
 
 
-def resolve_effective_parent(job_id: str, item_key: str, natural_parent_key: str) -> str:
-    """The override's parent for item_key if one exists, else whatever
-    natural_parent_key the caller supplied — this function doesn't derive a
-    natural parent from scope_chain itself, the caller already knows it (or,
-    for the move endpoint's cycle walk, deliberately passes "" — see its own
-    comment for why that's correct there)."""
+def resolve_effective_parent(
+    job_id: str, item_key: str, item_page: int, item_occurrence_index: int, natural_parent_key: str,
+) -> Tuple[str, int, int]:
+    """The override's parent for this exact (item_key, item_page,
+    item_occurrence_index) if one exists; else the wildcard override for
+    item_key alone, if one exists; else (natural_parent_key, -1, -1) — this
+    function doesn't derive a natural parent from scope_chain itself, the
+    caller already knows it (or, for the move endpoint's cycle walk,
+    deliberately passes "" — see its own comment for why that's correct
+    there). Returns (new_parent_key, new_parent_page, new_parent_occurrence_index)."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT new_parent_key FROM ocr_structure_parent_overrides WHERE job_id = ? AND item_key = ?",
-        (job_id, item_key),
-    )
+    cursor.execute("""
+        SELECT new_parent_key, new_parent_page, new_parent_occurrence_index
+        FROM ocr_structure_parent_overrides
+        WHERE job_id = ? AND item_key = ? AND item_page = ? AND item_occurrence_index = ?
+    """, (job_id, item_key, item_page, item_occurrence_index))
     row = cursor.fetchone()
+    if row is None:
+        cursor.execute("""
+            SELECT new_parent_key, new_parent_page, new_parent_occurrence_index
+            FROM ocr_structure_parent_overrides
+            WHERE job_id = ? AND item_key = ? AND item_page = ? AND item_occurrence_index = ?
+        """, (job_id, item_key, _WILDCARD, _WILDCARD))
+        row = cursor.fetchone()
     conn.close()
-    return row[0] if row else natural_parent_key
+    if row is None:
+        return natural_parent_key, _WILDCARD, _WILDCARD
+    return row[0], row[1], row[2]
 
 
 # ─── Sibling order overrides (ocr_structure_sort_overrides) ───────────────
 
-def set_sibling_order(job_id: str, scope_key: str, ordered_item_keys: List[str]) -> None:
-    """Delete-then-reinsert every row for (job_id, scope_key) — mirrors
-    database.upsert_reference_targets_for_page's own delete-then-reinsert
-    idiom for a "this list is the complete replacement" write."""
+def set_sibling_order(
+    job_id: str, scope_key: str, scope_page: int, scope_occurrence_index: int,
+    ordered_items: List[Tuple[str, int, int]],
+) -> None:
+    """Delete-then-reinsert every row for this exact (scope_key, scope_page,
+    scope_occurrence_index) — mirrors database.upsert_reference_targets_for_page's
+    own delete-then-reinsert idiom for a "this list is the complete
+    replacement" write. `ordered_items` is a list of
+    (item_key, item_page, item_occurrence_index) tuples, in the new order."""
     conn = get_db_connection()
     cursor = conn.cursor()
     now = _now()
     cursor.execute(
-        "DELETE FROM ocr_structure_sort_overrides WHERE job_id = ? AND scope_key = ?",
-        (job_id, scope_key),
+        "DELETE FROM ocr_structure_sort_overrides WHERE job_id = ? AND scope_key = ? AND scope_page = ? AND scope_occurrence_index = ?",
+        (job_id, scope_key, scope_page, scope_occurrence_index),
     )
-    for idx, item_key in enumerate(ordered_item_keys):
+    for idx, (item_key, item_page, item_occurrence_index) in enumerate(ordered_items):
         cursor.execute("""
-            INSERT INTO ocr_structure_sort_overrides (job_id, scope_key, item_key, sort_index, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, (job_id, scope_key, item_key, idx, now))
+            INSERT INTO ocr_structure_sort_overrides (
+                job_id, scope_key, scope_page, scope_occurrence_index,
+                item_key, item_page, item_occurrence_index, sort_index, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (job_id, scope_key, scope_page, scope_occurrence_index, item_key, item_page, item_occurrence_index, idx, now))
     conn.commit()
     conn.close()
 
 
-def get_sort_overrides(job_id: str) -> Dict[str, List[str]]:
+def get_sort_overrides(job_id: str) -> List[Dict[str, Any]]:
+    """Every sort-override row, raw — see get_parent_overrides for why this
+    is a flat list rather than a pre-grouped map."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT scope_key, item_key FROM ocr_structure_sort_overrides
-        WHERE job_id = ? ORDER BY scope_key, sort_index
+        SELECT scope_key, scope_page, scope_occurrence_index,
+               item_key, item_page, item_occurrence_index, sort_index
+        FROM ocr_structure_sort_overrides
+        WHERE job_id = ? ORDER BY scope_key, scope_page, scope_occurrence_index, sort_index
     """, (job_id,))
-    result: Dict[str, List[str]] = {}
-    for scope_key, item_key in cursor.fetchall():
-        result.setdefault(scope_key, []).append(item_key)
+    rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
-    return result
+    return rows
 
 
 # ─── Rename-propagation support ────────────────────────────────────────────
@@ -477,3 +530,166 @@ def apply_to_scope_ranges(job_id: str, ranges: List[Dict[str, Any]]) -> List[Dic
         })
 
     return ranges
+
+
+# ─── Server-side hierarchy resolution (parent/sort overrides applied) ──────
+#
+# Everything above this point (apply_to_references_delta / apply_to_scope_ranges)
+# applies edit/delete/manual-item overrides, but NOT parent/sort overrides —
+# those were, until now, merged ONLY in the browser
+# (frontend/src/components/StructureTree.jsx's applyHierarchyOverrides /
+# finalize), which means nothing server-side (a gold-fixture export, a
+# scoring script, a future AI-review pass) could ever see a user's
+# drag-and-drop corrections. The functions below port that merge to Python,
+# closely mirroring StructureTree.jsx's own logic so the two stay in sync —
+# see that file for the parallel implementation and its own comments on the
+# same design points (move identity, wildcard fallback, etc.).
+#
+# Deliberately NOT ported here: sibling ORDER (sort overrides). Reordering
+# only affects display order, never a node's scope_key/ancestor chain, and
+# the first server-side consumer (the gold-fixture exporter) only needs an
+# accurate scope_key per target — add order resolution here too if a future
+# caller actually needs display order server-side.
+
+def _tree_node(key: str) -> Dict[str, Any]:
+    return {"key": key, "children": {}, "leaves": []}
+
+
+def _build_tree_from_candidates(candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Mirrors StructureTree.jsx's buildTree — groups the flat,
+    materialized-path candidate list into a tree by each ancestor in
+    scope_chain (ancestors only, self excluded) plus the candidate's own
+    key as the terminal segment."""
+    root = _tree_node("")
+    for c in candidates:
+        chain = c.get("scope_chain") or []
+        path_keys = [s["key"] for s in chain] + [c["key"]]
+        node = root
+        for seg_key in path_keys:
+            if seg_key not in node["children"]:
+                node["children"][seg_key] = _tree_node(seg_key)
+            node = node["children"][seg_key]
+        node["leaves"].append(c)
+    return root
+
+
+def _primary_leaf(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """A node's own primary occurrence — its first leaf by (page,
+    occurrence_index) order. Mirrors StructureTree.jsx's primaryLeafOf."""
+    if not node["leaves"]:
+        return None
+    return sorted(
+        node["leaves"], key=lambda l: (l.get("page") or 0, l.get("occurrence_index") or 0),
+    )[0]
+
+
+def _node_move_id(node: Dict[str, Any]) -> str:
+    """A node's move/reparent identity — (key, page, occurrence_index), not
+    the bare key alone. Mirrors StructureTree.jsx's nodeMoveId exactly
+    (same '\\0'-joined encoding) — see that function's own comment for why
+    bare-key identity is the bug this whole mechanism exists to fix."""
+    if node["key"] == "":
+        return ""  # root
+    leaf = _primary_leaf(node)
+    if leaf is None:
+        return f"{node['key']}\x00\x00"
+    return f"{node['key']}\x00{leaf.get('page')}\x00{leaf.get('occurrence_index') or 0}"
+
+
+def _apply_parent_overrides_to_tree(root: Dict[str, Any], parent_overrides: List[Dict[str, Any]]) -> None:
+    """Mutates `root` in place — mirrors StructureTree.jsx's
+    applyHierarchyOverrides, including its exact-match-first-then-
+    unambiguous-wildcard-fallback resolution order."""
+    if not parent_overrides:
+        return
+
+    node_by_move_id: Dict[str, Dict[str, Any]] = {}
+    nodes_by_bare_key: Dict[str, List[Dict[str, Any]]] = {}
+
+    def index(node: Dict[str, Any]) -> None:
+        if node is not root:
+            node_by_move_id[_node_move_id(node)] = node
+            nodes_by_bare_key.setdefault(node["key"], []).append(node)
+        for child in node["children"].values():
+            index(child)
+
+    index(root)
+
+    def resolve(key: str, page: Optional[int], occurrence_index: Optional[int]) -> Optional[Dict[str, Any]]:
+        if key == "":
+            return root
+        if page is not None and page != -1:
+            exact = node_by_move_id.get(f"{key}\x00{page}\x00{occurrence_index if occurrence_index is not None else 0}")
+            if exact is not None:
+                return exact
+        candidates = nodes_by_bare_key.get(key)
+        return candidates[0] if candidates and len(candidates) == 1 else None
+
+    for row in parent_overrides:
+        node = resolve(row["item_key"], row.get("item_page"), row.get("item_occurrence_index"))
+        if node is None:
+            continue  # orphaned (moved item no longer exists), or ambiguous — inert
+        new_parent_key = row["new_parent_key"]
+        new_parent = resolve(new_parent_key, row.get("new_parent_page"), row.get("new_parent_occurrence_index")) if new_parent_key else root
+        if new_parent is None or new_parent is node:
+            continue  # orphaned target, or a no-op
+
+        def detach(candidate: Dict[str, Any]) -> bool:
+            for k, child in list(candidate["children"].items()):
+                if child is node:
+                    del candidate["children"][k]
+                    return True
+                if detach(child):
+                    return True
+            return False
+
+        detach(root)
+        new_parent["children"][node["key"]] = node
+
+
+def _annotate_resolved_scope_key(node: Dict[str, Any], ancestor_keys: List[str]) -> None:
+    """Walks the (now-reparented) tree, stamping each leaf row with
+    `resolved_scope_key` — the '/'-joined ancestor key chain of the
+    CORRECTED tree. The detector's own `scope_key` column is never
+    rewritten by a move (see StructureTree.jsx's own note on this), so it
+    reflects only the pre-correction parentage; `resolved_scope_key` is
+    what a caller that cares about the user's actual corrections should
+    compare against.
+
+    `ancestor_keys` is this node's own ancestor chain — excludes this
+    node's own key by construction (scope_key is always ancestors-only,
+    self excluded). This node's OWN key only joins the chain passed down to
+    ITS children, below — never gets mixed into what's stamped on its own
+    leaves."""
+    for leaf in node["leaves"]:
+        leaf["resolved_scope_key"] = "/".join(ancestor_keys)
+    next_ancestors = ancestor_keys if node["key"] == "" else ancestor_keys + [node["key"]]
+    for child in node["children"].values():
+        _annotate_resolved_scope_key(child, next_ancestors)
+
+
+def resolve_structure_for_job(job_id: str) -> List[Dict[str, Any]]:
+    """The fully-corrected structure for a job: detector output merged with
+    edit/delete/manual-item overrides (apply_to_references_delta) AND
+    parent overrides (previously applied only in the browser). Returns a
+    flat list of target rows (each carrying `page`, plus every column
+    apply_to_references_delta already produces), with `resolved_scope_key`
+    added — the corrected ancestor chain, which may differ from the row's
+    own stored `scope_key` wherever a parent override applies."""
+    delta = database.get_reference_targets_since(job_id, since_version=-1)
+    merged = apply_to_references_delta(job_id, delta)
+
+    candidates: List[Dict[str, Any]] = []
+    for page, by_key in merged.items():
+        for key, rows in by_key.items():
+            for row in rows:
+                row = dict(row)
+                row.setdefault("page", page)
+                row.setdefault("key", key)
+                candidates.append(row)
+
+    root = _build_tree_from_candidates(candidates)
+    _apply_parent_overrides_to_tree(root, get_parent_overrides(job_id))
+    _annotate_resolved_scope_key(root, [])
+
+    return candidates

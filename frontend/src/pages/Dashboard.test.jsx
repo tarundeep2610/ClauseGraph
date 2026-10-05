@@ -1258,7 +1258,7 @@ describe('Dashboard — Structure item edit only sends fields that actually chan
         return { ok: true, json: async () => ({ reference_index_version: 1, ranges: [{ key: 'annexure:a-2', scope_key: '', depth: 0, start_page: 427, end_page: 446 }] }) };
       }
       if (url === '/api/jobs/job-edit/structure-hierarchy-overrides') {
-        return { ok: true, json: async () => ({ reference_index_version: 1, parents: {}, order: {} }) };
+        return { ok: true, json: async () => ({ reference_index_version: 1, parents: [], order: [] }) };
       }
       return { ok: false };
     });

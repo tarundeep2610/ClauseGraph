@@ -12,8 +12,12 @@ export function renderMarkdown(md) {
 
 const KEYWORD_ALTS = 'clause|section|sec\\.?|article|art\\.?|para(?:graph)?|annexure|schedule|appendix|page|ground';
 const MENTION_START_RE = new RegExp(`\\b(?:${KEYWORD_ALTS})\\b`, 'i');
+// `[\s-]*` (zero or more spaces/hyphens), not `\s+` (one or more) — OCR
+// commonly drops the space entirely ("ANNEXURE-B1", "Annexure-1"). Safe: the
+// `\b(KEYWORD)\b` boundary is unaffected either way, so this only changes
+// what's tolerated *between* the already-whole-word keyword and the number.
 const MENTION_RE = new RegExp(
-  `^\\b(${KEYWORD_ALTS})\\b\\.?\\s+(?:no\\.?\\s*)?([A-Za-z]-?)?([ivxlcdmIVXLCDM]+|\\d+(?:\\.\\d+)*)\\b`,
+  `^\\b(${KEYWORD_ALTS})\\b\\.?[\\s-]*(?:no\\.?\\s*)?([A-Za-z]-?)?([ivxlcdmIVXLCDM]+|\\d+(?:\\.\\d+)*)\\b`,
   'i'
 );
 
@@ -152,12 +156,35 @@ function injectAnchor(block, anchorId) {
   target.tokens.unshift(spanToken);
 }
 
+// ─── Shared match-and-verdict logic ───────────────────────────────────────────
+// Used by the marked tokenizer below (anchored at position 0 of whatever `src`
+// marked hands it — marked's own `start()` already found the right offset).
+// Consults the server's persisted verdict for pageNum: if suppressed, returns null
+// so marked leaves the text un-linkified.
+function tryMatchXref(src, pageNum, store) {
+  const m = MENTION_RE.exec(src);
+  if (!m) return null;
+  const [raw, keyword, prefixRaw, numberRaw] = m;
+  const key = normalizeKey(keyword, prefixRaw || null, numberRaw);
+  const [prefix, number] = reconcilePrefixAndNumber(keyword, prefixRaw || null, numberRaw);
+
+  const pageMentions = store?.mentionsByPage?.get(pageNum);
+  if (pageMentions) {
+    const verdicts = pageMentions.filter((item) => item.key === key);
+    if (verdicts.length > 0 && verdicts.every((item) => item.resolution === 'suppressed')) {
+      return null;
+    }
+  }
+
+  return { type: 'xref', raw, key, keyword, prefix, number };
+}
+
 // ─── Mention-linkifying inline extension ───────────────────────────────────────
 // Registered fresh per render (a new Marked instance per call — marked.use()
 // mutates shared state, so a stale referenceStore closed over by an earlier
 // render must never leak into a later one).
 
-function createXrefExtension(store) {
+function createXrefExtension(pageNum, store) {
   return {
     name: 'xref',
     level: 'inline',
@@ -166,18 +193,28 @@ function createXrefExtension(store) {
       return m ? m.index : undefined;
     },
     tokenizer(src) {
-      const m = MENTION_RE.exec(src);
-      if (!m) return undefined;
-      const [raw, keyword, prefixRaw, numberRaw] = m;
-      const key = normalizeKey(keyword, prefixRaw || null, numberRaw);
-      return { type: 'xref', raw, key };
+      return tryMatchXref(src, pageNum, store) || undefined;
     },
     renderer(token) {
       const { exact, approximate } = resolveMention(store, token.key);
       if (exact.length + approximate.length === 0) {
         return escapeHtml(token.raw);
       }
-      const cls = exact.length === 0 ? 'xref-link xref-link--approximate' : 'xref-link';
+      // The server's own verdict is authoritative when it has one for this
+      // key/page (same source getPageMentions reads for the badge list) — a
+      // client-only resolveMention computation here would be a second,
+      // independently-arrived-at judgment that can disagree with the badge's,
+      // rendering the inline link and its own page badge inconsistently for
+      // the same mention. Fall back to resolveMention only when the server
+      // has no mention row at all for this key on this page.
+      const pageMentions = store?.mentionsByPage?.get(pageNum);
+      const serverVerdict = pageMentions?.find(
+        (item) => item.key === token.key && item.resolution !== 'suppressed',
+      );
+      const isApproximate = serverVerdict
+        ? serverVerdict.resolution === 'approximate'
+        : exact.length === 0;
+      const cls = isApproximate ? 'xref-link xref-link--approximate' : 'xref-link';
       return `<a href="#" class="${cls}" data-xref-key="${escapeAttr(token.key)}">${escapeHtml(token.raw)}</a>`;
     },
   };
@@ -192,53 +229,31 @@ function createXrefExtension(store) {
 const _renderCache = new Map();
 const _RENDER_CACHE_LIMIT = 2000;
 
-// Shared lex step for both renderPageMarkdown (below) and getPageMentions —
-// a fresh Marked instance + the xref extension, exactly as renderPageMarkdown
-// always used, factored out so the two can never drift on what counts as a
-// mention (getPageMentions used to not exist; it now reuses this verbatim).
-function lexPageWithXrefs(pageText, store) {
+function lexPageWithXrefs(pageText, pageNum, store) {
   const instance = new Marked();
-  instance.use({ extensions: [createXrefExtension(store)] });
+  instance.use({ extensions: [createXrefExtension(pageNum, store)] });
   const tokens = instance.lexer(pageText || '');
   return { instance, tokens };
 }
 
-// Every 'xref' inline token found anywhere in a page's token tree (inside
-// paragraphs, headings, list items, table cells, and nested inline formatting
-// like bold/italic) — walks the same shape flattenBlocks/blockPlainText read.
-function collectXrefTokens(tokens, out = []) {
-  for (const tok of tokens || []) {
-    if (tok.type === 'xref') {
-      out.push(tok);
-      continue;
-    }
-    if (Array.isArray(tok.tokens)) collectXrefTokens(tok.tokens, out);
-    // 'list' tokens nest their block children under .items (each a
-    // list_item with its own .tokens), not .tokens directly.
-    if (Array.isArray(tok.items)) collectXrefTokens(tok.items, out);
-    // 'table' tokens nest header/body cells, each with its own .tokens.
-    if (Array.isArray(tok.header)) for (const cell of tok.header) collectXrefTokens(cell.tokens, out);
-    if (Array.isArray(tok.rows)) for (const row of tok.rows) for (const cell of row) collectXrefTokens(cell.tokens, out);
-  }
-  return out;
-}
-
 // Every mention on a page that actually resolves to something — used to
 // populate the PDF pane's per-page reference badge/list (Result pane no
-// longer being the click surface). Only the resolving ones are returned,
-// matching exactly what renderPageMarkdown would have linkified (not greyed
-// out as an unresolved plain-text mention); deduped by key since a page-level
-// list should offer each distinct target once, not once per occurrence.
+// longer being the click surface).
+// Frontend getPageMentions is a pure store read against store.mentionsByPage.
 export function getPageMentions(pageText, pageNum, store) {
-  const { tokens } = lexPageWithXrefs(pageText, store);
+  const pageMentions = store?.mentionsByPage?.get(pageNum);
+  if (!pageMentions) return [];
   const seen = new Set();
   const mentions = [];
-  for (const tok of collectXrefTokens(tokens)) {
-    if (seen.has(tok.key)) continue;
-    const { exact, approximate } = resolveMention(store, tok.key);
-    if (exact.length + approximate.length === 0) continue;
-    seen.add(tok.key);
-    mentions.push({ key: tok.key, raw: tok.raw });
+  for (const m of pageMentions) {
+    if (m.resolution === 'suppressed') continue;
+    if (seen.has(m.key)) continue;
+    seen.add(m.key);
+    mentions.push({
+      key: m.key,
+      raw: m.raw_text || m.raw,
+      approximate: m.resolution === 'approximate',
+    });
   }
   return mentions;
 }
@@ -249,7 +264,7 @@ export function renderPageMarkdown(pageText, pageNum, store) {
   const cached = _renderCache.get(cacheKey);
   if (cached !== undefined) return cached;
 
-  const { instance, tokens } = lexPageWithXrefs(text, store);
+  const { instance, tokens } = lexPageWithXrefs(text, pageNum, store);
   const blocks = flattenBlocks(tokens);
 
   const remaining = [];

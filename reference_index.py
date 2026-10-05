@@ -17,8 +17,10 @@ history and rationale (nine rounds of review across four architecture phases).
 
 import asyncio
 import difflib
+import html
+import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import mistune
 
@@ -33,14 +35,39 @@ CORE_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Mention-side: same core shape, but not anchored to block/line start, plus the
-# optional trailing line modifier and range/list continuation (frontend-only
-# concerns in the approved design, kept here too for the collapsed/roman helpers
-# to stay in one place and for potential future server-side reuse/testing).
+MENTION_START_RE = re.compile(rf"\b(?:{_KEYWORD_ALTS})\b", re.IGNORECASE)
 MENTION_RE = re.compile(
-    rf"\b(?P<keyword>{_KEYWORD_ALTS})\b\.?\s+(?:no\.?\s*)?(?P<prefix>[A-Z]-?)?(?P<number>[ivxlcdm]+|\d+(?:\.\d+)*)\b",
+    rf"\b(?P<keyword>{_KEYWORD_ALTS})\b\.?[\s-]*(?:no\.?\s*)?(?P<prefix>[A-Za-z]-?)?(?P<number>[ivxlcdmIVXLCDM]+|\d+(?:\.\d+)*)\b",
     re.IGNORECASE,
 )
+
+PAGE_FOOTER_RE = re.compile(r"^\s*of\s+\d+\b", re.IGNORECASE)
+EXTERNAL_LAW_SIGNAL_RE = re.compile(
+    r"of\s+the\s+(?:[A-Za-z][\w\s]{0,30}?\s*)?\b(?:Act|Code|Constitution|Rules|Regulations)\b|\bCPC\b|\bIPC\b|\bCrPC\b|\b(?:19|20)\d{2}\b",
+    re.IGNORECASE,
+)
+CASE_CITATION_RE = re.compile(
+    r"\b(?:AIR|SCC|SCR|ILR|SCALE)\b|\(\d{4}\)\s*\d+|\b\d{4}\s*\(?\d*\)?\s*(?:SCC|SCR|AIR|SCALE)\b|\bSupp\.?\b|\bv\.?s?\.?\s+[A-Z]",
+    re.IGNORECASE,
+)
+MENTION_LOOKAHEAD_CHARS = 60
+EXTERNAL_LAW_FALLBACK_GUARD_FAMILIES = {"clause", "section", "article", "schedule", "appendix"}
+
+FAMILY_FALLBACKS: Dict[str, List[str]] = {
+    "clause": ["numheading"],
+    "section": ["numheading"],
+    "article": ["numheading"],
+    "schedule": ["numheading"],
+    "appendix": ["numheading"],
+    "para": ["point", "numheading"],
+}
+
+RANGE_CONTINUATION_RE = re.compile(
+    r"^\s*(to|and|&|,\s*(?:and|&)?)\s*([A-Za-z]-?)?(\d+(?:\.\d+)*)\b",
+    re.IGNORECASE,
+)
+RANGE_CONTINUATION_YEAR_RE = re.compile(r"^(?:19|20)\d{2}$")
+MAX_RANGE_EXPANSION = 25
 
 GROUND_DIGIT_RE = re.compile(r"^\s*\(?(?P<number>\d+(?:\.\d+)*)(?:\)\.?|\.)\s+[A-Z]")
 GROUND_ROMAN_RE = re.compile(r"^\s*\(?(?P<number>[IVXLCDMivxlcdm]+)(?:\)\.?|\.)\s+[A-Z]")
@@ -116,16 +143,23 @@ def _resolve_ground_or_point_match(
 _GROUND_SCOPE_HEADINGS = re.compile(r"\b(GROUNDS?\s+OF\s+APPEAL|GROUNDS|PRAYER)\b", re.IGNORECASE)
 
 EXTERNAL_LAW_A_RE = re.compile(
-    r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:Act|Code|Rules|Regulations)\s+(?:19|20)\d{2}\b"
+    r"\b[A-Za-z]+(?:\s+(?:and|of|for|[A-Za-z]+))*\s+(?:Act|Code|Rules|Regulations)(?:,\s*|\s+)(?:19|20)\d{2}\b",
+    re.IGNORECASE,
 )
 EXTERNAL_LAW_B_RE = re.compile(
-    r"\bof\s+the\s+(?:[A-Z][\w\s]{0,20})?(?:Act|Code|Constitution|Rules)\b", re.IGNORECASE
+    r"\bof\s+the\s+(?:[A-Za-z][\w\s]{0,30}?\s*)?\b(?:Act|Code|Constitution|Rules|Regulations)\b",
+    re.IGNORECASE,
 )
-EXTERNAL_LAW_C_RE = re.compile(r"\b(?:CPC|IPC|CrPC)\b")
+EXTERNAL_LAW_C_RE = re.compile(
+    r"\b(?:CPC|IPC|CrPC)\b|(?i:\b(?:C\.P\.C\.|I\.P\.C\.|Cr\.P\.C\.)(?!\w))"
+)
 # Case-law discussion markers — a block quoting/discussing a judicial precedent
 # (e.g. "(2015) 3 SCC 49" / "... (supra)") is never a document-internal clause
 # definition, even when it happens to open with "Section N"/"Clause N".
-EXTERNAL_LAW_D_RE = re.compile(r"\bsupra\b|\(\d{4}\)\s*\d+\s*SCC\b", re.IGNORECASE)
+EXTERNAL_LAW_D_RE = re.compile(
+    r"\bsupra\b|\(\d{4}\)\s*\d+\s*SCC\b|\bAIR\s+(?:19|20)\d{2}\b|\b\d{4}\s+SCC\s+OnLine\b|\[\d{4}\]\s*\d+\s*SCR\b",
+    re.IGNORECASE,
+)
 
 # "INDEX" is deliberately NOT in this list — see _WEAK_SUBDOC_TRIGGER_RE
 # below, which handles it as a conditional trigger instead.
@@ -1089,6 +1123,17 @@ def build_targets_for_page(
     # transition inside one still-open scope is one thing; a real new
     # section boundary is a different, unrelated event.
     last_decimal_ground: Optional[Dict[str, str]] = scope.get("last_decimal_ground")
+    # Mirrors apply_heading_events_to_scope's outer_decimal_ground — a
+    # decimal ground/point that opened a NESTED decimal sub-list (e.g.
+    # "19. ... summarized under following heads: 1. ... 2. ..."), so a
+    # later bare integer can resolve either as a child continuing that
+    # sub-list, or as a resumption of the OUTER sequence once the sub-list
+    # ends (e.g. "20." resuming as point:19's sibling, not its child). This
+    # tracking previously existed only in the AI path — ported here so the
+    # rule-based detector (both the live per-page path and the per-chunk AI
+    # fallback) agrees with the AI path on nested-decimal documents instead
+    # of leaving every such item flat.
+    outer_decimal_ground: Optional[Dict[str, Any]] = scope.get("outer_decimal_ground")
 
     candidates: List[Dict[str, Any]] = []
     occurrence_counts: Dict[str, int] = {}
@@ -1199,6 +1244,7 @@ def build_targets_for_page(
             last_letter_ordinal = None
             last_ground_letter_ordinal = None
             last_decimal_ground = None
+            outer_decimal_ground = None
             continue
 
         core_m = CORE_RE.match(text)
@@ -1344,6 +1390,7 @@ def build_targets_for_page(
                     last_letter_ordinal = None
                     last_ground_letter_ordinal = None
                     last_decimal_ground = None
+                    outer_decimal_ground = None
 
                 # Full ancestor chain (including the sub-document tier, now
                 # unified into the same nested_stack), not just the deepest
@@ -1357,6 +1404,21 @@ def build_targets_for_page(
                 # a synthetic subdoc:N for a generic trigger) is already
                 # unique, so two different sub-documents naturally produce
                 # different joined strings without one.
+                # Mirrors apply_heading_events_to_scope's incoming_int — a
+                # bare single-segment decimal ground/point number, used
+                # below to detect a nested decimal sub-list opening (e.g.
+                # "19. ... following heads: 1. Delay...") or an outer
+                # sequence resuming after one closes (e.g. "20." resuming
+                # as 19's sibling). Only ever set for a genuine decimal
+                # match — roman numerals and sequential letters don't carry
+                # an outer/inner-sequence meaning.
+                incoming_int = None
+                if (is_ground or is_point) and not is_seq_letter and not _is_roman(number_raw) and "." not in number_raw:
+                    try:
+                        incoming_int = int(number_raw)
+                    except (TypeError, ValueError):
+                        pass
+
                 effective_stack = nested_stack
                 if (is_ground or is_point) and (is_seq_letter or _is_roman(number_raw)) and last_decimal_ground:
                     # A roman-numeral OR sequential-letter ground/point
@@ -1371,6 +1433,35 @@ def build_targets_for_page(
                     effective_stack = [dict(s) for s in base_stack] + [
                         {"family": family, "key": last_decimal_ground["key"], "label": last_decimal_ground["label"]}
                     ]
+                elif (is_ground or is_point) and incoming_int is not None:
+                    # Ported from apply_heading_events_to_scope — a decimal
+                    # ground/point can itself nest under ANOTHER decimal
+                    # ground/point (e.g. "19. ... summarized under following
+                    # heads: 1. Delay in issuing the GELO. 2. ... 5. Award
+                    # of amounts..."), and once that nested sub-list ends, a
+                    # later integer resumes the OUTER sequence as a sibling
+                    # of the item that opened the sub-list (e.g. "20."
+                    # resumes as 19's sibling, not as a child of "5.").
+                    if outer_decimal_ground is not None:
+                        outer_p = outer_decimal_ground.get("int_val")
+                        if outer_p is not None and outer_p < incoming_int <= outer_p + 3:
+                            # Resumes outer sequence (e.g. 20 resumes 19).
+                            outer_decimal_ground = None
+                            effective_stack = nested_stack
+                        else:
+                            base_stack = outer_decimal_ground.get("stack") or nested_stack
+                            effective_stack = [dict(s) for s in base_stack] + [
+                                {"family": family, "key": outer_decimal_ground["key"], "label": outer_decimal_ground["label"]}
+                            ]
+                    elif last_decimal_ground is not None:
+                        prev_p = last_decimal_ground.get("int_val")
+                        if prev_p is not None and prev_p >= 2 and incoming_int == 1:
+                            # Starts a nested decimal sub-list (1. follows 19.).
+                            outer_decimal_ground = last_decimal_ground
+                            base_stack = outer_decimal_ground.get("stack") or nested_stack
+                            effective_stack = [dict(s) for s in base_stack] + [
+                                {"family": family, "key": outer_decimal_ground["key"], "label": outer_decimal_ground["label"]}
+                            ]
 
                 scope_key = "/".join(s["key"] for s in effective_stack)
                 scope_label = " › ".join(s["label"] for s in effective_stack)
@@ -1392,7 +1483,19 @@ def build_targets_for_page(
                     if _is_roman(number_raw):
                         pass  # a roman continuation never itself becomes the new "last decimal"
                     else:
-                        last_decimal_ground = {"key": key, "label": _format_label_from_key(key)}
+                        # `effective_stack` is always THIS heading's own
+                        # ancestor chain (never includes its own key — see
+                        # the matching note in apply_heading_events_to_scope);
+                        # store it as-is so a later roman/sequential-letter
+                        # or nested-decimal continuation of THIS heading can
+                        # append this heading's own key on top of it without
+                        # silently dropping an ancestor.
+                        last_decimal_ground = {
+                            "key": key,
+                            "label": _format_label_from_key(key),
+                            "stack": [dict(s) for s in effective_stack],
+                            "int_val": incoming_int,
+                        }
 
                 if family in _HIERARCHY_RANK and not push_blocking:
                     nested_stack.append({"family": family, "key": key, "label": _format_label_from_key(key)})
@@ -1626,6 +1729,7 @@ def build_targets_for_page(
         "stack": nested_stack, "boundary_ordinal": boundary_ordinal, "label_occurrence_counts": label_occurrence_counts,
         "last_bare_integer": last_bare_integer, "last_letter_ordinal": last_letter_ordinal,
         "last_ground_letter_ordinal": last_ground_letter_ordinal, "last_decimal_ground": last_decimal_ground,
+        "outer_decimal_ground": outer_decimal_ground,
     }
     return candidates, new_scope
 
@@ -1714,7 +1818,10 @@ async def _cascade_locked(job_id: str, from_page: int, total_pages: int):
         page_row = database.get_page(job_id, next_page)
         if not page_row or not database.has_provisional_reference_targets(job_id, next_page):
             break
-        await _process_single_page(job_id, next_page, page_row.get("text") or "", total_pages, provisional=False)
+        await _process_single_page(
+            job_id, next_page, page_row.get("text") or "", total_pages, provisional=False,
+            raw_text=page_row.get("raw_ocr_text"),
+        )
         frontier = next_page
         database.set_reference_index_frontier(job_id, frontier)
         advanced += 1
@@ -1758,6 +1865,383 @@ def build_layout_annotated_text(clean_text: str, raw_text: Optional[str]) -> str
         ltype = (lb.get("type") or "").strip().upper() or "TEXT"
         parts.append(f"[OCR-LAYOUT: {ltype}]\n{block_text}")
     return "\n\n".join(parts)
+
+
+# ─── Mention detection & resolution (server-side badge index) ─────────────────
+
+def collapse_key_fallback(key: str) -> str:
+    """Mirrors the frontend collapseKeyFallback / target row collapsed_key:
+    strips dots from the numeric part for period-tolerant matching."""
+    if ":" not in key:
+        return key
+    family, _, number = key.partition(":")
+    return f"{family}:{number.replace('.', '')}"
+
+
+def _number_dual_forms(number: str) -> List[str]:
+    """Tries integer/`.0` dual forms for numeric cross-family fallback lookup."""
+    if number.endswith(".0"):
+        return [number, number[:-2]]
+    if "." not in number:
+        return [number, f"{number}.0"]
+    return [number]
+
+
+class TargetLookupIndex:
+    """In-memory index for resolving mention candidate keys against target rows."""
+
+    def __init__(self, targets: Optional[List[Dict[str, Any]]] = None):
+        self.by_exact_key: Dict[str, List[Dict[str, Any]]] = {}
+        self.by_collapsed_key: Dict[str, Set[str]] = {}
+        if targets:
+            for t in targets:
+                key = t["key"]
+                self.by_exact_key.setdefault(key, []).append(t)
+                ck = t.get("collapsed_key") or collapse_key_fallback(key)
+                self.by_collapsed_key.setdefault(ck, set()).add(key)
+
+    @classmethod
+    def from_store_like(cls, data: Any) -> "TargetLookupIndex":
+        if isinstance(data, TargetLookupIndex):
+            return data
+        if isinstance(data, list):
+            return cls(data)
+        if isinstance(data, dict):
+            idx = cls()
+            if not data:
+                return idx
+            first_val = next(iter(data.values()))
+            if isinstance(first_val, dict):
+                for by_key in data.values():
+                    for k, cands in by_key.items():
+                        idx.by_exact_key.setdefault(k, []).extend(cands)
+                        for c in cands:
+                            ck = c.get("collapsed_key") or collapse_key_fallback(k)
+                            idx.by_collapsed_key.setdefault(ck, set()).add(k)
+            elif isinstance(first_val, list):
+                for k, cands in data.items():
+                    idx.by_exact_key.setdefault(k, []).extend(cands)
+                    for c in cands:
+                        ck = c.get("collapsed_key") or collapse_key_fallback(k)
+                        idx.by_collapsed_key.setdefault(ck, set()).add(k)
+            return idx
+        return cls([])
+
+    def has_exact_key(self, key: str) -> bool:
+        return key in self.by_exact_key
+
+    def resolve(self, key: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        exact = self.by_exact_key.get(key, [])
+        approximate: List[Dict[str, Any]] = []
+
+        candidate_key = key if key in self.by_exact_key else None
+        if candidate_key and self.by_exact_key[candidate_key]:
+            ck = self.by_exact_key[candidate_key][0].get("collapsed_key") or collapse_key_fallback(key)
+        else:
+            ck = collapse_key_fallback(key)
+
+        sibling_keys = self.by_collapsed_key.get(ck, set())
+        for k in sibling_keys:
+            if k != key:
+                approximate.extend(self.by_exact_key.get(k, []))
+
+        if ":" in key:
+            family, _, number = key.partition(":")
+            fallback_families = FAMILY_FALLBACKS.get(family)
+            if fallback_families:
+                for fam in fallback_families:
+                    for n in _number_dual_forms(number):
+                        fb_key = f"{fam}:{n}"
+                        approximate.extend(self.by_exact_key.get(fb_key, []))
+
+        deduped: List[Dict[str, Any]] = []
+        seen = set()
+        for c in approximate:
+            cid = (
+                c.get("key"),
+                c.get("page"),
+                c.get("anchor_id") if c.get("anchor_id") is not None else c.get("occurrence_index"),
+            )
+            if cid not in seen:
+                seen.add(cid)
+                deduped.append(c)
+
+        return exact, deduped
+
+
+def _strip_html(text: str) -> str:
+    if not text:
+        return ""
+    s = re.sub(r"&nbsp;|&#160;", " ", text, flags=re.IGNORECASE)
+    s = html.unescape(s)
+    s = re.sub(r"<[^>]+>", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _expand_range_continuations(
+    keyword: str,
+    base_prefix: Optional[str],
+    base_number: str,
+    sibling_text: str,
+) -> Tuple[List[Dict[str, Any]], int]:
+    """Port of markdown.js expandRangeContinuations. Decimal-only restriction,
+    Oxford comma support, year guard, MAX_RANGE_EXPANSION cap.
+    Returns (expanded_list, total_chars_consumed)."""
+    if not base_number or _is_roman(base_number):
+        return [], 0
+    rest = sibling_text
+    prev_number = base_number
+    prev_prefix = base_prefix
+    count = 0
+    out = []
+    total_consumed = 0
+
+    while count < MAX_RANGE_EXPANSION:
+        m = RANGE_CONTINUATION_RE.match(rest)
+        if not m:
+            break
+        matched = m.group(0)
+        connector_raw = m.group(1)
+        prefix_raw = m.group(2)
+        number_raw = m.group(3)
+        connector = connector_raw.strip().lower()
+        is_bare_comma = connector.startswith(",") and not prefix_raw
+
+        if is_bare_comma and RANGE_CONTINUATION_YEAR_RE.match(number_raw):
+            break
+
+        prefix = prefix_raw or prev_prefix or None
+        is_to_range = (
+            connector == "to"
+            and prev_number.isdigit()
+            and number_raw.isdigit()
+            and prefix == prev_prefix
+        )
+
+        if is_to_range:
+            start = int(prev_number) + 1
+            end = int(number_raw)
+            for n in range(start, end + 1):
+                if count >= MAX_RANGE_EXPANSION:
+                    break
+                key = normalize_key(keyword, prefix, str(n))
+                raw = f"{keyword} {prefix}{n}" if prefix else f"{keyword} {n}"
+                out.append({
+                    "keyword": keyword,
+                    "prefix": prefix,
+                    "number": str(n),
+                    "key": key,
+                    "raw_text": raw,
+                })
+                count += 1
+        else:
+            key = normalize_key(keyword, prefix, number_raw)
+            raw = f"{keyword} {prefix}{number_raw}" if prefix else f"{keyword} {number_raw}"
+            out.append({
+                "keyword": keyword,
+                "prefix": prefix,
+                "number": number_raw,
+                "key": key,
+                "raw_text": raw,
+            })
+            count += 1
+
+        prev_number = number_raw
+        prev_prefix = prefix
+        total_consumed += len(matched)
+        rest = rest[len(matched):]
+
+    return out, total_consumed
+
+
+def _extract_mention_clean_text(token: Dict[str, Any]) -> str:
+    """Extracts text while blanking out codespan, link, image, and block_code
+    with spaces to preserve character offsets while enforcing the safety boundary."""
+    t = token.get("type")
+    if t in ("codespan", "link", "image", "block_code"):
+        raw = token.get("raw")
+        if raw is not None:
+            return " " * len(raw)
+        children = token.get("children", [])
+        child_len = sum(len(_extract_mention_clean_text(c)) for c in children)
+        return " " * max(1, child_len)
+    if t == "text":
+        return token.get("raw", "")
+    if t in ("softbreak", "linebreak"):
+        return " "
+    children = token.get("children")
+    if children:
+        return "".join(_extract_mention_clean_text(c) for c in children)
+    return ""
+
+
+def _scan_text_for_mentions(
+    text: str,
+    target_lookup: TargetLookupIndex,
+    block_index: int,
+    out: List[Dict[str, Any]],
+) -> None:
+    pos = 0
+    while pos < len(text):
+        start_m = MENTION_START_RE.search(text[pos:])
+        if not start_m:
+            break
+        match_index = pos + start_m.start()
+        slice_text = text[match_index:]
+        m = MENTION_RE.match(slice_text)
+        if m:
+            raw = m.group(0)
+            keyword = m.group("keyword")
+            prefix_raw = m.group("prefix")
+            number_raw = m.group("number")
+            prefix, number = reconcile_prefix_and_number(keyword, prefix_raw, number_raw)
+            key = normalize_key(keyword, prefix_raw, number_raw)
+            family = _FAMILY_ALIASES.get(keyword.lower().rstrip("."), keyword.lower())
+            lookahead = slice_text[len(raw):len(raw) + MENTION_LOOKAHEAD_CHARS]
+            before = text[max(0, match_index - 150):match_index]
+
+            suppressed_reason = None
+            if family == "page" and PAGE_FOOTER_RE.search(lookahead):
+                suppressed_reason = "page_footer"
+            elif not target_lookup.has_exact_key(key):
+                if family in EXTERNAL_LAW_FALLBACK_GUARD_FAMILIES and EXTERNAL_LAW_SIGNAL_RE.search(lookahead):
+                    suppressed_reason = "external_law"
+                elif family == "para" and CASE_CITATION_RE.search(lookahead):
+                    suppressed_reason = "case_citation"
+                elif family == "para" and CASE_CITATION_RE.search(before):
+                    suppressed_reason = "case_citation"
+
+            if suppressed_reason is not None:
+                resolution = "suppressed"
+            else:
+                exact, approximate = target_lookup.resolve(key)
+                if exact:
+                    resolution = "exact"
+                elif approximate:
+                    resolution = "approximate"
+                else:
+                    resolution = "suppressed"
+                    suppressed_reason = "unresolved"
+
+            occ_idx = len(out)
+            out.append({
+                "occurrence_index": occ_idx,
+                "key": key,
+                "raw_text": raw,
+                "block_index": block_index,
+                "resolution": resolution,
+                "suppressed_reason": suppressed_reason,
+                "detection_source": "rule",
+                "detection_model": None,
+            })
+
+            total_consumed = 0
+            if suppressed_reason not in ("case_citation", "page_footer", "external_law"):
+                cont_text = slice_text[len(raw):len(raw) + 200]
+                expanded, total_consumed = _expand_range_continuations(keyword, prefix, number, cont_text)
+                for exp in expanded:
+                    exp_key = exp["key"]
+                    exp_exact, exp_approx = target_lookup.resolve(exp_key)
+                    if exp_exact:
+                        exp_res = "exact"
+                        exp_supp = None
+                    elif exp_approx:
+                        exp_res = "approximate"
+                        exp_supp = None
+                    else:
+                        exp_res = "suppressed"
+                        exp_supp = "unresolved"
+                    out.append({
+                        "occurrence_index": len(out),
+                        "key": exp_key,
+                        "raw_text": exp["raw_text"],
+                        "block_index": block_index,
+                        "resolution": exp_res,
+                        "suppressed_reason": exp_supp,
+                        "detection_source": "rule",
+                        "detection_model": None,
+                    })
+
+            pos = match_index + len(raw) + total_consumed
+        else:
+            pos = match_index + len(start_m.group(0))
+
+
+def detect_mentions_for_page(
+    page_text: str,
+    page_num: int,
+    target_index: Any,
+) -> List[Dict[str, Any]]:
+    """Detects and resolves mentions on page_num against target_index.
+    Returns list of mention dicts with page, occurrence_index, key, raw_text,
+    block_index, resolution ('exact'|'approximate'|'suppressed'), suppressed_reason."""
+    lookup = TargetLookupIndex.from_store_like(target_index)
+    tokens, _ = _get_parser().parse(page_text or "")
+    out: List[Dict[str, Any]] = []
+
+    def _walk_blocks(tok_list):
+        for tok in tok_list:
+            t = tok.get("type")
+            if t == "block_code":
+                continue
+            if t == "block_html":
+                clean = _strip_html(tok.get("raw", ""))
+                if clean:
+                    yield ("html", clean)
+                continue
+            if t == "list":
+                for child in tok.get("children", []):
+                    yield from _walk_blocks([child])
+                continue
+            if t in _CONTAINER_TYPES:
+                yield from _walk_blocks(tok.get("children", []))
+                continue
+            if t in _BLOCK_TYPES:
+                clean = _extract_mention_clean_text(tok)
+                if clean:
+                    yield ("text", clean)
+
+    block_idx = 0
+    for b_type, b_text in _walk_blocks(tokens):
+        _scan_text_for_mentions(b_text, lookup, block_idx, out)
+        block_idx += 1
+
+    for m in out:
+        m["page"] = page_num
+    return out
+
+
+def build_mention_index_for_job(job_id: str) -> None:
+    """Whole-job mention detection pass: executes once target indexing is complete.
+    Builds mentions for each page and persists them into ocr_reference_mentions.
+
+    Registers itself in `_active_reindex_jobs` for the call's duration (reentrant-
+    safe: only discards it if THIS call was the one that added it) so
+    `is_reindex_active` — which the manual /references/revert-to-rule and
+    /references/build-mentions endpoints check before running — sees this build
+    as in-flight. Without this, the AI-disabled path in trigger_ai_reindex_safe
+    called this directly with no guard at all, leaving a race window where a
+    manual trigger right after OCR completion could run concurrently with the
+    automatic one. The AI-indexing path already calls this from inside
+    reindex_job's own registration, so the self-guard must not clear that
+    outer registration early."""
+    already_active = job_id in _active_reindex_jobs
+    if not already_active:
+        _active_reindex_jobs.add(job_id)
+    try:
+        targets = database.get_reference_targets_for_job(job_id)
+        target_lookup = TargetLookupIndex(targets)
+        pages = database.get_pages(job_id)
+        version = database.get_reference_index_version(job_id)
+
+        for page in pages:
+            page_num = page["page_num"]
+            page_text = page.get("text") or ""
+            mentions = detect_mentions_for_page(page_text, page_num, target_lookup)
+            database.upsert_reference_mentions_for_page(job_id, page_num, mentions, version)
+    finally:
+        if not already_active:
+            _active_reindex_jobs.discard(job_id)
 
 
 def detect_pleading_points_for_page(
@@ -2376,10 +2860,27 @@ def apply_heading_events_to_scope(
             # A roman or sequential-letter continuation never itself becomes
             # the new "last decimal" — only a genuine decimal match does.
             if not is_roman_ground_or_point and not is_seq_letter:
+                # `effective_stack` is always THIS heading's own ANCESTOR
+                # chain (ground/point are leaves, never pushed onto
+                # nested_stack, so effective_stack never includes the
+                # heading's own key) — store it as-is. A later roman/
+                # sequential-letter continuation of THIS heading appends
+                # this heading's own key on top of whatever "stack" is
+                # stored here (see the consumer above), so storing
+                # anything less than the full chain silently drops an
+                # ancestor. Confirmed live: storing `effective_stack[:-1]`
+                # here (a previous version) dropped point:19 from point:5's
+                # own stack whenever point:5 itself was nested under
+                # point:19 via outer_decimal_ground — point:5's roman
+                # sub-points (i)-(vii) then resolved to
+                # "subdoc:.../point:5" instead of
+                # "subdoc:.../point:19/point:5", producing a duplicate
+                # "point:5" node with no real row once the frontend
+                # materializes every scope_chain segment as a tree node.
                 last_decimal_ground = {
                     "key": key,
                     "label": label,
-                    "stack": [dict(s) for s in effective_stack[:-1]] if effective_stack != nested_stack else [dict(s) for s in nested_stack],
+                    "stack": [dict(s) for s in effective_stack],
                     "int_val": incoming_int,
                 }
         elif not skip_stack_mutation:
@@ -2494,6 +2995,13 @@ def _persist_page_index(
 
     database.upsert_reference_targets_for_page(job_id, page_num, rows, version)
     database.set_end_of_page_scope(job_id, page_num, new_scope)
+    if detection_source == "rule" and not provisional:
+        snapshot = {
+            "version": version,
+            "candidates": candidates,
+            "new_scope": new_scope,
+        }
+        database.set_page_rule_snapshot(job_id, page_num, snapshot)
     return version
 
 
@@ -2704,3 +3212,9 @@ async def _reindex_job_rule_based(job_id: str):
     database.set_reference_index_frontier(job_id, 0)
     for page in database.get_pages(job_id):
         await update_reference_index_for_page(job_id, page["page_num"], page.get("text") or "", total_pages)
+    build_mention_index_for_job(job_id)
+    if (job.get("engine_params") or {}).get("ai_index_review_mentions"):
+        import ai_reference_index
+        await ai_reference_index.review_mentions_for_job(job_id, job.get("engine_params"))
+
+

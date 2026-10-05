@@ -63,7 +63,7 @@ async def test_fallback_matrix_ai_then_rule_with_continuous_range(monkeypatch):
     call_count = {"n": 0}
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         call_count["n"] += 1
         if chunk.page_nums == [1, 2]:
             headings = [
@@ -123,7 +123,7 @@ async def test_same_page_duplicate_heading_report_is_deduped_to_one_event(monkey
     ], chunk_pages=2)
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         headings = [
             AIHeading(heading_text="ANNEXURE A-1", start_page=1, level=1, still_open_at_chunk_end=True),
             AIHeading(heading_text="3.0 CONDITIONS AND COVENANTS", start_page=2, level=2,
@@ -154,7 +154,7 @@ async def test_two_different_headings_on_one_page_are_never_wrongly_deduped(monk
     ], chunk_pages=2)
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         headings = [
             AIHeading(heading_text="ANNEXURE A-1", start_page=1, level=1, still_open_at_chunk_end=True),
             AIHeading(heading_text="3.0 CONDITIONS AND COVENANTS", start_page=2, level=2,
@@ -188,7 +188,7 @@ async def test_chunk_pages_override_wins_over_the_jobs_frozen_engine_params(monk
     ], chunk_pages=10)  # frozen engine_params says 10 — override must beat this
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         return ChunkStructureResult(outcome=ChunkOutcome.EMPTY, page_nums=chunk.page_nums,
                                      headings=[], provider="gemini", model="gemini-2.5-flash")
 
@@ -214,7 +214,7 @@ async def test_paused_run_stops_between_chunks_and_resumes_without_reprocessing(
     processed_chunks = []
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         processed_chunks.append(chunk.page_nums[0])
         if chunk.page_nums[0] == 3:
             task_queue._paused_jobs.add(job_id)  # simulate a pause request arriving mid-run
@@ -258,7 +258,7 @@ async def test_single_page_retry_stops_early_when_scope_reconverges(monkeypatch)
     ], chunk_pages=1)
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         headings = []
         if chunk.page_nums[0] == 1:
             headings = [AIHeading(heading_text="ANNEXURE A-1", start_page=1, level=1, still_open_at_chunk_end=True)]
@@ -296,7 +296,7 @@ async def test_overlap_union_merge_recall_gain(monkeypatch):
     ], chunk_pages=2)
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         if chunk.page_nums == [1, 2]:
             # Chunk 1 catches 3.0 SCOPE but misses 4.0 DISPUTES
             headings = [
@@ -339,7 +339,7 @@ async def test_overlap_merge_ordering_preserves_document_order_despite_misleadin
     ], chunk_pages=2)
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         if chunk.page_nums == [1, 2]:
             # Chunk 1 catches 1.0 FIRST SECTION (physically at block 0), but with misleading high line hint
             headings = [
@@ -385,7 +385,7 @@ async def test_overlap_union_merge_no_silent_loss(monkeypatch):
     ], chunk_pages=2)
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         if chunk.page_nums == [1, 2]:
             headings = [
                 AIHeading(heading_text="ANNEXURE A-1", start_page=1, level=1, still_open_at_chunk_end=True),
@@ -423,7 +423,7 @@ async def test_rule_fallback_never_overwrites_ai_overlap_result(monkeypatch):
     ], chunk_pages=4)
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         if chunk.page_nums == [1, 2, 3, 4]:
             headings = [
                 AIHeading(heading_text="ANNEXURE A-1", start_page=4, level=1, still_open_at_chunk_end=True),
@@ -468,7 +468,7 @@ async def test_overlap_frontier_stays_monotonic(monkeypatch):
     monkeypatch.setattr(database, "set_reference_index_frontier", _tracking_set)
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         return ChunkStructureResult(outcome=ChunkOutcome.EMPTY, page_nums=chunk.page_nums,
                                      headings=[], provider="gemini", model="gemini-2.5-flash")
 
@@ -496,7 +496,7 @@ async def test_multi_chunk_targeted_retry_does_not_stop_early_at_overlap_seam(mo
 
     # First run to populate initial state
     async def _fake_extract_initial(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                                     include_pleading_points=False):
+                                     include_pleading_points=False, **_rule_prior_kwargs):
         headings = []
         if 1 in chunk.page_nums:
             headings.append(AIHeading(heading_text="ANNEXURE A-1", start_page=1, level=1, still_open_at_chunk_end=True))
@@ -519,7 +519,7 @@ async def test_multi_chunk_targeted_retry_does_not_stop_early_at_overlap_seam(mo
     processed_pages = []
 
     async def _fake_extract_retry(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                                   include_pleading_points=False):
+                                   include_pleading_points=False, **_rule_prior_kwargs):
         processed_pages.extend(chunk.page_nums)
         # Modify page 2 & 3 headings
         headings = [
@@ -551,7 +551,7 @@ async def test_wrong_page_heading_gets_persisted_on_the_correct_neighboring_page
     ], chunk_pages=2)
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         headings = [AIHeading(heading_text="3.4 QUALITY PLANS", start_page=1, level=1,
                                end_page=1, still_open_at_chunk_end=False)]
         return ChunkStructureResult(outcome=ChunkOutcome.OK, page_nums=chunk.page_nums,
@@ -582,7 +582,7 @@ async def test_pleading_points_are_persisted_alongside_ai_detected_headings_on_t
     ], chunk_pages=1, pleading_points_via_ai=False)
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         headings = [AIHeading(heading_text="RESPECTFULLY SHOWETH:", start_page=1, level=1,
                                end_page=None, still_open_at_chunk_end=True)]
         return ChunkStructureResult(outcome=ChunkOutcome.OK, page_nums=chunk.page_nums,
@@ -617,7 +617,7 @@ async def test_pleading_points_own_decimal_ground_finding_propagates_to_the_next
     ], chunk_pages=1, pleading_points_via_ai=False)
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         if chunk.page_nums == [1]:
             headings = [AIHeading(heading_text="GROUNDS OF APPEAL", start_page=1, level=1,
                                    still_open_at_chunk_end=True)]
@@ -655,7 +655,7 @@ async def test_ai_reported_heading_preceded_by_a_reproduced_text_intro_never_bec
     ], chunk_pages=1)
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         headings = [
             AIHeading(heading_text="GROUNDS OF APPEAL", start_page=1, level=1, still_open_at_chunk_end=True),
             AIHeading(heading_text="9.0 Local/ Site conditions", start_page=1, level=2,
@@ -702,7 +702,7 @@ async def test_ai_reported_reproduced_text_continuation_line_also_suppressed(mon
     ], chunk_pages=1, pleading_points_via_ai=False)
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         headings = [
             AIHeading(heading_text="GROUNDS OF APPEAL", start_page=1, level=1, still_open_at_chunk_end=True),
             AIHeading(heading_text="9.0 Local/ Site conditions", start_page=1, level=2,
@@ -757,7 +757,7 @@ async def test_pleading_points_via_ai_flag_skips_the_regex_augmentation_and_uses
     seen_prompts = []
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         seen_prompts.append(include_pleading_points)
         headings = [
             AIHeading(heading_text="GROUNDS OF APPEAL", start_page=1, level=1, still_open_at_chunk_end=True),
@@ -807,7 +807,7 @@ async def test_pleading_points_via_ai_is_the_default_when_engine_params_omits_it
     seen_prompts = []
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False):
+                             include_pleading_points=False, **_rule_prior_kwargs):
         seen_prompts.append(include_pleading_points)
         headings = [
             AIHeading(heading_text="GROUNDS OF APPEAL", start_page=1, level=1, still_open_at_chunk_end=True),

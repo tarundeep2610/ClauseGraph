@@ -91,10 +91,55 @@ function buildTree(candidates) {
   return root;
 }
 
+// A node's own primary occurrence — its first leaf by (page,
+// occurrence_index) order. Sorts a COPY rather than relying on `node.leaves`
+// already being sorted, so this is correct whether called before or after
+// `finalize` (which does its own leaf sort) — applyHierarchyOverrides runs
+// BEFORE finalize, so node.leaves is still in raw insertion order there.
+function primaryLeafOf(node) {
+  if (!node.leaves.length) return null;
+  return [...node.leaves].sort(
+    (a, b) => (a.page || 0) - (b.page || 0) || (a.occurrence_index || 0) - (b.occurrence_index || 0)
+  )[0];
+}
+
+// A node's move/reparent identity: NOT the bare key alone — the same bare
+// key can repeat in one document (a repeated heading like "point:5" under
+// two different ancestors), and a bare-key identity silently misapplies a
+// move to whichever occurrence happens to be indexed last. '' (no leaves at
+// all — a pure grouping node synthesized only from descendants' scope_chain,
+// never itself detected) is the one case with no real page/occurrence to
+// disambiguate with; it degrades to a bare-key identity, same as before —
+// accepted, since such a node has no stored row for an override to target
+// anyway (see containerItemDescriptor's own null case).
+function nodeMoveId(node) {
+  if (!node || node.key === '') return ''; // root
+  const leaf = primaryLeafOf(node);
+  return `${node.key}\u0000${leaf ? leaf.page : ''}\u0000${leaf ? (leaf.occurrence_index ?? 0) : ''}`;
+}
+
+// A bare leaf candidate's own move identity (used for an individual
+// occurrence row under an already-multi-occurrence container — see
+// LeafRow) — same (key, page, occurrence_index) scheme as nodeMoveId, just
+// built directly from the candidate instead of a tree node's primary leaf.
+function leafMoveId(leaf) {
+  return `${leaf.key}\u0000${leaf.page}\u0000${leaf.occurrence_index ?? 0}`;
+}
+
+function parseMoveId(id) {
+  if (!id) return { key: '', page: -1, occurrenceIndex: -1 };
+  const parts = String(id).split('\u0000');
+  const key = parts[0];
+  const page = parts[1] === undefined || parts[1] === '' ? -1 : Number(parts[1]);
+  const occurrenceIndex = parts[2] === undefined || parts[2] === '' ? -1 : Number(parts[2]);
+  return { key, page, occurrenceIndex };
+}
+
 // Applies drag-and-drop hierarchy overrides on top of the just-built tree —
 // per the plan's Part C2, parent/order overrides never rewrite scope_chain
 // server-side; they're plain data (GET .../structure-hierarchy-overrides:
-// {parents: {item_key: new_parent_key}, order: {scope_key: [item_key,...]}})
+// {parents: [{item_key, item_page, item_occurrence_index, new_parent_key,
+// new_parent_page, new_parent_occurrence_index}, ...], order: [...]})
 // applied here, client-side, so a moved node's whole subtree (children
 // included) follows it automatically — no per-descendant patching needed.
 //
@@ -105,29 +150,44 @@ function buildTree(candidates) {
 // valid reparent target with no separate "promote a leaf into a container"
 // step needed.
 //
-// Move identity is the node's bare key (matching what compute_scope_ranges
-// and the rest of this tree already key nodes by) — NOT disambiguated by
-// page/occurrence_index. Accepted v1 limitation: if the exact same bare key
-// appears more than once in the document (most often a repeated leaf
-// heading like "Clause 4.1" under two different Annexures), a move/drop
-// targeting that key applies to whichever occurrence this function's index
-// pass visits first, not necessarily the one the reader clicked. Container-
-// tier keys (Annexure/Article/Section/...) essentially never collide in
-// practice, so this mainly matters for leaf-level reparenting of a
-// genuinely repeated key — a rare case, not silently corrupting anything.
+// Move identity is (key, page, occurrence_index) via nodeMoveId — matching
+// the server's own disambiguated override identity (main.py's
+// move_structure_item / structure_overrides.set_parent) — so a move/drop
+// targeting one occurrence of a repeated key never touches the other.
 function applyHierarchyOverrides(root, parentOverrides) {
-  if (!parentOverrides || Object.keys(parentOverrides).length === 0) return root;
+  if (!parentOverrides || parentOverrides.length === 0) return root;
 
-  const nodeByKey = new Map();
+  const nodeByMoveId = new Map();
+  const nodesByBareKey = new Map(); // wildcard fallback — bare key -> [nodes]
   (function index(node) {
-    if (node !== root) nodeByKey.set(node.key, node);
+    if (node !== root) {
+      nodeByMoveId.set(nodeMoveId(node), node);
+      const list = nodesByBareKey.get(node.key);
+      if (list) list.push(node); else nodesByBareKey.set(node.key, [node]);
+    }
     for (const child of node.children.values()) index(child);
   })(root);
 
-  for (const [itemKey, newParentKey] of Object.entries(parentOverrides)) {
-    const node = nodeByKey.get(itemKey);
-    if (!node) continue; // orphaned (moved item no longer exists) — inert
-    const newParent = newParentKey ? nodeByKey.get(newParentKey) : root;
+  // Exact (key, page, occurrence_index) match first; a wildcard row
+  // (page/occurrence_index === -1, the pre-migration legacy shape) only
+  // applies when exactly one node in the whole tree carries that bare key —
+  // an ambiguous wildcard (multiple occurrences, none specified) is inert
+  // rather than guessing which one the override meant.
+  function resolveNode(key, page, occurrenceIndex) {
+    if (page !== -1 && page !== undefined && page !== null) {
+      const exact = nodeByMoveId.get(`${key}\u0000${page}\u0000${occurrenceIndex ?? 0}`);
+      if (exact) return exact;
+    }
+    const candidates = nodesByBareKey.get(key);
+    return candidates && candidates.length === 1 ? candidates[0] : null;
+  }
+
+  for (const row of parentOverrides) {
+    const node = resolveNode(row.item_key, row.item_page, row.item_occurrence_index);
+    if (!node) continue; // orphaned (moved item no longer exists), or ambiguous — inert
+    const newParent = row.new_parent_key
+      ? resolveNode(row.new_parent_key, row.new_parent_page, row.new_parent_occurrence_index)
+      : root;
     if (!newParent || newParent === node) continue; // orphaned target, or a no-op
     let detached = false;
     (function detach(candidate) {
@@ -138,19 +198,44 @@ function applyHierarchyOverrides(root, parentOverrides) {
         if (detached) return;
       }
     })(root);
-    newParent.children.set(itemKey, node);
+    newParent.children.set(node.key, node);
   }
 
   return root;
+}
+
+// Pre-groups the raw sortOverrides row list (per the new disambiguated
+// wire shape — see get_structure_hierarchy_overrides) by the SCOPE
+// (parent) they apply to, once, rather than re-scanning the whole list on
+// every recursive finalize() call. Exact (scope_key, scope_page,
+// scope_occurrence_index) match is tried first; a wildcard scope row
+// (scope_page === -1, the pre-migration legacy shape) is kept as a
+// bare-scope_key fallback — lower severity than the parent-override
+// ambiguity (worst case here is a child rendering in default page order
+// instead of its custom one, never data loss), so no uniqueness check.
+function groupSortOverrides(sortOverrides) {
+  const byExactScope = new Map();
+  const byWildcardScope = new Map();
+  for (const row of sortOverrides || []) {
+    const exactId = `${row.scope_key}\u0000${row.scope_page}\u0000${row.scope_occurrence_index}`;
+    if (!byExactScope.has(exactId)) byExactScope.set(exactId, []);
+    byExactScope.get(exactId).push(row);
+    if (row.scope_page === -1) {
+      if (!byWildcardScope.has(row.scope_key)) byWildcardScope.set(row.scope_key, []);
+      byWildcardScope.get(row.scope_key).push(row);
+    }
+  }
+  return { byExactScope, byWildcardScope };
 }
 
 // Post-order: turns each node's children Map into an array, sorted by a
 // manual sortOverrides order when the reader has drag-and-drop-reordered
 // this node's children, falling back to first-occurrence page (ascending)
 // for any sibling not yet manually positioned — appended after the
-// manually-ordered ones, in their own stable page order.
-function finalize(node, sortOverrides) {
-  const children = Array.from(node.children.values()).map((c) => finalize(c, sortOverrides));
+// manually-ordered ones, in their own stable page order. `sortIndex` is the
+// pre-grouped result of groupSortOverrides, computed once by the caller.
+function finalize(node, sortIndex) {
+  const children = Array.from(node.children.values()).map((c) => finalize(c, sortIndex));
   const leaves = [...node.leaves].sort(
     (a, b) => (a.page || 0) - (b.page || 0) || (a.occurrence_index || 0) - (b.occurrence_index || 0)
   );
@@ -159,12 +244,16 @@ function finalize(node, sortOverrides) {
     ...leaves.map((l) => l.page ?? Infinity),
     ...children.map((c) => c.minPage)
   );
-  const order = sortOverrides?.[node.key]; // node.key === '' for root, matching the backend's "" = root convention
-  if (order && order.length) {
-    const rank = new Map(order.map((k, i) => [k, i]));
+  // node.key === '' for root, matching the backend's "" = root convention.
+  const rows = sortIndex?.byExactScope.get(nodeMoveId(node)) || sortIndex?.byWildcardScope.get(node.key);
+  if (rows && rows.length) {
+    const rankByMoveId = new Map(rows.map((r, i) => [`${r.item_key}\u0000${r.item_page}\u0000${r.item_occurrence_index}`, i]));
+    const rankByBareKey = new Map(rows.map((r, i) => [r.item_key, i]));
     children.sort((a, b) => {
-      const ra = rank.has(a.key) ? rank.get(a.key) : Infinity;
-      const rb = rank.has(b.key) ? rank.get(b.key) : Infinity;
+      const ra = rankByMoveId.has(nodeMoveId(a)) ? rankByMoveId.get(nodeMoveId(a))
+        : (rankByBareKey.has(a.key) ? rankByBareKey.get(a.key) : Infinity);
+      const rb = rankByMoveId.has(nodeMoveId(b)) ? rankByMoveId.get(nodeMoveId(b))
+        : (rankByBareKey.has(b.key) ? rankByBareKey.get(b.key) : Infinity);
       return ra !== rb ? ra - rb : a.minPage - b.minPage;
     });
   } else {
@@ -190,6 +279,9 @@ const REASON_LABELS = {
   ai_fuzzy_parent_ref: "the AI's stated parent heading was matched approximately, not exactly",
   ai_page_corrected: 'the AI reported the wrong page for this heading; matched on a neighboring page instead',
   ai_fuzzy_grounded: "the AI-reported heading text only matched approximately, not exactly, to this page's real content",
+  rule_prior_unreviewed: 'unreviewed prior heading kept from rule detection',
+  rule_prior_rejection_unverified: "AI rejected this prior but evidence quote couldn't be verified on page",
+  rule_prior_key_drift: 'AI re-minted a different target key than the rule path assigned',
 };
 
 function reasonsTooltip(reasons) {
@@ -261,7 +353,7 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
   const [expanded, setExpanded] = useState(depth === 0);
   const isCurrent = node.id === currentNodeId;
   const headerRef = useRef(null);
-  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: node.key });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: nodeMoveId(node) });
 
   // Forces this node open when it becomes part of the active-page's
   // ancestor chain — but only in reaction to a genuinely new activePathIds
@@ -352,7 +444,7 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
         className={`structure-tree-node-header${isOver ? ' structure-tree-node-header--drop-over' : ''}`}
         style={{ paddingLeft: depth * 16 }}
       >
-        <DragHandle id={node.key} testId={`structure-drag-handle-${node.id}`} />
+        <DragHandle id={nodeMoveId(node)} testId={`structure-drag-handle-${node.id}`} />
         {expandable ? (
           <i
             className={`fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}`}
@@ -451,7 +543,7 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
 }
 
 function LeafRow({ leaf, depth, lowConfidence, onSelect, onOpenReference, onEditItem, onDeleteItem, leafDescriptor }) {
-  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: leaf.key });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: leafMoveId(leaf) });
   return (
     <li
       ref={setDropRef}
@@ -463,7 +555,7 @@ function LeafRow({ leaf, depth, lowConfidence, onSelect, onOpenReference, onEdit
       data-testid={`structure-leaf-${leaf.anchor_id}`}
       title={lowConfidence ? reasonsTooltip(leaf.heading_confidence_reasons) : undefined}
     >
-      <DragHandle id={leaf.key} testId={`structure-drag-handle-leaf-${leaf.anchor_id}`} />
+      <DragHandle id={leafMoveId(leaf)} testId={`structure-drag-handle-leaf-${leaf.anchor_id}`} />
       <i className="fa-regular fa-file-lines" />
       {lowConfidence && <span className="structure-low-confidence-marker">≈ </span>}
       Page {leaf.page}
@@ -536,7 +628,7 @@ export default function StructureTree({
     if (!referenceStore) return null;
     const raw = buildTree(getStructureCandidates(referenceStore));
     const reparented = applyHierarchyOverrides(raw, parentOverrides);
-    return finalize(reparented, sortOverrides);
+    return finalize(reparented, groupSortOverrides(sortOverrides));
     // referenceStore is a stable ref mutated in place (see Dashboard.jsx) —
     // `.version` is the actual change signal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -566,13 +658,14 @@ export default function StructureTree({
     return { activePathIds: ids, currentNodeId: id };
   }, [activePath]);
 
-  // Finds a node's CURRENT children key list (already reparented/sorted) —
-  // used to build the full `orderedSiblings` payload a move sends, so the
-  // server always receives a complete replacement list, never a diff.
-  function findNode(node, key) {
-    if (node.key === key) return node;
+  // Finds a node's CURRENT children list (already reparented/sorted) — used
+  // to build the full `orderedSiblings` payload a move sends, so the server
+  // always receives a complete replacement list, never a diff. Searches by
+  // move id (key, page, occurrence_index), not bare key — see nodeMoveId.
+  function findNode(node, moveId) {
+    if (nodeMoveId(node) === moveId) return node;
     for (const child of node.children) {
-      const found = findNode(child, key);
+      const found = findNode(child, moveId);
       if (found) return found;
     }
     return null;
@@ -581,21 +674,32 @@ export default function StructureTree({
   function handleDragEnd(event) {
     const { active, over } = event;
     if (!tree || !onMoveItem || !over) return;
-    const itemKey = String(active.id);
-    const newParentKey = String(over.id); // '' = root drop zone
-    if (itemKey === newParentKey) return;
+    const itemMoveId = String(active.id);
+    const newParentMoveId = String(over.id); // '' = root drop zone
+    if (itemMoveId === newParentMoveId) return;
 
     // Client-side cycle guard, mirroring the server's own authoritative
     // check: don't allow dropping a node onto itself or a node already
     // nested under it.
-    const draggedNode = findNode(tree, itemKey);
-    if (draggedNode && findNode(draggedNode, newParentKey)) return;
+    const draggedNode = findNode(tree, itemMoveId);
+    if (draggedNode && findNode(draggedNode, newParentMoveId)) return;
 
-    const targetNode = newParentKey ? findNode(tree, newParentKey) : tree;
+    const targetNode = newParentMoveId ? findNode(tree, newParentMoveId) : tree;
     if (!targetNode) return;
-    const currentChildKeys = targetNode.children.map((c) => c.key);
-    if (currentChildKeys.includes(itemKey)) return; // already a child here — no-op
-    onMoveItem({ itemKey, newParentKey, orderedSiblings: [...currentChildKeys, itemKey] });
+    const currentChildren = targetNode.children.map((c) => parseMoveId(nodeMoveId(c)));
+    if (targetNode.children.some((c) => nodeMoveId(c) === itemMoveId)) return; // already a child here — no-op
+
+    const { key: itemKey, page: itemPage, occurrenceIndex: itemOccurrenceIndex } = parseMoveId(itemMoveId);
+    const { key: newParentKey, page: newParentPage, occurrenceIndex: newParentOccurrenceIndex } = parseMoveId(newParentMoveId);
+    const orderedSiblings = [
+      ...currentChildren.map((c) => ({ item_key: c.key, item_page: c.page, item_occurrence_index: c.occurrenceIndex })),
+      { item_key: itemKey, item_page: itemPage, item_occurrence_index: itemOccurrenceIndex },
+    ];
+    onMoveItem({
+      itemKey, itemPage, itemOccurrenceIndex,
+      newParentKey, newParentPage, newParentOccurrenceIndex,
+      orderedSiblings,
+    });
   }
 
   if (!tree || tree.children.length === 0) {
