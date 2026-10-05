@@ -1,0 +1,794 @@
+{
+  "job_id": "108ba949-bb7b-4f29-b582-ce4f4a44631b",
+  "source_job_id": "108ba949-bb7b-4f29-b582-ce4f4a44631b",
+  "total_pages": 17,
+  "targets": [
+    {
+      "page": 1,
+      "key": "page:37",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 1,
+      "key": "subdoc:1",
+      "occurrence_index": 0,
+      "label": "MEMO OF PARTIES",
+      "scope_key": ""
+    },
+    {
+      "page": 2,
+      "key": "subdoc:2",
+      "occurrence_index": 0,
+      "label": "JUDGMENT",
+      "scope_key": ""
+    },
+    {
+      "page": 3,
+      "key": "page:39",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 3,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2",
+      "scope_key": "subdoc:2/subdoc:4"
+    },
+    {
+      "page": 3,
+      "key": "subdoc:3",
+      "occurrence_index": 0,
+      "label": "Petitioner's version",
+      "scope_key": "subdoc:2"
+    },
+    {
+      "page": 3,
+      "key": "subdoc:4",
+      "occurrence_index": 0,
+      "label": "FACTS",
+      "scope_key": "subdoc:2"
+    },
+    {
+      "page": 4,
+      "key": "page:40",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 4,
+      "key": "point:3",
+      "occurrence_index": 0,
+      "label": "3. The Arbitral Award has been challenged by the petitioner interalia on followi",
+      "scope_key": "subdoc:2/subdoc:5"
+    },
+    {
+      "page": 4,
+      "key": "point:a",
+      "occurrence_index": 0,
+      "label": "(A) That the award is based on no evidence is erroneous, shocks the conscience o",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 4,
+      "key": "point:b",
+      "occurrence_index": 0,
+      "label": "(B) The Arbitral Tribunal has erred in ignoring the material documents on record",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 4,
+      "key": "point:c",
+      "occurrence_index": 0,
+      "label": "(C) The Arbitral Tribunal has erroneously held respondent No.1 liable for LD to ",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 4,
+      "key": "point:d",
+      "occurrence_index": 0,
+      "label": "(D) Arbitral Tribunal has erroneously condoned the grave lapse on the part of re",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 4,
+      "key": "point:e",
+      "occurrence_index": 0,
+      "label": "(E) The Arbitral Tribunal did not take into account the nature and importance of",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 4,
+      "key": "subdoc:5",
+      "occurrence_index": 0,
+      "label": "Challenge to the Arbitral Award.",
+      "scope_key": "subdoc:2"
+    },
+    {
+      "page": 5,
+      "key": "page:41",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 5,
+      "key": "point:f",
+      "occurrence_index": 0,
+      "label": "(F) The Arbitral Tribunal erred in observing that the delay was attributable to ",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 5,
+      "key": "point:g",
+      "occurrence_index": 0,
+      "label": "(G) The Arbitral Tribunal has also overlooked that as per schedule of civil cons",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 5,
+      "key": "point:h",
+      "occurrence_index": 0,
+      "label": "(H) The Arbitral Tribunal has also wrongly held that final GELO was made availab",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 5,
+      "key": "point:i",
+      "occurrence_index": 0,
+      "label": "(I) The Arbitral Tribunal also erred in holding that respondent No.1 was entitle",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 5,
+      "key": "point:j",
+      "occurrence_index": 0,
+      "label": "(J) It is further urged that the Arbitral Tribunal erred in holding that petitio",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 6,
+      "key": "page:42",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 6,
+      "key": "point:4",
+      "occurrence_index": 0,
+      "label": "4. Petition is resisted on behalf of respondent no.1 interalia with the averment",
+      "scope_key": "subdoc:2/subdoc:6"
+    },
+    {
+      "page": 6,
+      "key": "point:k",
+      "occurrence_index": 0,
+      "label": "(K) In evaluating delay in approval of 400/220 KV CTs drawing, the Arbitral Trib",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 6,
+      "key": "point:l",
+      "occurrence_index": 0,
+      "label": "(L) The Arbitral Tribunal has wrongly held that delay in commissioning of comple",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 6,
+      "key": "point:m",
+      "occurrence_index": 0,
+      "label": "(M) The Arbitral Tribunal has erroneously held that the respondent no.2 is entit",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 6,
+      "key": "point:n",
+      "occurrence_index": 0,
+      "label": "(N). Similarly, refund of Rs.26,58,714/- against future AC Kiosks has been chall",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 6,
+      "key": "point:o",
+      "occurrence_index": 0,
+      "label": "(O) It is further urged that the Arbitral Tribunal has wrongly allowed refund of",
+      "scope_key": "subdoc:2/subdoc:5/point:3"
+    },
+    {
+      "page": 6,
+      "key": "subdoc:6",
+      "occurrence_index": 0,
+      "label": "Respondent's case",
+      "scope_key": "subdoc:2"
+    },
+    {
+      "page": 7,
+      "key": "point:5",
+      "occurrence_index": 0,
+      "label": "5. It has been further urged on merits that in fact present petition is false, b",
+      "scope_key": "subdoc:2/subdoc:6"
+    },
+    {
+      "page": 7,
+      "key": "point:6",
+      "occurrence_index": 0,
+      "label": "6. It is further urged that the objections raised qua GELO is misconceived.",
+      "scope_key": "subdoc:2/subdoc:6"
+    },
+    {
+      "page": 7,
+      "key": "point:7",
+      "occurrence_index": 0,
+      "label": "7. Similarly, as far as other objections raised by the petitioner are concerned,",
+      "scope_key": "subdoc:2/subdoc:6"
+    },
+    {
+      "page": 8,
+      "key": "page:44",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 8,
+      "key": "point:10",
+      "occurrence_index": 0,
+      "label": "10. It has been argued by learned counsel for petitioner that in fact the work i",
+      "scope_key": "subdoc:2/subdoc:7"
+    },
+    {
+      "page": 8,
+      "key": "point:8",
+      "occurrence_index": 0,
+      "label": "8. Rejoinder controverting each and every fact of the reply and reiterating that",
+      "scope_key": "subdoc:2/subdoc:6"
+    },
+    {
+      "page": 8,
+      "key": "point:9",
+      "occurrence_index": 0,
+      "label": "9. Arguments have been advanced by Ms. Sonia Madan Advocate, counsel for petitio",
+      "scope_key": "subdoc:2/subdoc:6"
+    },
+    {
+      "page": 8,
+      "key": "subdoc:7",
+      "occurrence_index": 0,
+      "label": "Submissions of petitioner",
+      "scope_key": "subdoc:2"
+    },
+    {
+      "page": 9,
+      "key": "page:45",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 9,
+      "key": "point:11",
+      "occurrence_index": 0,
+      "label": "11. It has been further argued that the computation of delay under various heads",
+      "scope_key": "subdoc:2/subdoc:7"
+    },
+    {
+      "page": 9,
+      "key": "point:i",
+      "occurrence_index": 0,
+      "label": "(i) Issue of General Electrical Layout (GELO) drawings;",
+      "scope_key": "subdoc:2/subdoc:7/point:10"
+    },
+    {
+      "page": 9,
+      "key": "point:ii",
+      "occurrence_index": 0,
+      "label": "(ii) Non-availability of front clearance leading to delay in civil works for Con",
+      "scope_key": "subdoc:2/subdoc:7/point:10"
+    },
+    {
+      "page": 9,
+      "key": "point:iii",
+      "occurrence_index": 0,
+      "label": "(iii) Approval of Formation Ground Level (FGL);",
+      "scope_key": "subdoc:2/subdoc:7/point:10"
+    },
+    {
+      "page": 9,
+      "key": "point:iv",
+      "occurrence_index": 0,
+      "label": "(iv) Approval of major design drawings and equipment drawings.",
+      "scope_key": "subdoc:2/subdoc:7/point:10"
+    },
+    {
+      "page": 9,
+      "key": "point:v",
+      "occurrence_index": 0,
+      "label": "(v) Availability of power supply;",
+      "scope_key": "subdoc:2/subdoc:7/point:10"
+    },
+    {
+      "page": 9,
+      "key": "point:vi",
+      "occurrence_index": 0,
+      "label": "(vi) Inspection of material & issue of dispatch instructions; and",
+      "scope_key": "subdoc:2/subdoc:7/point:10"
+    },
+    {
+      "page": 9,
+      "key": "point:vii",
+      "occurrence_index": 0,
+      "label": "(vii) Non-issue of Material Receipt Certificates (MRC).",
+      "scope_key": "subdoc:2/subdoc:7/point:10"
+    },
+    {
+      "page": 10,
+      "key": "page:46",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 10,
+      "key": "point:12",
+      "occurrence_index": 0,
+      "label": "12. It is further argued that the delay in front clearance of site pleaded by re",
+      "scope_key": "subdoc:2/subdoc:7"
+    },
+    {
+      "page": 10,
+      "key": "point:13",
+      "occurrence_index": 0,
+      "label": "13. It is further argued by learned counsel for petitioner that Arbitral Tribuna",
+      "scope_key": "subdoc:2/subdoc:7"
+    },
+    {
+      "page": 10,
+      "key": "point:14",
+      "occurrence_index": 0,
+      "label": "14. It is further argued by learned counsel for petitioner that the Arbitral Tri",
+      "scope_key": "subdoc:2/subdoc:7"
+    },
+    {
+      "page": 10,
+      "key": "point:15",
+      "occurrence_index": 0,
+      "label": "15. It has been lastly urged that the Arbitral Tribunal has passed",
+      "scope_key": "subdoc:2/subdoc:7"
+    },
+    {
+      "page": 11,
+      "key": "point:16",
+      "occurrence_index": 0,
+      "label": "16. It has been argued by learned counsel for the respondent that in fact the ch",
+      "scope_key": "subdoc:2/subdoc:8"
+    },
+    {
+      "page": 11,
+      "key": "point:17",
+      "occurrence_index": 0,
+      "label": "17. To substantiate these arguments, learned counsel for the respondent has reli",
+      "scope_key": "subdoc:2/subdoc:8"
+    },
+    {
+      "page": 11,
+      "key": "subdoc:8",
+      "occurrence_index": 0,
+      "label": "Submissions of respondent",
+      "scope_key": "subdoc:2"
+    },
+    {
+      "page": 12,
+      "key": "page:48",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 12,
+      "key": "point:18",
+      "occurrence_index": 0,
+      "label": "18. From the facts and circumstances of the case in hand, it can be fairly concl",
+      "scope_key": "subdoc:2/subdoc:9"
+    },
+    {
+      "page": 12,
+      "key": "point:19",
+      "occurrence_index": 0,
+      "label": "19. The dispute as raised vide this petition can be summarized under following h",
+      "scope_key": "subdoc:2/subdoc:9"
+    },
+    {
+      "page": 12,
+      "key": "subdoc:9",
+      "occurrence_index": 0,
+      "label": "Conclusion",
+      "scope_key": "subdoc:2"
+    },
+    {
+      "page": 13,
+      "key": "page:49",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 13,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. Delay in issuing the GELO.",
+      "scope_key": "subdoc:2/subdoc:9/point:19"
+    },
+    {
+      "page": 13,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. Delay in front clearance of site.",
+      "scope_key": "subdoc:2/subdoc:9/point:19"
+    },
+    {
+      "page": 13,
+      "key": "point:20",
+      "occurrence_index": 0,
+      "label": "20. From perusal of the challenge made in this petition under section 34 of Arbi",
+      "scope_key": "subdoc:2/subdoc:9"
+    },
+    {
+      "page": 13,
+      "key": "point:21",
+      "occurrence_index": 0,
+      "label": "21. For example on delay in issuing the GELO, the petitioner has claimed that in",
+      "scope_key": "subdoc:2/subdoc:9"
+    },
+    {
+      "page": 13,
+      "key": "point:22",
+      "occurrence_index": 0,
+      "label": "22. Whereas the Arbitral Tribunal after hearing the rival submissions has observ",
+      "scope_key": "subdoc:2/subdoc:9"
+    },
+    {
+      "page": 13,
+      "key": "point:3",
+      "occurrence_index": 0,
+      "label": "3. Delay in approval of equipment drawings.",
+      "scope_key": "subdoc:2/subdoc:9/point:19"
+    },
+    {
+      "page": 13,
+      "key": "point:4",
+      "occurrence_index": 0,
+      "label": "4. Delay in availability of power at site.",
+      "scope_key": "subdoc:2/subdoc:9/point:19"
+    },
+    {
+      "page": 13,
+      "key": "point:5",
+      "occurrence_index": 0,
+      "label": "5. Award of amounts under various heads detailed as under:-",
+      "scope_key": "subdoc:2/subdoc:9/point:19"
+    },
+    {
+      "page": 13,
+      "key": "point:i",
+      "occurrence_index": 0,
+      "label": "(i) Award of Rs.43,46,080 on account of PLCC items.",
+      "scope_key": "subdoc:2/subdoc:9/point:19/point:5"
+    },
+    {
+      "page": 13,
+      "key": "point:ii",
+      "occurrence_index": 0,
+      "label": "(ii) Award of Rs.26,58,714/- on account of non-supply of complete AC kiosks.",
+      "scope_key": "subdoc:2/subdoc:9/point:19/point:5"
+    },
+    {
+      "page": 13,
+      "key": "point:iii",
+      "occurrence_index": 0,
+      "label": "(iii) Award of Rs.1,07,18,800/- on account of non-commissioning of BCUs.",
+      "scope_key": "subdoc:2/subdoc:9/point:19/point:5"
+    },
+    {
+      "page": 13,
+      "key": "point:iv",
+      "occurrence_index": 0,
+      "label": "(iv) Award of Rs.76,00,000/- on account of miscellaneous recovery.",
+      "scope_key": "subdoc:2/subdoc:9/point:19/point:5"
+    },
+    {
+      "page": 13,
+      "key": "point:v",
+      "occurrence_index": 0,
+      "label": "(v) Award of Rs.64,73,754/- for additional work.",
+      "scope_key": "subdoc:2/subdoc:9/point:19/point:5"
+    },
+    {
+      "page": 13,
+      "key": "point:vi",
+      "occurrence_index": 0,
+      "label": "(vi) Award of Rs.1,48,09,280/- on account of performance bank guarantee.",
+      "scope_key": "subdoc:2/subdoc:9/point:19/point:5"
+    },
+    {
+      "page": 13,
+      "key": "point:vii",
+      "occurrence_index": 0,
+      "label": "(vii) Award of interest at the rate of 8.5% per annum.",
+      "scope_key": "subdoc:2/subdoc:9/point:19/point:5"
+    },
+    {
+      "page": 14,
+      "key": "page:50",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 14,
+      "key": "point:23",
+      "occurrence_index": 0,
+      "label": "23. The Arbitral Tribunal further observed on the basis of the entire terms of c",
+      "scope_key": "subdoc:2/subdoc:9"
+    },
+    {
+      "page": 14,
+      "key": "point:24",
+      "occurrence_index": 0,
+      "label": "24. It shall be absolutely relevant to mention here that in the objection petiti",
+      "scope_key": "subdoc:2/subdoc:9"
+    },
+    {
+      "page": 14,
+      "key": "point:25",
+      "occurrence_index": 0,
+      "label": "25. Furthermore, it shall be absolutely relevant to mention here that the scope ",
+      "scope_key": "subdoc:2/subdoc:9"
+    },
+    {
+      "page": 15,
+      "key": "page:51",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 15,
+      "key": "point:26",
+      "occurrence_index": 0,
+      "label": "26. Reference in this regard may be made to P.R. Shah, Shares and Stock Brokers ",
+      "scope_key": "subdoc:2/subdoc:9"
+    },
+    {
+      "page": 15,
+      "key": "point:27",
+      "occurrence_index": 0,
+      "label": "27. In a recent decision in case National Highway Authority of India vs. M/s Pro",
+      "scope_key": "subdoc:2/subdoc:9"
+    },
+    {
+      "page": 15,
+      "key": "point:28",
+      "occurrence_index": 0,
+      "label": "28. In Associate Builders vs. Delhi Development Authority, (2015) 3 SCC 49 Apex ",
+      "scope_key": "subdoc:2/subdoc:9"
+    },
+    {
+      "page": 16,
+      "key": "page:52",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 16,
+      "key": "point:29",
+      "occurrence_index": 0,
+      "label": "29 In M/s Navodaya Mass Entertainment Ltd. vs. M/s J.M.",
+      "scope_key": "subdoc:2/subdoc:9"
+    },
+    {
+      "page": 16,
+      "key": "point:30",
+      "occurrence_index": 0,
+      "label": "30. Coming to the other points as raised in this objection such as delay in fron",
+      "scope_key": "subdoc:2/subdoc:9"
+    },
+    {
+      "page": 17,
+      "key": "page:53",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 17,
+      "key": "point:31",
+      "occurrence_index": 0,
+      "label": "31. What can be inferred is that in fact, this objection petition has been draft",
+      "scope_key": "subdoc:2/subdoc:9"
+    }
+  ],
+  "mentions": [
+    {
+      "page": 2,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 2,
+      "occurrence_index": 1,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 3,
+      "occurrence_index": 0,
+      "key": "clause:11.1",
+      "raw_text": "Clause 11.1",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 3,
+      "occurrence_index": 1,
+      "key": "clause:48.2",
+      "raw_text": "Clause 48.2",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 5,
+      "occurrence_index": 0,
+      "key": "clause:9.0",
+      "raw_text": "clause 9.0",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 1,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 9,
+      "occurrence_index": 0,
+      "key": "annexure:r-5",
+      "raw_text": "Annexure R5",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 10,
+      "occurrence_index": 0,
+      "key": "annexure:r-9",
+      "raw_text": "Annexure R9",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 11,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 11,
+      "occurrence_index": 1,
+      "key": "para:22",
+      "raw_text": "para No.22",
+      "resolution": "suppressed",
+      "suppressed_reason": "case_citation"
+    },
+    {
+      "page": 12,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 13,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 14,
+      "occurrence_index": 0,
+      "key": "annexure:r-5",
+      "raw_text": "Annexure R5",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 14,
+      "occurrence_index": 1,
+      "key": "annexure:r-9",
+      "raw_text": "Annexure R9",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 14,
+      "occurrence_index": 2,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 15,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 15,
+      "occurrence_index": 1,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 15,
+      "occurrence_index": 2,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 15,
+      "occurrence_index": 3,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 17,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 17,
+      "occurrence_index": 1,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    }
+  ]
+}

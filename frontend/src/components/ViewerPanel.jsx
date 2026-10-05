@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { renderMarkdown, renderPageMarkdown } from '../utils/markdown';
+import { renderMarkdown, renderPageMarkdown, getPageMentions } from '../utils/markdown';
 import RetryPagesModal from './RetryPagesModal';
 import PdfCanvasViewer from './PdfCanvasViewer';
 import StructureTree from './StructureTree';
@@ -7,6 +7,7 @@ import PageNavBar from './PageNavBar';
 import StructureReadingModal from './StructureReadingModal';
 import StructureItemModal from './StructureItemModal';
 import StructureDeleteConfirmModal from './StructureDeleteConfirmModal';
+import PageReferenceBadges from './PageReferenceBadges';
 
 // Presentational only — the thresholds themselves live entirely on the backend
 // (confidence.py); this just maps the already-computed tier string to a label/color
@@ -162,6 +163,18 @@ export default function ViewerPanel({
     }
   }
 
+  // `currentPageBlock` above is a fresh object literal every render (it's
+  // built inline, not itself memoized) — depending on it here would re-run
+  // getPageMentions' marked.lexer() call (uncached, unlike renderPageMarkdown
+  // which has its own _renderCache) on every render, including ones with no
+  // relevant change (scroll, sidebar toggle). Depend on the primitive page
+  // text instead.
+  const currentPageText = pageMap.get(currentPdfPage)?.text || '';
+  const pageMentions = useMemo(
+    () => (referenceStore && currentPageText ? getPageMentions(currentPageText, currentPdfPage, referenceStore) : []),
+    [referenceStore, referenceStore?.version, currentPageText, currentPdfPage]
+  );
+
   // Reports the current page up to Dashboard.jsx so its windowed
   // pages_data fetch (Part A) can center on wherever the reader actually
   // is — pdf.js always knows this exactly (one page at a time, no scroll
@@ -263,14 +276,12 @@ export default function ViewerPanel({
   const canPause = jobDetails?.status === 'processing';
   const canResume = jobDetails?.status === 'paused' || jobDetails?.status === 'failed';
 
-  // The Result pane is display-only — this only swallows the click so an
-  // `<a href="#">` doesn't jump the page to top. Clicking a reference
-  // mention directly from the document view (PDF or Result pane) has no
-  // trigger left as of the pdf.js migration — the PDF pane's reference
-  // badge (the only thing that ever opened the ambiguous-match popover)
-  // was removed as part of that change, per an explicit decision to let
-  // the Structure sidebar be the primary way to reach a reference instead.
-  // See the plan file if this needs restoring via a different trigger.
+  // The Result pane is still display-only — this only swallows the click so
+  // an `<a href="#">` doesn't jump the page to top. The reinstated click
+  // surface is the PDF pane's PageReferenceBadges list, not an inline link
+  // in this pane (see its own click handling for why: a page can have
+  // several distinct mentions, each needing its own badge/dropdown, which a
+  // single inline click target can't represent).
   function handleMarkdownClick(e) {
     const link = e.target.closest('a.xref-link');
     if (!link) return;
@@ -396,13 +407,22 @@ export default function ViewerPanel({
             </div>
             <div className="view-box-content" style={{ padding: 0, overflow: 'hidden' }}>
               {pdfSrc ? (
-                <PdfCanvasViewer
-                  pdfSrc={pdfSrc}
-                  pageNum={currentPdfPage}
-                  totalPages={jobDetails?.total_pages}
-                  onPageChange={handlePdfPageChange}
-                  showPageNav={false}
-                />
+                <>
+                  <PdfCanvasViewer
+                    pdfSrc={pdfSrc}
+                    pageNum={currentPdfPage}
+                    totalPages={jobDetails?.total_pages}
+                    onPageChange={handlePdfPageChange}
+                    showPageNav={false}
+                  />
+                  <PageReferenceBadges
+                    mentions={pageMentions}
+                    referenceStore={referenceStore}
+                    scopeRanges={scopeRanges}
+                    currentPage={currentPdfPage}
+                    onOpenReference={handleStructureSelect}
+                  />
+                </>
               ) : (
                 <div style={{ textAlign: 'center', paddingTop: 60, color: 'var(--muted)' }}>
                   No document selected

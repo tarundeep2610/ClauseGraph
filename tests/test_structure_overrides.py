@@ -356,8 +356,9 @@ async def test_move_happy_path_persists_and_is_readable(client, auth_headers):
     resp = client.post(
         f"/api/jobs/{job_id}/structure-items/move",
         json={
-            "item_key": "clause:1", "page": 2, "occurrence_index": 0,
-            "new_parent_key": "annexure:d-1", "ordered_siblings": ["clause:1"],
+            "item_key": "clause:1", "item_page": 2, "item_occurrence_index": 0,
+            "new_parent_key": "annexure:d-1", "new_parent_page": 1, "new_parent_occurrence_index": 0,
+            "ordered_siblings": [{"item_key": "clause:1", "item_page": 2, "item_occurrence_index": 0}],
         },
         headers=auth_headers,
     )
@@ -366,8 +367,10 @@ async def test_move_happy_path_persists_and_is_readable(client, auth_headers):
 
     resp = client.get(f"/api/jobs/{job_id}/structure-hierarchy-overrides", headers=auth_headers)
     body = resp.json()
-    assert body["parents"]["clause:1"] == "annexure:d-1"
-    assert body["order"]["annexure:d-1"] == ["clause:1"]
+    [parent_row] = [r for r in body["parents"] if r["item_key"] == "clause:1"]
+    assert parent_row["new_parent_key"] == "annexure:d-1"
+    [order_row] = body["order"]
+    assert order_row["scope_key"] == "annexure:d-1" and order_row["item_key"] == "clause:1"
 
 
 @pytest.mark.asyncio
@@ -379,8 +382,9 @@ async def test_move_under_own_descendant_is_400(client, auth_headers):
     resp = client.post(
         f"/api/jobs/{job_id}/structure-items/move",
         json={
-            "item_key": "clause:1", "page": 2, "occurrence_index": 0,
-            "new_parent_key": "annexure:e-1", "ordered_siblings": ["clause:1"],
+            "item_key": "clause:1", "item_page": 2, "item_occurrence_index": 0,
+            "new_parent_key": "annexure:e-1", "new_parent_page": 1, "new_parent_occurrence_index": 0,
+            "ordered_siblings": [{"item_key": "clause:1", "item_page": 2, "item_occurrence_index": 0}],
         },
         headers=auth_headers,
     )
@@ -390,8 +394,9 @@ async def test_move_under_own_descendant_is_400(client, auth_headers):
     resp = client.post(
         f"/api/jobs/{job_id}/structure-items/move",
         json={
-            "item_key": "annexure:e-1", "page": 1, "occurrence_index": 0,
-            "new_parent_key": "clause:1", "ordered_siblings": ["annexure:e-1"],
+            "item_key": "annexure:e-1", "item_page": 1, "item_occurrence_index": 0,
+            "new_parent_key": "clause:1", "new_parent_page": 2, "new_parent_occurrence_index": 0,
+            "ordered_siblings": [{"item_key": "annexure:e-1", "item_page": 1, "item_occurrence_index": 0}],
         },
         headers=auth_headers,
     )
@@ -406,8 +411,9 @@ async def test_move_onto_a_leaf_key_is_allowed(client, auth_headers):
     resp = client.post(
         f"/api/jobs/{job_id}/structure-items/move",
         json={
-            "item_key": "clause:2", "page": 2, "occurrence_index": 0,
-            "new_parent_key": "clause:1", "ordered_siblings": ["clause:2"],
+            "item_key": "clause:2", "item_page": 2, "item_occurrence_index": 0,
+            "new_parent_key": "clause:1", "new_parent_page": 1, "new_parent_occurrence_index": 0,
+            "ordered_siblings": [{"item_key": "clause:2", "item_page": 2, "item_occurrence_index": 0}],
         },
         headers=auth_headers,
     )
@@ -467,8 +473,9 @@ async def test_move_bumps_version_but_touches_no_pages(client, auth_headers):
     resp = client.post(
         f"/api/jobs/{job_id}/structure-items/move",
         json={
-            "item_key": "clause:2", "page": 2, "occurrence_index": 0,
-            "new_parent_key": "clause:1", "ordered_siblings": ["clause:2"],
+            "item_key": "clause:2", "item_page": 2, "item_occurrence_index": 0,
+            "new_parent_key": "clause:1", "new_parent_page": 1, "new_parent_occurrence_index": 0,
+            "ordered_siblings": [{"item_key": "clause:2", "item_page": 2, "item_occurrence_index": 0}],
         },
         headers=auth_headers,
     )
@@ -478,6 +485,121 @@ async def test_move_bumps_version_but_touches_no_pages(client, auth_headers):
 
     delta = database.get_reference_targets_since(job_id, v0)
     assert delta == {}
+
+
+@pytest.mark.asyncio
+async def test_resolve_effective_parent_disambiguates_a_repeated_bare_key(client, auth_headers):
+    """Direct regression test for the real-world bug this identity scheme
+    fixes: the same bare key ("point:5") genuinely occurring twice in one
+    document, under two different ancestors. An override on ONE occurrence
+    must never affect the other — the whole reason move/parent identity is
+    (key, page, occurrence_index), not the bare key alone."""
+    job_id = _job_with_pages(["Clause 1 leaf one", "Clause 2 leaf two"])
+
+    structure_overrides.set_parent(
+        job_id, "point:5", 13, 0, "point:19", new_parent_page=13, new_parent_occurrence_index=0,
+    )
+
+    # The targeted occurrence resolves to its override.
+    parent_key, parent_page, parent_occ = structure_overrides.resolve_effective_parent(
+        job_id, "point:5", 13, 0, natural_parent_key="",
+    )
+    assert (parent_key, parent_page, parent_occ) == ("point:19", 13, 0)
+
+    # A DIFFERENT occurrence of the exact same bare key, on a different
+    # page, is untouched — falls through to the caller's natural parent,
+    # not the other occurrence's override.
+    parent_key, parent_page, parent_occ = structure_overrides.resolve_effective_parent(
+        job_id, "point:5", 7, 0, natural_parent_key="subdoc:6",
+    )
+    assert (parent_key, parent_page, parent_occ) == ("subdoc:6", -1, -1)
+
+
+@pytest.mark.asyncio
+async def test_resolve_effective_parent_wildcard_fallback_for_legacy_rows(client, auth_headers):
+    """A pre-migration-shaped override (page/occurrence_index = -1, the
+    wildcard sentinel) still applies when the key is unambiguous — this is
+    what makes the table-swap migration's backfill behavior-preserving for
+    every override that existed before this identity scheme."""
+    job_id = _job_with_pages(["Clause 1 leaf one", "Clause 2 leaf two"])
+
+    structure_overrides.set_parent(job_id, "annexure:a-1", -1, -1, "annexure:a-2")
+
+    parent_key, _parent_page, _parent_occ = structure_overrides.resolve_effective_parent(
+        job_id, "annexure:a-1", 5, 0, natural_parent_key="",
+    )
+    assert parent_key == "annexure:a-2"
+
+
+@pytest.mark.asyncio
+async def test_resolve_structure_for_job_reflects_a_parent_override():
+    """The actual architectural gap this phase closes: database.
+    get_reference_targets_for_job() is raw detector output with NO
+    overrides applied — resolve_structure_for_job is the function that
+    produces what the user actually sees in the UI."""
+    job_id = _job_with_pages(["Annexure F-1 heading", "Clause 1 leaf under annexure"])
+    await reference_index.reindex_job(job_id)
+
+    resolved = structure_overrides.resolve_structure_for_job(job_id)
+    clause = next(r for r in resolved if r["key"] == "clause:1")
+    assert clause["resolved_scope_key"] == "annexure:f-1"
+
+    # Move clause:1 to the root level.
+    structure_overrides.set_parent(job_id, "clause:1", 2, 0, "")
+
+    resolved = structure_overrides.resolve_structure_for_job(job_id)
+    clause = next(r for r in resolved if r["key"] == "clause:1")
+    assert clause["resolved_scope_key"] == ""
+    # The detector's OWN scope_key column is never rewritten by a move.
+    assert clause["scope_key"] == "annexure:f-1"
+
+
+def _seed_target_row(job_id, page, key, occurrence_index, scope_chain, version):
+    database.upsert_reference_targets_for_page(job_id, page, [{
+        "key": key, "occurrence_index": occurrence_index, "scope_chain": scope_chain,
+        "scope_key": "/".join(s["key"] for s in scope_chain),
+        "own_label": key, "detection_source": "rule",
+    }], version)
+
+
+@pytest.mark.asyncio
+async def test_resolve_structure_for_job_disambiguates_repeated_key_by_occurrence():
+    """A parent override on one occurrence of a repeated key must not
+    change the OTHER occurrence's resolved_scope_key. The two occurrences
+    must sit under DIFFERENT ancestors to become genuinely separate tree
+    nodes in the first place — two occurrences with identical scope_chain
+    collapse onto the same node by design (matching StructureTree.jsx's
+    buildTree: one logical entry, several page occurrences — e.g. a
+    repeated running header — correctly moves as a unit), so that shape
+    would not exercise this disambiguation at all.
+
+    Rows are seeded directly (not through the regex detector) — this is a
+    test of the merge/resolve layer, not detection, and hand-built rows
+    give full control over scope_chain without fighting the detector's own
+    parsing shape requirements."""
+    job_id = _job_with_pages(["p1", "p2", "p3", "p4", "p5"])
+    v = database.bump_reference_index_version(job_id)
+    _seed_target_row(job_id, 1, "annexure:g-1", 0, [], v)
+    _seed_target_row(job_id, 2, "clause:9", 0, [{"family": "annexure", "key": "annexure:g-1", "label": "Annexure G-1"}], v)
+    _seed_target_row(job_id, 3, "annexure:g-2", 0, [], v)
+    _seed_target_row(job_id, 4, "clause:9", 0, [{"family": "annexure", "key": "annexure:g-2", "label": "Annexure G-2"}], v)
+    _seed_target_row(job_id, 5, "clause:8", 0, [], v)
+
+    before = structure_overrides.resolve_structure_for_job(job_id)
+    g1_clause9 = next(r for r in before if r["key"] == "clause:9" and r["resolved_scope_key"] == "annexure:g-1")
+    g2_clause9 = next(r for r in before if r["key"] == "clause:9" and r["resolved_scope_key"] == "annexure:g-2")
+
+    # Move only the Annexure G-1 occurrence under clause:8.
+    structure_overrides.set_parent(
+        job_id, "clause:9", g1_clause9["page"], g1_clause9["occurrence_index"],
+        "clause:8", new_parent_page=5, new_parent_occurrence_index=0,
+    )
+
+    after = structure_overrides.resolve_structure_for_job(job_id)
+    moved = next(r for r in after if r["key"] == "clause:9" and r["page"] == g1_clause9["page"])
+    untouched = next(r for r in after if r["key"] == "clause:9" and r["page"] == g2_clause9["page"])
+    assert moved["resolved_scope_key"] == "clause:8"
+    assert untouched["resolved_scope_key"] == "annexure:g-2"
 
 
 # ─── 15. 404s for all five endpoints against a missing job ───────────────

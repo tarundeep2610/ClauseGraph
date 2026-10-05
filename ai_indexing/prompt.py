@@ -9,7 +9,7 @@ risk. See ai_reference_index.py for how parent_ref is actually resolved.
 
 import json
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import config
 
@@ -481,6 +481,70 @@ FIELD RULES
 - "notes": at most one short sentence; "" when you have nothing to flag.
 """
 
+
+RULE_PRIOR_SECTION = """\
+# RULE-DETECTED PRIOR DRAFT (REVIEW INSTRUCTIONS)
+You are provided with a recall-biased draft of headings previously detected by a rule-based pass for these pages (labeled R1, R2, ...).
+Your job is to arbitrate, confirm, reject, or correct them.
+
+1. CONFIRMATION IS CHEAP:
+   If a prior heading is correct, do NOT re-emit its full text in "headings".
+   Simply include its id in "confirmed_prior_ids": ["R1", "R2", ...].
+
+2. REJECTION REQUIRES VERBATIM EVIDENCE:
+   To reject a spurious prior heading (e.g. body sentence, table row, running header, external statute/case citation),
+   add an entry to "rejected_priors":
+   {"prior_id": "R3", "reason_code": "<code_below>", "evidence_quote": "<verbatim quote from the page>"}
+   Allowed reason codes: "external_citation", "reproduced_text", "body_sentence", "table_or_toc", "running_header", "duplicate_of_prior", "not_on_page".
+   The evidence_quote MUST be an exact verbatim substring from that page (at least 8 characters) explaining why it is NOT a heading.
+
+3. SILENCE IS NOT DELETION:
+   Any prior heading not mentioned in either "confirmed_prior_ids", "rejected_priors", or "headings" will survive by default as an unreviewed prior heading.
+
+4. NEW OR CORRECTED HEADINGS:
+   Emit any genuinely new headings (missed by the prior) or corrections in "headings" as usual.
+   If correcting a prior heading, you may optionally include its "prior_id" and an "evidence_quote".\
+"""
+
+
+STRUCTURE_OUTPUT_CONTRACT_WITH_PRIOR = """\
+# OUTPUT FORMAT (strict JSON — exactly this shape, nothing else)
+{
+  "confirmed_prior_ids": ["R1", "R2"],
+  "rejected_priors": [
+    {
+      "prior_id": "R3",
+      "reason_code": "external_citation",
+      "evidence_quote": "Arbitration and Conciliation Act, 1996"
+    }
+  ],
+  "headings": [
+    {
+      "heading_text": "3.4 QUALITY PLANS",
+      "start_page": 21,
+      "start_line_hint": 14,
+      "end_page": 21,
+      "still_open_at_chunk_end": false,
+      "parent_ref": "3.0 CONDITIONS AND COVENANTS",
+      "level": 2,
+      "family_hint": null,
+      "number_hint": null,
+      "prior_id": null,
+      "evidence_quote": null
+    }
+  ],
+  "notes": ""
+}
+
+FIELD RULES
+- "confirmed_prior_ids": list of prior IDs (e.g. ["R1", "R2"]) from # RULE-DETECTED PRIOR DRAFT that are valid headings.
+- "rejected_priors": list of rejections with prior_id, valid reason_code, and verbatim evidence_quote (>= 8 chars).
+- "headings": new headings or corrections not covered by confirmed_prior_ids.
+- "start_line_hint": your best guess at which line of the page the heading starts on, or null.
+- "family_hint" / "number_hint": resolution of a garbled heading, or null.
+- "notes": at most one short sentence; "" when you have nothing to flag.
+"""
+
 PAGE_OPEN = "<<<PAGE {n}>>>"
 PAGE_CLOSE = "<<<END PAGE {n}>>>"
 
@@ -593,13 +657,75 @@ def _render_carry_in(carry: Optional[CarryContext]) -> str:
     return "\n".join(lines)
 
 
+def _format_prior_line(r: Dict[str, Any]) -> str:
+    parent_str = json.dumps(r["parent_label"]) if r.get("parent_label") is not None else "None"
+    label_str = json.dumps(r.get("heading_text") or "")
+    return f'{r["prior_id"]} | p{r["page_num"]} | depth {r["depth"]} | key={r["key"]} | parent={parent_str} | {label_str}'
+
+
+def _render_rule_prior(
+    priors: List[Dict[str, Any]],
+    max_chars: Optional[int] = None,
+    max_rows: Optional[int] = None,
+) -> str:
+    if not priors:
+        return ""
+
+    max_chars = max_chars or config.AI_INDEX_REVIEW_PRIOR_CHARS_MAX
+    max_rows = max_rows or config.AI_INDEX_REVIEW_MAX_PRIOR_ROWS
+
+    header = (
+        "# RULE-DETECTED PRIOR DRAFT\n"
+        "The following headings were detected by a rule-based draft. Review instructions are in the system prompt."
+    )
+
+    # Deterministic truncation:
+    # 1. Drop leaves with rank is None (highest page first, then reverse index)
+    # 2. Drop leaves with rank is not None (highest page first, then reverse index)
+    # Never drop containers (is_container == True).
+    group1 = [
+        i for i, r in enumerate(priors)
+        if not r.get("is_container") and r.get("rank") is None
+    ]
+    group1.sort(key=lambda i: (priors[i].get("page_num", 0), i), reverse=True)
+
+    group2 = [
+        i for i, r in enumerate(priors)
+        if not r.get("is_container") and r.get("rank") is not None
+    ]
+    group2.sort(key=lambda i: (priors[i].get("page_num", 0), i), reverse=True)
+
+    drop_candidates = group1 + group2
+    dropped_set = set()
+
+    def _build_text(dropped: set) -> "tuple[str, int]":
+        surviving = [r for i, r in enumerate(priors) if i not in dropped]
+        lines = [_format_prior_line(r) for r in surviving]
+        if dropped:
+            lines.append(f"[... {len(dropped)} lower-priority prior rows omitted — absence here is NOT a rejection ...]")
+        return header + "\n" + "\n".join(lines), len(surviving)
+
+    text, surviving_count = _build_text(dropped_set)
+    drop_idx = 0
+    while (surviving_count > max_rows or len(text) > max_chars) and drop_idx < len(drop_candidates):
+        dropped_set.add(drop_candidates[drop_idx])
+        drop_idx += 1
+        text, surviving_count = _build_text(dropped_set)
+
+    return text
+
+
 def build_structure_prompt(
     chunk: ChunkPlan, *, carry_context: Optional[CarryContext] = None, document_hint: str = "",
     include_pleading_points: bool = False,
+    rule_prior: Optional[List[dict]] = None,
+    review_rule_prior: bool = False,
 ) -> "tuple[str, str]":
     system_prompt = STRUCTURE_SYSTEM_PROMPT
     if include_pleading_points:
         system_prompt = system_prompt + "\n\n" + PLEADING_POINTS_SECTION
+    if review_rule_prior:
+        system_prompt = system_prompt + "\n\n" + RULE_PRIOR_SECTION
 
     parts = []
     page_nums = chunk.page_nums
@@ -610,6 +736,11 @@ def build_structure_prompt(
     if carry_block:
         parts.append(carry_block)
 
+    if review_rule_prior and rule_prior:
+        prior_block = _render_rule_prior(rule_prior)
+        if prior_block:
+            parts.append(prior_block)
+
     if document_hint:
         parts.append(f"# DOCUMENT HINT (optional, user supplied)\n<<<HINT>>>\n{document_hint[:500]}\n<<<END HINT>>>")
 
@@ -618,6 +749,70 @@ def build_structure_prompt(
         page_blocks.append(f"{PAGE_OPEN.format(n=p.page_num)}\n{p.text}\n{PAGE_CLOSE.format(n=p.page_num)}")
     parts.append("# PAGES\n" + "\n".join(page_blocks))
 
-    parts.append(STRUCTURE_OUTPUT_CONTRACT)
+    if review_rule_prior:
+        parts.append(STRUCTURE_OUTPUT_CONTRACT_WITH_PRIOR)
+    else:
+        parts.append(STRUCTURE_OUTPUT_CONTRACT)
 
     return system_prompt, "\n\n".join(parts)
+
+
+MENTION_REVIEW_SYSTEM_PROMPT = """\
+You are an expert legal document analyst reviewing cross-reference mentions detected on pages of a legal or contractual document.
+Each mention was extracted by a rule-based scan and is either active ("exact" or "approximate") or "suppressed" (e.g. detected as an external statute).
+Your job is to review each candidate mention and return an action:
+- "confirm": The mention is a valid internal reference to another section, clause, annexure, or page in this document.
+- "reject": The mention is a false positive (e.g. an external statute like Arbitration and Conciliation Act, a case citation like AIR/SCC, a running header/footer, or non-referential prose) and must be suppressed.
+- "unsuppress": The mention was mistakenly suppressed by the rule scan but is actually an internal reference to a part of this document.
+
+RULES:
+1. For "reject" or "unsuppress", you MUST provide an exact verbatim "evidence_quote" (at least 8 characters) from the page text justifying your decision.
+2. For "confirm", "evidence_quote" can be "".
+3. Return strict JSON matching the schema below.
+"""
+
+MENTION_REVIEW_OUTPUT_CONTRACT = """\
+# OUTPUT FORMAT (strict JSON — exactly this shape, nothing else)
+{
+  "reviews": [
+    {
+      "mention_id": "M1",
+      "action": "confirm",
+      "evidence_quote": ""
+    },
+    {
+      "mention_id": "M2",
+      "action": "reject",
+      "evidence_quote": "Arbitration and Conciliation Act, 1996"
+    }
+  ]
+}
+"""
+
+
+def build_mention_review_prompt(
+    pages: List[PageInput], mentions: List[Dict[str, Any]],
+) -> "tuple[str, str]":
+    parts = []
+    page_nums = [p.page_num for p in pages]
+    parts.append(f"# PAGES UNDER REVIEW: {page_nums}")
+
+    mention_lines = []
+    for m in mentions:
+        m_id = m.get("mention_id") or f"M{m.get('occurrence_index', 0)}"
+        status = m.get("resolution", "exact")
+        supp_reason = f" ({m['suppressed_reason']})" if m.get("suppressed_reason") else ""
+        raw_text = json.dumps(m.get("raw_text", ""))
+        mention_lines.append(f'{m_id} | p{m["page"]} | key={m.get("key", "")} | text={raw_text} | status={status}{supp_reason}')
+
+    parts.append("# DETECTED MENTIONS DRAFT\n" + "\n".join(mention_lines))
+
+    page_blocks = []
+    for p in pages:
+        page_blocks.append(f"{PAGE_OPEN.format(n=p.page_num)}\n{p.text}\n{PAGE_CLOSE.format(n=p.page_num)}")
+    parts.append("# PAGE TEXTS\n" + "\n".join(page_blocks))
+
+    parts.append(MENTION_REVIEW_OUTPUT_CONTRACT)
+    return MENTION_REVIEW_SYSTEM_PROMPT, "\n\n".join(parts)
+
+

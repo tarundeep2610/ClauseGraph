@@ -16,7 +16,7 @@ import re
 from typing import Any, Dict, List, Tuple
 
 from ai_indexing.errors import AIInvalidOutputError
-from ai_indexing.schema import AIHeading, AIStructureChunk, NormalizationReport, normalize_chunk
+from ai_indexing.schema import AIHeading, AIMentionReview, AIPriorRejection, AIStructureChunk, NormalizationReport, normalize_chunk
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 _LEADING_CHATTER_RE = re.compile(r"^[^{\[]*(?=[{\[])", re.DOTALL)
@@ -141,6 +141,22 @@ def _validate_headings_individually(headings_list: List[Any]) -> "Tuple[List[AIH
     return valid, dropped
 
 
+def _validate_rejections_individually(rejections_list: List[Any]) -> "Tuple[List[AIPriorRejection], int]":
+    valid: List[AIPriorRejection] = []
+    dropped = 0
+    for item in rejections_list:
+        try:
+            if isinstance(item, dict):
+                valid.append(AIPriorRejection(**item))
+            elif isinstance(item, str):
+                valid.append(AIPriorRejection(prior_id=item))
+            else:
+                dropped += 1
+        except Exception:
+            dropped += 1
+    return valid, dropped
+
+
 def parse_structure_response(
     raw: str, expected_pages: List[int],
 ) -> Tuple[AIStructureChunk, NormalizationReport]:
@@ -155,7 +171,47 @@ def parse_structure_response(
         )
 
     valid_headings, dropped_invalid = _validate_headings_individually(headings_list)
-    chunk = AIStructureChunk(headings=valid_headings, notes=str(envelope.get("notes", ""))[:500])
+
+    rejections_raw = envelope.get("rejected_priors") or []
+    if not isinstance(rejections_raw, list):
+        rejections_raw = []
+    valid_rejections, dropped_rejections = _validate_rejections_individually(rejections_raw)
+
+    confirmed_raw = envelope.get("confirmed_prior_ids") or []
+    if not isinstance(confirmed_raw, list):
+        confirmed_raw = []
+
+    chunk = AIStructureChunk(
+        headings=valid_headings,
+        notes=str(envelope.get("notes", ""))[:500],
+        confirmed_prior_ids=confirmed_raw,
+        rejected_priors=valid_rejections,
+    )
     cleaned, report = normalize_chunk(chunk, expected_pages)
-    report.dropped_invalid = dropped_invalid
+    report.dropped_invalid = dropped_invalid + dropped_rejections
     return cleaned, report
+
+
+def parse_mention_response(raw: str) -> List[AIMentionReview]:
+    """Parses model response for mention review into a list of AIMentionReview objects."""
+    fenced = strip_code_fences(raw)
+    extracted = extract_json_object(fenced)
+    repaired = repair_truncated_json(extracted)
+    try:
+        envelope = parse_json_object(repaired)
+    except Exception:
+        return []
+
+    reviews_raw = envelope.get("reviews") if isinstance(envelope, dict) else envelope
+    if not isinstance(reviews_raw, list):
+        return []
+
+    valid: List[AIMentionReview] = []
+    for item in reviews_raw:
+        if isinstance(item, dict):
+            try:
+                valid.append(AIMentionReview(**item))
+            except Exception:
+                pass
+    return valid
+

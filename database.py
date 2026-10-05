@@ -182,6 +182,12 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # column already exists
 
+    try:
+        cursor.execute("ALTER TABLE ocr_pages ADD COLUMN rule_index_snapshot TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ocr_reference_targets (
             job_id TEXT NOT NULL,
@@ -207,6 +213,26 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ref_targets_collapsed ON ocr_reference_targets(job_id, collapsed_key)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ref_targets_version ON ocr_reference_targets(job_id, page, written_at_version)")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ocr_reference_mentions (
+            job_id TEXT NOT NULL,
+            page INTEGER NOT NULL,
+            occurrence_index INTEGER NOT NULL,
+            key TEXT NOT NULL,
+            raw_text TEXT NOT NULL,
+            block_index INTEGER DEFAULT 0,
+            resolution TEXT NOT NULL,
+            suppressed_reason TEXT,
+            detection_source TEXT DEFAULT 'rule',
+            detection_model TEXT DEFAULT '',
+            written_at_version INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (job_id, page, occurrence_index)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ref_mentions_version ON ocr_reference_mentions(job_id, page, written_at_version)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ref_mentions_job_page ON ocr_reference_mentions(job_id, page)")
 
     # Migrate existing databases that predate the structured-ancestor-chain
     # columns (scope_key/scope_label already existed as a flattened string;
@@ -289,13 +315,27 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_manual_items_job ON ocr_structure_manual_items(job_id)")
 
+    # item_key/new_parent_key/scope_key alone are NOT unique identities — the
+    # same bare key can appear more than once in one document (a repeated
+    # heading like "point:5" under two different ancestors). Every row also
+    # carries a page/occurrence_index, using -1/-1 as a non-NULL "any
+    # occurrence of this key" wildcard sentinel (never a real page number,
+    # and kept out of PRIMARY KEY NULL-comparison pitfalls by never being
+    # NULL) — a legacy pre-migration row, which had no way to disambiguate
+    # occurrences, resolves this way rather than being pinned to a literal
+    # page that may not even be the occurrence it was meant to correct. See
+    # _migrate_structure_hierarchy_override_identity below for the swap.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ocr_structure_parent_overrides (
             job_id TEXT NOT NULL,
             item_key TEXT NOT NULL,
+            item_page INTEGER NOT NULL DEFAULT -1,
+            item_occurrence_index INTEGER NOT NULL DEFAULT -1,
             new_parent_key TEXT NOT NULL,      -- "" = root
+            new_parent_page INTEGER NOT NULL DEFAULT -1,
+            new_parent_occurrence_index INTEGER NOT NULL DEFAULT -1,
             updated_at TEXT NOT NULL,
-            PRIMARY KEY (job_id, item_key)
+            PRIMARY KEY (job_id, item_key, item_page, item_occurrence_index)
         )
     """)
 
@@ -303,14 +343,19 @@ def init_db():
         CREATE TABLE IF NOT EXISTS ocr_structure_sort_overrides (
             job_id TEXT NOT NULL,
             scope_key TEXT NOT NULL,           -- the PARENT's key; "" = root
+            scope_page INTEGER NOT NULL DEFAULT -1,
+            scope_occurrence_index INTEGER NOT NULL DEFAULT -1,
             item_key TEXT NOT NULL,
+            item_page INTEGER NOT NULL DEFAULT -1,
+            item_occurrence_index INTEGER NOT NULL DEFAULT -1,
             sort_index INTEGER NOT NULL,
             updated_at TEXT NOT NULL,
-            PRIMARY KEY (job_id, scope_key, item_key)
+            PRIMARY KEY (job_id, scope_key, scope_page, scope_occurrence_index, item_key, item_page, item_occurrence_index)
         )
     """)
 
     conn.commit()
+    _migrate_structure_hierarchy_override_identity(conn)
 
     _migrate_pages_data_to_ocr_pages(conn)
 
@@ -372,6 +417,95 @@ def _migrate_pages_data_to_ocr_pages(conn: sqlite3.Connection):
         INSERT INTO schema_meta (key, value) VALUES ('pages_migrated_v1', 'done')
         ON CONFLICT(key) DO UPDATE SET value = 'done'
     """)
+
+
+def _migrate_structure_hierarchy_override_identity(conn: sqlite3.Connection):
+    """One-time table-swap migration: ocr_structure_parent_overrides and
+    ocr_structure_sort_overrides predate page/occurrence_index disambiguation
+    (PRIMARY KEY was bare item_key / scope_key+item_key only) — a repeated
+    bare key (e.g. two "point:5" occurrences under different ancestors) could
+    only ever have ONE override stored for all its occurrences combined, and
+    a move targeting one occurrence silently misapplied to whichever one a
+    client-side index pass visited last.
+
+    SQLite cannot ALTER a PRIMARY KEY in place (unlike every other migration
+    in this file, which is a plain ALTER TABLE ADD COLUMN) — this is a real
+    table swap: create the new shape, copy rows forward, drop, rename.
+    Idempotent and safe to run on every init_db() call: gated on whether the
+    live table already has the new `item_page`/`scope_page` column, so it is
+    a no-op after the first successful run, including on a brand-new DB
+    where CREATE TABLE IF NOT EXISTS above already created the new shape
+    directly (PRAGMA table_info still reports it has the column, so this
+    skips immediately).
+
+    Existing rows are backfilled to the wildcard sentinel (-1, -1), i.e.
+    "applies to any occurrence of this key" — equivalent to today's actual
+    behavior for these specific rows (every legitimate override target seen
+    in practice is a container-tier key, which essentially never collides),
+    and strictly safer than guessing a real page/occurrence_index for a key
+    this migration has no document context to resolve against. A NEW
+    override created after this migration always carries the real
+    page/occurrence_index the client-side selection resolved.
+    """
+    cursor = conn.cursor()
+
+    def _needs_swap(table: str, new_col: str) -> bool:
+        cursor.execute(f"PRAGMA table_info({table})")
+        cols = {row[1] for row in cursor.fetchall()}
+        return new_col not in cols
+
+    if _needs_swap("ocr_structure_parent_overrides", "item_page"):
+        cursor.execute("ALTER TABLE ocr_structure_parent_overrides RENAME TO ocr_structure_parent_overrides_old")
+        cursor.execute("""
+            CREATE TABLE ocr_structure_parent_overrides (
+                job_id TEXT NOT NULL,
+                item_key TEXT NOT NULL,
+                item_page INTEGER NOT NULL DEFAULT -1,
+                item_occurrence_index INTEGER NOT NULL DEFAULT -1,
+                new_parent_key TEXT NOT NULL,
+                new_parent_page INTEGER NOT NULL DEFAULT -1,
+                new_parent_occurrence_index INTEGER NOT NULL DEFAULT -1,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (job_id, item_key, item_page, item_occurrence_index)
+            )
+        """)
+        cursor.execute("""
+            INSERT INTO ocr_structure_parent_overrides (
+                job_id, item_key, item_page, item_occurrence_index,
+                new_parent_key, new_parent_page, new_parent_occurrence_index, updated_at
+            )
+            SELECT job_id, item_key, -1, -1, new_parent_key, -1, -1, updated_at
+            FROM ocr_structure_parent_overrides_old
+        """)
+        cursor.execute("DROP TABLE ocr_structure_parent_overrides_old")
+        conn.commit()
+
+    if _needs_swap("ocr_structure_sort_overrides", "scope_page"):
+        cursor.execute("ALTER TABLE ocr_structure_sort_overrides RENAME TO ocr_structure_sort_overrides_old")
+        cursor.execute("""
+            CREATE TABLE ocr_structure_sort_overrides (
+                job_id TEXT NOT NULL,
+                scope_key TEXT NOT NULL,
+                scope_page INTEGER NOT NULL DEFAULT -1,
+                scope_occurrence_index INTEGER NOT NULL DEFAULT -1,
+                item_key TEXT NOT NULL,
+                item_page INTEGER NOT NULL DEFAULT -1,
+                item_occurrence_index INTEGER NOT NULL DEFAULT -1,
+                sort_index INTEGER NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (job_id, scope_key, scope_page, scope_occurrence_index, item_key, item_page, item_occurrence_index)
+            )
+        """)
+        cursor.execute("""
+            INSERT INTO ocr_structure_sort_overrides (
+                job_id, scope_key, scope_page, scope_occurrence_index,
+                item_key, item_page, item_occurrence_index, sort_index, updated_at
+            )
+            SELECT job_id, scope_key, -1, -1, item_key, -1, -1, sort_index, updated_at
+            FROM ocr_structure_sort_overrides_old
+        """)
+        cursor.execute("DROP TABLE ocr_structure_sort_overrides_old")
+        conn.commit()
 
 
 def get_db_connection():
@@ -1207,3 +1341,147 @@ def update_ai_index_report(job_id: str, **fields) -> Dict[str, Any]:
     report.update(fields)
     set_ai_index_report(job_id, report)
     return report
+
+
+def upsert_reference_mentions_for_page(
+    job_id: str,
+    page_num: int,
+    mentions: List[Dict[str, Any]],
+    version: int,
+) -> None:
+    """Delete-then-insert per page for mention rows, stamped with written_at_version."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM ocr_reference_mentions WHERE job_id = ? AND page = ?", (job_id, page_num))
+    for m in mentions:
+        cursor.execute("""
+            INSERT INTO ocr_reference_mentions (
+                job_id, page, occurrence_index, key, raw_text, block_index,
+                resolution, suppressed_reason, detection_source, detection_model,
+                written_at_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            job_id, page_num, m["occurrence_index"], m["key"], m["raw_text"],
+            m.get("block_index", 0), m["resolution"], m.get("suppressed_reason"),
+            m.get("detection_source", "rule"), m.get("detection_model"),
+            version,
+        ))
+    conn.commit()
+    conn.close()
+
+
+def get_reference_mentions_since(job_id: str, since_version: int) -> Dict[int, List[Dict[str, Any]]]:
+    """Page-delta mention fetch: returns {page_num: [mention_row, ...]} for any page
+    with at least one mention written at > since_version or whose page was touched at > since_version."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT DISTINCT page_num FROM ocr_pages
+        WHERE job_id = ? AND reference_index_touched_version > ?
+    """, (job_id, since_version))
+    pages = set(r[0] for r in cursor.fetchall())
+
+    cursor.execute("""
+        SELECT DISTINCT page FROM ocr_reference_mentions
+        WHERE job_id = ? AND written_at_version > ?
+    """, (job_id, since_version))
+    pages.update(r[0] for r in cursor.fetchall())
+
+    result: Dict[int, List[Dict[str, Any]]] = {}
+    for p in sorted(pages):
+        cursor.execute("""
+            SELECT page, occurrence_index, key, raw_text, block_index,
+                   resolution, suppressed_reason, detection_source, detection_model,
+                   written_at_version
+            FROM ocr_reference_mentions
+            WHERE job_id = ? AND page = ?
+            ORDER BY occurrence_index
+        """, (job_id, p))
+        result[p] = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return result
+
+
+def get_all_reference_mentions_for_job(job_id: str) -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT page, occurrence_index, key, raw_text, block_index,
+               resolution, suppressed_reason, detection_source, detection_model,
+               written_at_version
+        FROM ocr_reference_mentions
+        WHERE job_id = ?
+        ORDER BY page, occurrence_index
+    """, (job_id,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+
+def delete_reference_mentions_for_job(job_id: str) -> None:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM ocr_reference_mentions WHERE job_id = ?", (job_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_reference_targets_for_job(job_id: str) -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT key, page, occurrence_index, anchor_id, collapsed_key, scope_key,
+               scope_label, scope_chain, heading_confidence, heading_confidence_reasons,
+               own_label, detection_source, detection_model
+        FROM ocr_reference_targets WHERE job_id = ?
+        ORDER BY page, key, occurrence_index
+    """, (job_id,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+
+def set_page_rule_snapshot(job_id: str, page_num: int, snapshot: Dict[str, Any]) -> None:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE ocr_pages SET rule_index_snapshot = ? WHERE job_id = ? AND page_num = ?",
+        (json.dumps(snapshot), job_id, page_num),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_page_rule_snapshot(job_id: str, page_num: int) -> Optional[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT rule_index_snapshot FROM ocr_pages WHERE job_id = ? AND page_num = ?",
+        (job_id, page_num),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if row and row[0]:
+        try:
+            return json.loads(row[0])
+        except Exception:
+            return None
+    return None
+
+
+def get_all_page_rule_snapshots_for_job(job_id: str) -> Dict[int, Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT page_num, rule_index_snapshot FROM ocr_pages WHERE job_id = ? AND rule_index_snapshot IS NOT NULL",
+        (job_id,),
+    )
+    res = {}
+    for r in cursor.fetchall():
+        try:
+            res[r[0]] = json.loads(r[1])
+        except Exception:
+            pass
+    conn.close()
+    return res
+

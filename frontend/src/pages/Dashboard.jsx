@@ -73,7 +73,7 @@ export default function Dashboard() {
   // overrides. Re-fetched on the same reference_index_version trigger as
   // scopeRanges/references above (every override mutation bumps that same
   // version, per the backend's design — see structure_overrides.py).
-  const [structureHierarchy, setStructureHierarchy] = useState({ parents: {}, order: {} });
+  const [structureHierarchy, setStructureHierarchy] = useState({ parents: [], order: [] });
 
   // Structure-tab reading modal content — the range currently open (or
   // being fetched) in StructureReadingModal, null when the modal is closed.
@@ -270,7 +270,7 @@ export default function Dashboard() {
     referenceStoreRef.current = createReferenceStore();
     setReferenceStoreTick(0);
     setScopeRanges([]);
-    setStructureHierarchy({ parents: {}, order: {} });
+    setStructureHierarchy({ parents: [], order: [] });
     setReindexState(null);
     setCurrentPdfPage(1);
     currentPdfPageRef.current = 1;
@@ -340,13 +340,13 @@ export default function Dashboard() {
     // Same cheap-re-fetch-on-version-change pattern as references/scope-
     // ranges above — every add/edit/delete/reorder mutation bumps
     // reference_index_version too, so this stays in sync with them for free.
-    if (!activeJobId) { setStructureHierarchy({ parents: {}, order: {} }); return; }
+    if (!activeJobId) { setStructureHierarchy({ parents: [], order: [] }); return; }
     let cancelled = false;
     (async () => {
       const resp = await apiFetch(`/api/jobs/${activeJobId}/structure-hierarchy-overrides`);
       if (!resp.ok || cancelled) return;
       const body = await resp.json();
-      if (!cancelled) setStructureHierarchy({ parents: body.parents || {}, order: body.order || {} });
+      if (!cancelled) setStructureHierarchy({ parents: body.parents || [], order: body.order || [] });
     })();
     return () => { cancelled = true; };
   }, [activeJobId, jobDetails?.reference_index_version]);
@@ -680,18 +680,30 @@ export default function Dashboard() {
     fetchJobDetails(activeJobId, currentPdfPageRef.current);
   }
 
-  async function handleMoveStructureItem({ itemKey, newParentKey, orderedSiblings }) {
+  async function handleMoveStructureItem({
+    itemKey, itemPage, itemOccurrenceIndex, newParentKey, newParentPage, newParentOccurrenceIndex, orderedSiblings,
+  }) {
     if (!activeJobId) return;
     const resp = await apiFetch(`/api/jobs/${activeJobId}/structure-items/move`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_key: itemKey, new_parent_key: newParentKey, ordered_siblings: orderedSiblings }),
+      body: JSON.stringify({
+        item_key: itemKey, item_page: itemPage, item_occurrence_index: itemOccurrenceIndex,
+        new_parent_key: newParentKey, new_parent_page: newParentPage, new_parent_occurrence_index: newParentOccurrenceIndex,
+        ordered_siblings: orderedSiblings,
+      }),
     });
     // A rejected move (e.g. a cycle the server caught that the client-side
-    // guard missed) just silently has no effect — the tree simply doesn't
-    // reflect a move that never happened, no error surface needed for a
-    // drag-and-drop gesture the way there is for an explicit modal submit.
-    if (!resp.ok) return;
+    // guard missed) surfaces the same way every other structure-tree
+    // mutation in this file does — a silent failure here previously meant
+    // a drag-and-drop gesture could appear to do nothing with no
+    // indication of why, which is exactly what made an ambiguous-key move
+    // landing on the wrong occurrence hard to diagnose.
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert(`Move failed: ${err.detail || resp.statusText}`);
+      return;
+    }
     fetchJobDetails(activeJobId, currentPdfPageRef.current);
   }
 

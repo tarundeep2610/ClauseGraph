@@ -35,9 +35,26 @@ from ai_indexing.providers import (
     list_providers,
     aclose_all,
 )
-from ai_indexing.schema import AIHeading, AIStructureChunk, NormalizationReport, normalize_chunk
-from ai_indexing.parsing import parse_structure_response
-from ai_indexing.prompt import PageInput, ChunkPlan, CarryContext, plan_chunks, build_structure_prompt
+from ai_indexing.schema import (
+    AIHeading,
+    AIMentionChunk,
+    AIMentionReview,
+    AIPriorRejection,
+    AIStructureChunk,
+    NormalizationReport,
+    VALID_MENTION_ACTIONS,
+    VALID_REJECTION_REASONS,
+    normalize_chunk,
+)
+from ai_indexing.parsing import parse_mention_response, parse_structure_response
+from ai_indexing.prompt import (
+    CarryContext,
+    ChunkPlan,
+    PageInput,
+    build_mention_review_prompt,
+    build_structure_prompt,
+    plan_chunks,
+)
 from ai_indexing.client import ChunkOutcome, ChunkStructureResult, StructureIndexer
 from ai_indexing.credentials import ResolvedAIConfig, resolve_active_config, describe_active_config
 

@@ -24,7 +24,7 @@ import asyncio
 import difflib
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ai_indexing
 import config
@@ -621,6 +621,10 @@ async def _ground_and_resolve_chunk(
             reasons = [item["warn"]] if item["warn"] else []
             if item["ground_reason"]:
                 reasons.append(item["ground_reason"])
+            if getattr(h, "heading_confidence_reasons", None):
+                for r in h.heading_confidence_reasons:
+                    if r not in reasons:
+                        reasons.append(r)
             is_reproduced = bool(
                 item["block_idx"] and reference_index._preceded_by_reproduced_text_intro(blocks[item["block_idx"] - 1])
             )
@@ -637,6 +641,8 @@ async def _ground_and_resolve_chunk(
                 snippet = "\n\n".join(snippet_blocks)
                 fingerprint = blocks[item["block_idx"]][:30]
                 confidence = "high" if not reasons else "low"
+                if getattr(h, "heading_confidence", None) == "low":
+                    confidence = "low"
                 trimmed = snippet.rstrip()
                 truncated = bool(trimmed) and trimmed[-1] not in _SENTENCE_END_CHARS
             else:
@@ -658,10 +664,300 @@ async def _ground_and_resolve_chunk(
                 "start_line_hint": h.start_line_hint,
                 "family_hint": h.family_hint,
                 "number_hint": h.number_hint,
+                "prior_id": getattr(h, "prior_id", None),
             })
         events_by_page[page_num] = page_events
 
     return events_by_page, warning_counts
+
+
+def _rule_prior_for_chunk(
+    chunk: ai_indexing.ChunkPlan,
+    seed_scope: Optional[Dict[str, Any]],
+    total_pages: int,
+    rejected_so_far: Set[Tuple[int, str]],
+    raw_text_by_page: Dict[int, str],
+) -> List[Dict[str, Any]]:
+    """Walks chunk.pages calling build_targets_for_page, chaining local_seed.
+    Omits any heading previously rejected in rejected_so_far (page, _norm_for_match(text)).
+    Assigns chunk-local prior_id R1, R2, ...
+    """
+    local_seed = seed_scope
+    raw_cands: List[Tuple[int, Dict[str, Any]]] = []
+    ending_stack = []
+
+    for p in chunk.pages:
+        cands, new_scope = reference_index.build_targets_for_page(
+            p.text, local_seed, has_next_page=p.page_num < total_pages,
+            raw_text=raw_text_by_page.get(p.page_num),
+        )
+        local_seed = new_scope
+        ending_stack = new_scope.get("stack") or []
+        for c in cands:
+            label = c.get("own_label") or c.get("snippet", "")
+            norm_txt = _norm_for_match(label)
+            if (p.page_num, norm_txt) in rejected_so_far:
+                continue
+            raw_cands.append((p.page_num, c))
+
+    container_keys = {entry.get("key") for entry in ending_stack if entry.get("key")}
+    for _, c in raw_cands:
+        for s in c.get("scope_chain") or []:
+            if s.get("key"):
+                container_keys.add(s["key"])
+
+    priors: List[Dict[str, Any]] = []
+    for idx, (p_num, c) in enumerate(raw_cands):
+        key = c.get("key", "")
+        family = key.split(":")[0] if ":" in key else key
+        family_def = reference_index.FAMILIES.get(family, {})
+        rank = family_def.get("rank")
+        scope_chain = c.get("scope_chain") or []
+        parent_label = scope_chain[-1]["label"] if scope_chain else None
+        depth = len(scope_chain) + 1
+        heading_text = c.get("own_label") or c.get("snippet", "")
+        is_container = key in container_keys
+
+        priors.append({
+            "prior_id": f"R{idx + 1}",
+            "page_num": p_num,
+            "depth": depth,
+            "key": key,
+            "parent_label": parent_label,
+            "heading_text": heading_text,
+            "is_container": is_container,
+            "rank": rank,
+            "raw_candidate": c,
+        })
+
+    return priors
+
+
+def _merge_prior_into_headings(
+    result: ai_indexing.ChunkStructureResult,
+    priors: List[Dict[str, Any]],
+    chunk_page_texts: Dict[int, str],
+    page_blocks: Dict[int, List[str]],
+    rejected_so_far: Set[Tuple[int, str]],
+    warning_counts: Dict[str, int],
+) -> Tuple[List[ai_indexing.schema.AIHeading], Set[str]]:
+    """Merges rule priors and AI-reviewed output before grounding.
+    Returns (merged_headings, verified_rejection_ids).
+    """
+    priors_by_id = {r["prior_id"]: r for r in priors}
+    priors_by_norm = {(r["page_num"], _norm_for_match(r["heading_text"])): r for r in priors}
+
+    # 1. Match AI headings to prior rows
+    matched_prior_ids = set()
+    for h in result.headings:
+        if h.prior_id and h.prior_id in priors_by_id:
+            matched_prior_ids.add(h.prior_id)
+        norm = _norm_for_match(h.heading_text)
+        if (h.start_page, norm) in priors_by_norm:
+            matched_prior_ids.add(priors_by_norm[(h.start_page, norm)]["prior_id"])
+
+    # 2. Check rejections
+    verified_rejection_ids: Set[str] = set()
+    unverified_rejection_ids: Set[str] = set()
+
+    for rej in result.rejected_priors:
+        if rej.prior_id not in priors_by_id:
+            warning_counts["rule_prior_unknown_id"] = warning_counts.get("rule_prior_unknown_id", 0) + 1
+            continue
+        if rej.prior_id in matched_prior_ids:
+            # Contradiction precedence: both correction and rejection -> correction
+            continue
+
+        r = priors_by_id[rej.prior_id]
+        p_text = chunk_page_texts.get(r["page_num"], "")
+        norm_quote = _norm_for_match(rej.evidence_quote or "")
+        norm_page = _norm_for_match(p_text)
+        is_valid_reason = rej.reason_code in ai_indexing.VALID_REJECTION_REASONS and rej.reason_code != "unspecified"
+        quote_len_ok = len(norm_quote) >= 8
+        quote_in_page = norm_quote in norm_page
+
+        if is_valid_reason and quote_len_ok and quote_in_page:
+            verified_rejection_ids.add(rej.prior_id)
+            rejected_so_far.add((r["page_num"], _norm_for_match(r["heading_text"])))
+        else:
+            unverified_rejection_ids.add(rej.prior_id)
+            warning_counts["rule_prior_rejection_unverified"] = warning_counts.get("rule_prior_rejection_unverified", 0) + 1
+
+    # 3. Check confirmations
+    confirmed_ids = set(result.confirmed_prior_ids)
+    for cid in confirmed_ids:
+        if cid not in priors_by_id:
+            warning_counts["rule_prior_unknown_id"] = warning_counts.get("rule_prior_unknown_id", 0) + 1
+        # Contradiction precedence: both confirmed and rejected -> rejection iff verified else confirmed
+        if cid in verified_rejection_ids:
+            pass
+        elif cid in unverified_rejection_ids:
+            unverified_rejection_ids.discard(cid)
+
+    # 4. Construct surviving prior headings
+    surviving_prior_headings: List[ai_indexing.schema.AIHeading] = []
+    for r in priors:
+        pid = r["prior_id"]
+        if pid in matched_prior_ids or pid in verified_rejection_ids:
+            continue
+
+        if pid in confirmed_ids:
+            h = ai_indexing.schema.AIHeading(
+                heading_text=r["heading_text"],
+                start_page=r["page_num"],
+                end_page=r["page_num"],
+                level=r["depth"],
+                parent_ref=r["parent_label"],
+                prior_id=pid,
+                heading_confidence="high",
+                heading_confidence_reasons=[],
+            )
+            surviving_prior_headings.append(h)
+        elif pid in unverified_rejection_ids:
+            h = ai_indexing.schema.AIHeading(
+                heading_text=r["heading_text"],
+                start_page=r["page_num"],
+                end_page=r["page_num"],
+                level=r["depth"],
+                parent_ref=r["parent_label"],
+                prior_id=pid,
+                heading_confidence="low",
+                heading_confidence_reasons=["rule_prior_rejection_unverified"],
+            )
+            surviving_prior_headings.append(h)
+        else:
+            warning_counts["rule_prior_unreviewed"] = warning_counts.get("rule_prior_unreviewed", 0) + 1
+            h = ai_indexing.schema.AIHeading(
+                heading_text=r["heading_text"],
+                start_page=r["page_num"],
+                end_page=r["page_num"],
+                level=r["depth"],
+                parent_ref=r["parent_label"],
+                prior_id=pid,
+                heading_confidence="low",
+                heading_confidence_reasons=["rule_prior_unreviewed"],
+            )
+            surviving_prior_headings.append(h)
+
+    # 5. Merge AI headings and surviving prior headings in physical block order per page
+    all_by_page: Dict[int, List[ai_indexing.schema.AIHeading]] = {}
+    for h in result.headings:
+        all_by_page.setdefault(h.start_page, []).append(h)
+    for h in surviving_prior_headings:
+        all_by_page.setdefault(h.start_page, []).append(h)
+
+    merged_headings: List[ai_indexing.schema.AIHeading] = []
+    for pn in sorted(all_by_page.keys()):
+        page_heads = all_by_page[pn]
+        blocks = page_blocks.get(pn, [])
+
+        def _rank_heading(h):
+            res = locate_heading_block(blocks, h.heading_text, used_block_idxs=set())
+            idx = res[0] if res is not None else None
+            return (idx is None, idx if idx is not None else 0)
+
+        page_heads.sort(key=_rank_heading)
+        merged_headings.extend(page_heads)
+
+    return merged_headings, verified_rejection_ids
+
+
+def _check_rule_prior_key_drift(
+    cands: List[Dict[str, Any]],
+    events: List[Dict[str, Any]],
+    priors: List[Dict[str, Any]],
+    warning_counts: Dict[str, int],
+) -> None:
+    priors_by_id = {r["prior_id"]: r for r in priors}
+    for idx, cand in enumerate(cands):
+        ev = events[idx] if idx < len(events) else {}
+        pid = ev.get("prior_id")
+        prior_row = priors_by_id.get(pid) if pid else None
+        if prior_row and prior_row.get("key") and cand.get("key") != prior_row["key"]:
+            warning_counts["rule_prior_key_drift"] = warning_counts.get("rule_prior_key_drift", 0) + 1
+            reasons = cand.setdefault("heading_confidence_reasons", [])
+            if "rule_prior_key_drift" not in reasons:
+                reasons.append("rule_prior_key_drift")
+
+
+async def review_mentions_for_job(job_id: str, engine_params: Optional[Dict[str, Any]] = None) -> None:
+    """Phase 5a: AI review of detected mentions for a job."""
+    all_mentions = database.get_all_reference_mentions_for_job(job_id)
+    if not all_mentions:
+        return
+
+    try:
+        resolved = ai_indexing.resolve_active_config()
+    except ai_indexing.AIConfigError as e:
+        print(f"[MentionReview] AIConfigError: {e}")
+        return
+
+    provider = await ai_indexing.get_provider(resolved.provider_config)
+    pages = database.get_pages(job_id)
+    page_texts = {p["page_num"]: p.get("text") or "" for p in pages}
+    mentions_by_page: Dict[int, List[Dict[str, Any]]] = {}
+    for m in all_mentions:
+        mentions_by_page.setdefault(m["page"], []).append(m)
+
+    chunk_pages = (engine_params or {}).get("ai_index_chunk_pages") or config.AI_INDEX_CHUNK_PAGES
+    page_nums = sorted(page_texts.keys())
+
+    targets = database.get_reference_targets_for_job(job_id)
+    target_lookup = reference_index.TargetLookupIndex(targets)
+
+    for i in range(0, len(page_nums), chunk_pages):
+        chunk_pns = page_nums[i:i + chunk_pages]
+        chunk_mentions = [m for pn in chunk_pns for m in mentions_by_page.get(pn, [])]
+        if not chunk_mentions:
+            continue
+
+        chunk_pages_input = [ai_indexing.PageInput(page_num=pn, text=page_texts.get(pn, "")) for pn in chunk_pns]
+        sys_prompt, user_prompt = ai_indexing.build_mention_review_prompt(chunk_pages_input, chunk_mentions)
+
+        try:
+            completion = await provider.complete(system_prompt=sys_prompt, user_prompt=user_prompt)
+            reviews = ai_indexing.parse_mention_response(completion.text)
+        except Exception as e:
+            print(f"[MentionReview] Error reviewing chunk {chunk_pns}: {e}")
+            continue
+
+        reviews_by_id = {r.mention_id: r for r in reviews}
+        modified_pages = set()
+
+        for m in chunk_mentions:
+            m_id = m.get("mention_id") or f"M{m.get('occurrence_index', 0)}"
+            rev = reviews_by_id.get(m_id)
+            if not rev:
+                continue
+
+            p_text = page_texts.get(m["page"], "")
+            norm_quote = _norm_for_match(rev.evidence_quote)
+            norm_page = _norm_for_match(p_text)
+            quote_ok = len(norm_quote) >= 8 and norm_quote in norm_page
+
+            if rev.action == "reject" and quote_ok:
+                m["resolution"] = "suppressed"
+                m["suppressed_reason"] = "ai_rejected"
+                m["detection_source"] = "ai"
+                m["detection_model"] = resolved.provider_config.model
+                modified_pages.add(m["page"])
+            elif rev.action == "unsuppress" and quote_ok:
+                m["resolution"] = "exact" if target_lookup.has_exact_key(m["key"]) else "approximate"
+                m["suppressed_reason"] = None
+                m["detection_source"] = "ai"
+                m["detection_model"] = resolved.provider_config.model
+                modified_pages.add(m["page"])
+            elif rev.action == "confirm":
+                m["detection_source"] = "ai"
+                m["detection_model"] = resolved.provider_config.model
+                modified_pages.add(m["page"])
+
+        if modified_pages:
+            version = database.bump_reference_index_version(job_id)
+            for pn in modified_pages:
+                page_m = mentions_by_page.get(pn, [])
+                database.upsert_reference_mentions_for_page(job_id, pn, page_m, version)
+
 
 
 async def reindex_job_with_ai(
@@ -723,6 +1019,8 @@ async def reindex_job_with_ai(
     # path. Ships behind this flag for A/B testing before becoming the
     # default, mirroring pleading_points_via_ai's own rollout above.
     resolve_parent_via_ai = bool(engine_params.get("ai_index_resolve_parent_via_ai", False))
+    review_rule_prior = bool(engine_params.get("ai_index_review_rule_prior", config.AI_INDEX_REVIEW_RULE_PRIOR))
+    review_mentions = bool(engine_params.get("ai_index_review_mentions", False))
 
     try:
         resolved = ai_indexing.resolve_active_config()
@@ -789,6 +1087,7 @@ async def reindex_job_with_ai(
     last_persisted_page_num: Optional[int] = None
     carried_headings: Dict[int, List[Any]] = {}
     highest_processed_this_run: int = 0
+    rejected_so_far: Set[Tuple[int, str]] = set()
 
     def _cancel_check():
         return task_queue.is_job_paused(job_id)
@@ -827,10 +1126,19 @@ async def reindex_job_with_ai(
             truncated_pages=chunk.truncated_pages,
             total_chars=chunk.total_chars,
         )
+
+        priors: List[Dict[str, Any]] = []
+        if review_rule_prior:
+            priors = _rule_prior_for_chunk(
+                chunk, seed_scope, total_pages, rejected_so_far, raw_text_by_page,
+            )
+
         try:
             result = await indexer.extract_structure_for_chunk(
                 annotated_chunk, carry_context=carry_context, cancel_check=_cancel_check,
                 include_pleading_points=pleading_points_via_ai,
+                rule_prior=priors,
+                review_rule_prior=review_rule_prior,
             )
         except ai_indexing.AIConfigError as e:
             final_status, final_error = "failed", str(e)
@@ -843,12 +1151,22 @@ async def reindex_job_with_ai(
         source = "rule" if result.outcome == ai_indexing.ChunkOutcome.FAILED else "ai"
         events_by_page: Dict[int, List[Dict[str, Any]]] = {}
         warning_counts: Dict[str, int] = {}
+        chunk_page_texts = {p.page_num: p.text for p in chunk.pages}
+
         if source == "ai":
             page_blocks = {p.page_num: reference_index.parse_page_blocks(p.text) for p in chunk.pages}
 
+            verified_rejections: Set[str] = set()
+            if review_rule_prior and priors:
+                raw_headings, verified_rejections = _merge_prior_into_headings(
+                    result, priors, chunk_page_texts, page_blocks, rejected_so_far, warning_counts,
+                )
+            else:
+                raw_headings = list(result.headings)
+
             # Raw heading merge for overlap pages before grounding
             chunk_headings_by_page: Dict[int, List[Any]] = {}
-            for h in result.headings:
+            for h in raw_headings:
                 chunk_headings_by_page.setdefault(h.start_page, []).append(h)
 
             final_headings: List[Any] = []
@@ -915,15 +1233,27 @@ async def reindex_job_with_ai(
             else:
                 carried_headings = {}
 
-            events_by_page, warning_counts = await _ground_and_resolve_chunk(
+            events_by_page, grounding_warnings = await _ground_and_resolve_chunk(
                 final_headings, page_blocks, carry_context, resolved.provider_config.model,
                 has_next_page_fn=lambda pn: pn < total_pages,
                 resolve_parent_via_ai=resolve_parent_via_ai, provider_config=resolved.provider_config,
             )
+            warning_counts.update(grounding_warnings)
+
+            # Review degradation fallback:
+            # If review_rule_prior is on, len(priors) >= 3, every prior was rejected,
+            # and no AI heading was grounded -> review failure, fall back to rule prior, log review_degraded.
+            if (
+                review_rule_prior
+                and len(priors) >= 3
+                and len(verified_rejections) == len(priors)
+                and not any(len(events) > 0 for events in events_by_page.values())
+            ):
+                source = "rule"
+                warning_counts["review_degraded"] = warning_counts.get("review_degraded", 0) + 1
         else:
             carried_headings = {}
 
-        chunk_page_texts = {p.page_num: p.text for p in chunk.pages}
         stopped_early = False
         pages_processed_this_chunk = 0
 
@@ -953,6 +1283,8 @@ async def reindex_job_with_ai(
                 cands, new_scope = reference_index.apply_heading_events_to_scope(
                     events, seed_scope, page_num, has_next_page=page_num < total_pages,
                 )
+                if review_rule_prior and priors:
+                    _check_rule_prior_key_drift(cands, events, priors, warning_counts)
                 # Additive, deterministic augmentation: numbered/roman
                 # pleading paragraphs the AI is deliberately never asked to
                 # report as headings (they're body text, not headings) but
@@ -1017,5 +1349,8 @@ async def reindex_job_with_ai(
         if stopped_early:
             break
 
+    reference_index.build_mention_index_for_job(job_id)
+    if review_mentions:
+        await review_mentions_for_job(job_id, engine_params)
     database.update_ai_index_report(job_id, status=final_status, error=final_error)
     return {"status": final_status, "pages_done": pages_done_total, "total_chunks": total_chunks}

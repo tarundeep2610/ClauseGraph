@@ -1,0 +1,116 @@
+[
+  {
+    "text": "Clause 11 of the contract provides for liquidated damages.",
+    "is_external": false,
+    "expected_keys": ["clause:11"],
+    "description": "Word boundary bug fix: 'of the contract' does not match EXTERNAL_LAW_B_RE"
+  },
+  {
+    "text": "Clause 11 of the Act specifies the dispute mechanism.",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "'of the Act' matches EXTERNAL_LAW_B_RE"
+  },
+  {
+    "text": "Clause 9.0 of the Arbitration and Conciliation Act specifies the procedure.",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "'of the Arbitration and Conciliation Act' matches EXTERNAL_LAW_B_RE"
+  },
+  {
+    "text": "Section 34 of the Arbitration and Conciliation Act 1996 provides for setting aside an award.",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "Arbitration Act with year matches EXTERNAL_LAW_A_RE"
+  },
+  {
+    "text": "SECTION 34 OF THE ARBITRATION AND CONCILIATION ACT, 1996.",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "ALL-CAPS with comma before year matches EXTERNAL_LAW_A_RE with IGNORECASE"
+  },
+  {
+    "text": "Section 14 of the Specific Relief Act, 1963 governs contracts.",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "Specific Relief Act with comma and year matches EXTERNAL_LAW_A_RE"
+  },
+  {
+    "text": "Section 151 CPC empowers the court to make orders necessary for the ends of justice.",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "Bare CPC matches EXTERNAL_LAW_C_RE"
+  },
+  {
+    "text": "Section 151 C.P.C. empowers the court to make orders.",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "Dotted C.P.C. matches EXTERNAL_LAW_C_RE"
+  },
+  {
+    "text": "Section 482 Cr.P.C. provides inherent powers.",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "Dotted Cr.P.C. matches EXTERNAL_LAW_C_RE"
+  },
+  {
+    "text": "Section 302 I.P.C. prescribes punishment.",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "Dotted I.P.C. matches EXTERNAL_LAW_C_RE"
+  },
+  {
+    "text": "Section 28(3) has also been amended to bring it in line with the judgment of this Court in Associate Builders (supra).",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "'(supra)' matches EXTERNAL_LAW_D_RE"
+  },
+  {
+    "text": "(2015) 3 SCC 49. Section 28(3) has also been amended to bring it in line.",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "'(2015) 3 SCC 49' matches EXTERNAL_LAW_D_RE"
+  },
+  {
+    "text": "Authority AIR 2015 SC 620 wherein Section 10 was discussed.",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "'AIR 2015' citation matches EXTERNAL_LAW_D_RE"
+  },
+  {
+    "text": "As held in 2018 SCC OnLine SC 243 regarding Section 11.",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "'SCC OnLine' citation matches EXTERNAL_LAW_D_RE"
+  },
+  {
+    "text": "Reported in [2019] 4 SCR 123 concerning Clause 5.",
+    "is_external": true,
+    "expected_keys": [],
+    "description": "'[2019] 4 SCR' citation matches EXTERNAL_LAW_D_RE"
+  },
+  {
+    "text": "14. AIR CONDITIONING and ventilation shall be provided as per technical specifications.",
+    "is_external": false,
+    "expected_keys": [],
+    "description": "Bare 'AIR' in 'AIR CONDITIONING' must not match EXTERNAL_LAW_D_RE"
+  },
+  {
+    "text": "Clause 4.1 Special Conditions of Contract (SCC) shall prevail over GCC.",
+    "is_external": false,
+    "expected_keys": ["clause:4.1"],
+    "description": "Bare 'SCC' in 'Special Conditions of Contract (SCC)' must not match EXTERNAL_LAW_D_RE"
+  },
+  {
+    "text": "Clause 12 dated 14.03.2019 of this agreement specifies the commencement date.",
+    "is_external": false,
+    "expected_keys": ["clause:12"],
+    "description": "Bare date in running text must not be suppressed by overbroad year matching"
+  },
+  {
+    "text": "Section 28. Payment terms shall be as specified in Annexure C.",
+    "is_external": false,
+    "expected_keys": ["section:28"],
+    "description": "Genuine in-document section heading is retained"
+  }
+]
