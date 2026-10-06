@@ -839,6 +839,11 @@ def get_job_scope_ranges(job_id: str, principal: Principal = Depends(_require_us
     # reference_index_version, invalidating that cache too) is reflected
     # immediately without needing its own separate cache-invalidation path.
     ranges = structure_overrides.apply_to_scope_ranges(job_id, ranges)
+    # Also correct each range's scope_key for any drag-and-drop reparenting
+    # — without this, a moved node's ancestor chain here stays stale forever
+    # and the sidebar force-expands/misattributes focus to its old parent
+    # (see apply_parent_overrides_to_scope_ranges's own docstring).
+    ranges = structure_overrides.apply_parent_overrides_to_scope_ranges(job_id, ranges)
     return {
         "reference_index_version": database.get_reference_index_version(job_id),
         "ranges": ranges,

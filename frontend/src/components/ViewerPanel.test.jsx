@@ -795,14 +795,22 @@ describe('ViewerPanel — Structure add/edit/delete modals', () => {
 });
 
 describe('ViewerPanel — on-page reference badges', () => {
-  it('renders a badge for a resolvable mention on the current page, and clicking it opens the reading modal for the target', () => {
+  it('clicking a reference badge pins an inline second PDF pane at the target page (not the reading modal)', () => {
     const store = storeWithDelta(
-      { 61: { 'annexure:a-1': [{ anchor_id: 'a1', collapsed_key: 'annexure:a1', key: 'annexure:a-1', page: 61 }] } },
+      {
+        61: { 'annexure:a-1': [{ anchor_id: 'a1', collapsed_key: 'annexure:a1', key: 'annexure:a-1', page: 61 }] },
+        90: { 'annexure:a-2': [{ anchor_id: 'a2', collapsed_key: 'annexure:a2', key: 'annexure:a-2', page: 90 }] },
+      },
       1,
-      { 1: [{ key: 'annexure:a-1', raw_text: 'Annexure A-1', resolution: 'exact' }] }
+      {
+        1: [
+          { key: 'annexure:a-1', raw_text: 'Annexure A-1', resolution: 'exact' },
+          { key: 'annexure:a-2', raw_text: 'Annexure A-2', resolution: 'exact' },
+        ],
+      }
     );
     const onRequestStructureContent = vi.fn();
-    const job = jobWithPages([{ page: 1, text: 'Annexure A-1 to A-5, which are very essential.' }]);
+    const job = jobWithPages([{ page: 1, text: 'Annexure A-1 and Annexure A-2, which are very essential.' }]);
     render(
       <ViewerPanel
         {...baseProps}
@@ -816,10 +824,45 @@ describe('ViewerPanel — on-page reference badges', () => {
     );
     fireEvent.click(screen.getByTestId('page-reference-badge-annexure:a-1'));
 
-    // Main PDF pane is untouched — same "opens the modal instead of moving
-    // the main viewer" behavior as a Structure-tree leaf's magnifier button.
-    expect(screen.getByTestId('mock-pdf-page')).toHaveTextContent('1');
-    expect(onRequestStructureContent).toHaveBeenCalledWith({ startPage: 61, endPage: 61, label: 'Page 61', anchorId: 'a1' });
+    // Main PDF pane is untouched, the modal is never opened — unlike the
+    // Structure-tree leaf's own magnifier button, a badge click replaces the
+    // markdown pane with a second, independent PDF view instead.
+    expect(onRequestStructureContent).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('structure-reading-modal')).not.toBeInTheDocument();
+    expect(screen.queryByText('Extracted OCR Markdown')).not.toBeInTheDocument();
+    let pages = screen.getAllByTestId('mock-pdf-page').map((el) => el.textContent);
+    expect(pages).toEqual(['1', '61']);
+    expect(screen.getByText('Reference: Page 61')).toBeInTheDocument();
+
+    // A second badge click re-pins to its own target page.
+    fireEvent.click(screen.getByTestId('page-reference-badge-annexure:a-2'));
+    pages = screen.getAllByTestId('mock-pdf-page').map((el) => el.textContent);
+    expect(pages).toEqual(['1', '90']);
+
+    // The pane's own Close button clears it, restoring the markdown pane.
+    fireEvent.click(screen.getByTestId('pinned-pdf-close-btn'));
+    expect(screen.queryByText(/Reference: Page/)).not.toBeInTheDocument();
+    expect(screen.getByText('Extracted OCR Markdown')).toBeInTheDocument();
+  });
+
+  it('pins the second pane even in PDF-only mode, and a view-mode toggle click clears it', () => {
+    const store = storeWithDelta(
+      { 61: { 'annexure:a-1': [{ anchor_id: 'a1', collapsed_key: 'annexure:a1', key: 'annexure:a-1', page: 61 }] } },
+      1,
+      { 1: [{ key: 'annexure:a-1', raw_text: 'Annexure A-1', resolution: 'exact' }] }
+    );
+    const job = jobWithPages([{ page: 1, text: 'Annexure A-1, which is very essential.' }]);
+    render(
+      <ViewerPanel {...baseProps} viewMode="pdf" pdfSrc="blob:fake-url" jobDetails={job} referenceStore={store} scopeRanges={[]} />
+    );
+    expect(screen.getAllByTestId('mock-pdf-page')).toHaveLength(1);
+
+    fireEvent.click(screen.getByTestId('page-reference-badge-annexure:a-1'));
+    expect(screen.getAllByTestId('mock-pdf-page')).toHaveLength(2);
+    expect(screen.getByText('Reference: Page 61')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /PDF Only/i }));
+    expect(screen.getAllByTestId('mock-pdf-page')).toHaveLength(1);
   });
 
   it('shows no badge on a page with no resolvable mentions', () => {

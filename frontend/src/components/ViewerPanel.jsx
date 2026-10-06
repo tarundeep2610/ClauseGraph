@@ -14,11 +14,11 @@ import PageReferenceBadges from './PageReferenceBadges';
 // so the frontend never has its own, possibly-drifting copy of the boundaries.
 const TIER_DISPLAY = {
   highly_confident: { label: 'Highly Confident', color: 'var(--success)' },
-  very_confident: { label: 'Very Confident', color: '#4ade80' },
-  confident: { label: 'Confident', color: '#facc15' },
+  very_confident: { label: 'Very Confident', color: 'var(--tier-very-confident)' },
+  confident: { label: 'Confident', color: 'var(--tier-confident)' },
   needs_review: { label: 'Needs Review', color: 'var(--error)' },
   blank_page: { label: 'Blank Page', color: 'var(--muted)' },
-  failed: { label: 'Failed', color: '#991b1b' },
+  failed: { label: 'Failed', color: 'var(--tier-failed)' },
 };
 
 function ConfidenceBadge({ page }) {
@@ -72,9 +72,16 @@ export default function ViewerPanel({
   onMoveStructureItem,
 }) {
   const showPdf = viewMode === 'split' || viewMode === 'pdf';
-  const showResult = viewMode === 'split' || viewMode === 'result';
   const [retryModalOpen, setRetryModalOpen] = useState(false);
   const [pdfPageOverride, setPdfPageOverride] = useState(null);
+  // Set by a cross-reference badge click — pins a second, independent PDF
+  // view (same pdfSrc, its own page) to the reference's target page, taking
+  // over whichever slot would otherwise show the OCR markdown. null when
+  // inactive. Reset below whenever the document changes or the reader
+  // manually picks a view mode; also closable via its own header button.
+  const [pinnedPdfPage, setPinnedPdfPage] = useState(null);
+  const showPinnedPdf = pinnedPdfPage != null && !!pdfSrc;
+  const showResult = !showPinnedPdf && (viewMode === 'split' || viewMode === 'result');
   // Set by a Structure-sidebar leaf jump that carries an anchor_id — cleared
   // once the scroll-to-anchor effect below has acted on it (or immediately,
   // for a jump with no anchor, e.g. a container jump).
@@ -116,7 +123,7 @@ export default function ViewerPanel({
       progressLabel = failed > 0 ? `Done (${passed} passed, ${failed} failed)` : `Done (${jobDetails.total_pages} pages)`;
       progressColor = failed > 0 ? 'var(--warning)' : 'var(--success)';
     }
-    else if (jobDetails.status === 'paused') { progressLabel = `Paused (${jobDetails.processed_pages}/${jobDetails.total_pages} pages extracted)`; progressColor = '#67e8f9'; }
+    else if (jobDetails.status === 'paused') { progressLabel = `Paused (${jobDetails.processed_pages}/${jobDetails.total_pages} pages extracted)`; progressColor = 'var(--fg-accent-soft)'; }
     else if (jobDetails.status === 'failed') { progressLabel = 'Failed'; progressColor = 'var(--error)'; }
     else progressLabel = 'Queued...';
   }
@@ -183,6 +190,13 @@ export default function ViewerPanel({
     if (onCurrentPageChange) onCurrentPageChange(currentPdfPage);
   }, [currentPdfPage, onCurrentPageChange]);
 
+  // A pinned reference page only makes sense against the document that was
+  // open when it was pinned — switching documents/jobs changes pdfSrc, so
+  // drop it rather than show a stale page number against new content.
+  useEffect(() => {
+    setPinnedPdfPage(null);
+  }, [pdfSrc]);
+
   // Scrolls the Result pane to a leaf jump's exact position once its page's
   // content has actually rendered — the same xref-anchor span the reading
   // modal already scrolls to (see StructureReadingModal.jsx), scoped to this
@@ -230,6 +244,14 @@ export default function ViewerPanel({
     const target = { startPage: range.startPage, endPage: range.endPage, label: range.label };
     setReadingTarget(target);
     if (onRequestStructureContent) onRequestStructureContent(target);
+  }
+
+  // A cross-reference badge click pins an inline second PDF pane to the
+  // target page instead — unlike handleStructureSelect, this never opens
+  // the reading modal and reuses the already-loaded main pdfSrc rather than
+  // a separate windowed fetch.
+  function handleBadgeOpenReference(candidate) {
+    setPinnedPdfPage(candidate.page);
   }
 
   function openAddItemModal() {
@@ -309,13 +331,13 @@ export default function ViewerPanel({
             <i className="fa-solid fa-sitemap" /> Structure
           </button>
           <div className="view-toggles">
-            <button className={`view-toggle-btn ${viewMode === 'split' ? 'active' : ''}`} onClick={() => setViewMode('split')}>
+            <button className={`view-toggle-btn ${viewMode === 'split' ? 'active' : ''}`} onClick={() => { setViewMode('split'); setPinnedPdfPage(null); }}>
               <i className="fa-solid fa-columns" /> Split
             </button>
-            <button className={`view-toggle-btn ${viewMode === 'pdf' ? 'active' : ''}`} onClick={() => setViewMode('pdf')}>
+            <button className={`view-toggle-btn ${viewMode === 'pdf' ? 'active' : ''}`} onClick={() => { setViewMode('pdf'); setPinnedPdfPage(null); }}>
               <i className="fa-regular fa-file-pdf" /> PDF Only
             </button>
-            <button className={`view-toggle-btn ${viewMode === 'result' ? 'active' : ''}`} onClick={() => setViewMode('result')}>
+            <button className={`view-toggle-btn ${viewMode === 'result' ? 'active' : ''}`} onClick={() => { setViewMode('result'); setPinnedPdfPage(null); }}>
               <i className="fa-solid fa-file-lines" /> Result Only
             </button>
           </div>
@@ -420,7 +442,7 @@ export default function ViewerPanel({
                     referenceStore={referenceStore}
                     scopeRanges={scopeRanges}
                     currentPage={currentPdfPage}
-                    onOpenReference={handleStructureSelect}
+                    onOpenReference={handleBadgeOpenReference}
                   />
                 </>
               ) : (
@@ -431,7 +453,29 @@ export default function ViewerPanel({
             </div>
           </div>
         )}
-        {showResult && (
+        {showPinnedPdf ? (
+          <div className="view-box">
+            <div className="view-box-header">
+              <span><i className="fa-regular fa-file-pdf" /> Reference: Page {pinnedPdfPage}</span>
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={() => setPinnedPdfPage(null)}
+                title="Close reference pane"
+                data-testid="pinned-pdf-close-btn"
+              >
+                <i className="fa-solid fa-xmark" /> Close
+              </button>
+            </div>
+            <div className="view-box-content" style={{ padding: 0, overflow: 'hidden' }}>
+              <PdfCanvasViewer
+                pdfSrc={pdfSrc}
+                pageNum={pinnedPdfPage}
+                totalPages={jobDetails?.total_pages}
+                onPageChange={setPinnedPdfPage}
+              />
+            </div>
+          </div>
+        ) : showResult && (
           <div className="view-box">
             <div className="view-box-header">
               <span><i className="fa-solid fa-align-left" /> Extracted OCR Markdown</span>

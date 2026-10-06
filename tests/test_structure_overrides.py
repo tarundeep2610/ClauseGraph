@@ -602,6 +602,55 @@ async def test_resolve_structure_for_job_disambiguates_repeated_key_by_occurrenc
     assert untouched["resolved_scope_key"] == "annexure:g-2"
 
 
+def test_apply_parent_overrides_to_scope_ranges_is_a_noop_without_overrides():
+    """Fast path: no parent overrides at all (the common case) returns the
+    same ranges list untouched, without paying for a candidate fetch/tree
+    rebuild."""
+    job_id = _job_with_pages(["p1"])
+    ranges = [{"key": "clause:1", "scope_key": "annexure:h-1", "start_page": 1, "end_page": 1}]
+    result = structure_overrides.apply_parent_overrides_to_scope_ranges(job_id, ranges)
+    assert result is ranges
+    assert result[0]["scope_key"] == "annexure:h-1"
+
+
+@pytest.mark.asyncio
+async def test_scope_ranges_endpoint_reflects_a_parent_override(client, auth_headers):
+    """Regression test for the sidebar's "clicking a moved node expands/
+    highlights a different, stale node" bug: GET /scope-ranges must report
+    a moved node's CURRENT ancestor chain, not the one it had before the
+    drag-and-drop move — see apply_parent_overrides_to_scope_ranges's own
+    docstring for the full mechanism."""
+    # "clause" is rank-less (never pushed onto nested_stack, see
+    # reference_index.FAMILIES), so it never gets its own /scope-ranges
+    # entry — "article" (rank 1) is used here instead, nested under the
+    # annexure, so it genuinely appears as its own range.
+    job_id = _job_with_pages(["Annexure H-1 heading", "Article 2 heading"])
+    await reference_index.reindex_job(job_id)
+
+    resp = client.get(f"/api/jobs/{job_id}/scope-ranges", headers=auth_headers)
+    assert resp.status_code == 200
+    [article_range] = [r for r in resp.json()["ranges"] if r["key"] == "article:2"]
+    assert article_range["scope_key"] == "annexure:h-1"
+
+    resp = client.post(
+        f"/api/jobs/{job_id}/structure-items/move",
+        json={
+            "item_key": "article:2", "item_page": 2, "item_occurrence_index": 0,
+            "new_parent_key": "", "new_parent_page": None, "new_parent_occurrence_index": None,
+            "ordered_siblings": [{"item_key": "article:2", "item_page": 2, "item_occurrence_index": 0}],
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+
+    resp = client.get(f"/api/jobs/{job_id}/scope-ranges", headers=auth_headers)
+    assert resp.status_code == 200
+    [article_range] = [r for r in resp.json()["ranges"] if r["key"] == "article:2"]
+    # Without the fix, this would still read "annexure:h-1" — the detector's
+    # pre-move chain — forever.
+    assert article_range["scope_key"] == ""
+
+
 # ─── 15. 404s for all five endpoints against a missing job ───────────────
 
 def test_all_endpoints_404_for_missing_job(client, auth_headers):

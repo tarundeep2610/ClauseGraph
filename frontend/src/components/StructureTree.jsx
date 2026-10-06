@@ -349,21 +349,31 @@ function DragHandle({ id, testId }) {
   );
 }
 
-function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, onJumpContainer, rangeIndex, activePathIds, currentNodeId, onEditItem, onDeleteItem }) {
+function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, onJumpContainer, rangeIndex, activePathIds, currentNodeId, onEditItem, onDeleteItem, collapseSignal, dragExpandIds }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const isCurrent = node.id === currentNodeId;
   const headerRef = useRef(null);
-  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: nodeMoveId(node) });
+  const moveId = nodeMoveId(node);
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: moveId });
 
   // Forces this node open when it becomes part of the active-page's
-  // ancestor chain — but only in reaction to a genuinely new activePathIds
-  // (a fresh activePage/scopeRanges computation), never on every render, so
-  // a reader who manually collapses a node keeps it collapsed until the
-  // active page actually changes again.
+  // ancestor chain, or when a drag has been hovering over it long enough to
+  // auto-reveal its children (see StructureTree's handleDragOver) — but
+  // only in reaction to a genuinely new activePathIds/dragExpandIds value,
+  // never on every render, so a reader who manually collapses a node keeps
+  // it collapsed until one of those actually changes again.
   useEffect(() => {
-    if (activePathIds?.has(node.id)) setExpanded(true);
+    if (activePathIds?.has(node.id) || dragExpandIds?.has(moveId)) setExpanded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePathIds]);
+  }, [activePathIds, dragExpandIds]);
+
+  // "Collapse all" — collapseSignal is a counter bumped by the toolbar
+  // button; any change (not just a first truthy value) means "collapse
+  // now," including depth-0 nodes that default open.
+  useEffect(() => {
+    if (collapseSignal) setExpanded(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapseSignal]);
 
   // Scrolls the current node into view whenever it newly becomes current —
   // not on every render, and not for any other node.
@@ -442,9 +452,9 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
       <div
         ref={(el) => { headerRef.current = el; setDropRef(el); }}
         className={`structure-tree-node-header${isOver ? ' structure-tree-node-header--drop-over' : ''}`}
-        style={{ paddingLeft: depth * 16 }}
+        style={{ paddingLeft: depth * 12 }}
       >
-        <DragHandle id={nodeMoveId(node)} testId={`structure-drag-handle-${node.id}`} />
+        <DragHandle id={moveId} testId={`structure-drag-handle-${node.id}`} />
         {expandable ? (
           <i
             className={`fa-solid ${expanded ? 'fa-chevron-down' : 'fa-chevron-right'}`}
@@ -454,9 +464,9 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
         ) : (
           <i className="fa-regular fa-file-lines" />
         )}
-        <span>
+        <span className="structure-tree-node-label">
           {lowConfidence && <span className="structure-low-confidence-marker">≈ </span>}
-          {node.label}
+          <span className="structure-tree-label-text" title={node.label}>{node.label}</span>
           {!primaryLeaf && <span className="structure-tree-node-range">{formatRangeSuffix(node.key, rangeIndex)}</span>}
           {primaryLeaf?.detection_source === 'ai' && (
             <span className="structure-ai-badge" title={`Detected by AI${primaryLeaf.detection_model ? ` (${primaryLeaf.detection_model})` : ''}`}> AI</span>
@@ -534,6 +544,8 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
               currentNodeId={currentNodeId}
               onEditItem={onEditItem}
               onDeleteItem={onDeleteItem}
+              collapseSignal={collapseSignal}
+              dragExpandIds={dragExpandIds}
             />
           ))}
         </ul>
@@ -548,7 +560,7 @@ function LeafRow({ leaf, depth, lowConfidence, onSelect, onOpenReference, onEdit
     <li
       ref={setDropRef}
       className={`structure-tree-leaf${lowConfidence ? ' structure-tree-leaf--low-confidence' : ''}${isOver ? ' structure-tree-leaf--drop-over' : ''}`}
-      style={{ paddingLeft: depth * 16 }}
+      style={{ paddingLeft: depth * 12 }}
       // Stops here so this occurrence's own click never also re-fires an
       // ancestor node's row click (see the matching note on TreeNode's <li>).
       onClick={(e) => { e.stopPropagation(); onSelect(leaf); }}
@@ -624,6 +636,22 @@ export default function StructureTree({
     useSensor(KeyboardSensor),
   );
 
+  // "Collapse all" toolbar button — see TreeNode's matching useEffect.
+  const [collapseSignal, setCollapseSignal] = useState(0);
+
+  // Hover-to-auto-expand during a drag, plus a short toast for a
+  // rejected/no-op drop — see handleDragOver/handleDragEnd below.
+  const [dragExpandIds, setDragExpandIds] = useState(() => new Set());
+  const [dropFeedback, setDropFeedback] = useState(null);
+  const dragOverIdRef = useRef(null);
+  const dragOverTimerRef = useRef(null);
+  const dropFeedbackTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    clearTimeout(dragOverTimerRef.current);
+    clearTimeout(dropFeedbackTimerRef.current);
+  }, []);
+
   const tree = useMemo(() => {
     if (!referenceStore) return null;
     const raw = buildTree(getStructureCandidates(referenceStore));
@@ -671,23 +699,53 @@ export default function StructureTree({
     return null;
   }
 
+  // Hover-to-auto-expand: while a drag is over a node for ~600ms straight,
+  // reveal its children so a nested drop target becomes reachable without
+  // pre-expanding it manually (mirrors the file-explorer/IDE convention).
+  // Deliberately does not shrink dragExpandIds back down on drop/cancel —
+  // once a container's been revealed this way it stays open, same as if
+  // the reader had expanded it by hand.
+  function clearDragOverTimer() {
+    clearTimeout(dragOverTimerRef.current);
+    dragOverTimerRef.current = null;
+    dragOverIdRef.current = null;
+  }
+
+  function handleDragOver(event) {
+    const overId = event.over ? String(event.over.id) : null;
+    if (overId === dragOverIdRef.current) return;
+    clearDragOverTimer();
+    dragOverIdRef.current = overId;
+    if (!overId) return;
+    dragOverTimerRef.current = setTimeout(() => {
+      setDragExpandIds((prev) => (prev.has(overId) ? prev : new Set(prev).add(overId)));
+    }, 600);
+  }
+
+  function showDropFeedback(message) {
+    setDropFeedback(message);
+    clearTimeout(dropFeedbackTimerRef.current);
+    dropFeedbackTimerRef.current = setTimeout(() => setDropFeedback(null), 2500);
+  }
+
   function handleDragEnd(event) {
+    clearDragOverTimer();
     const { active, over } = event;
     if (!tree || !onMoveItem || !over) return;
     const itemMoveId = String(active.id);
     const newParentMoveId = String(over.id); // '' = root drop zone
-    if (itemMoveId === newParentMoveId) return;
+    if (itemMoveId === newParentMoveId) { showDropFeedback("Can't drop an item onto itself"); return; }
 
     // Client-side cycle guard, mirroring the server's own authoritative
     // check: don't allow dropping a node onto itself or a node already
     // nested under it.
     const draggedNode = findNode(tree, itemMoveId);
-    if (draggedNode && findNode(draggedNode, newParentMoveId)) return;
+    if (draggedNode && findNode(draggedNode, newParentMoveId)) { showDropFeedback("Can't move a section into itself"); return; }
 
     const targetNode = newParentMoveId ? findNode(tree, newParentMoveId) : tree;
-    if (!targetNode) return;
+    if (!targetNode) { showDropFeedback('Drop target no longer exists'); return; }
     const currentChildren = targetNode.children.map((c) => parseMoveId(nodeMoveId(c)));
-    if (targetNode.children.some((c) => nodeMoveId(c) === itemMoveId)) return; // already a child here — no-op
+    if (targetNode.children.some((c) => nodeMoveId(c) === itemMoveId)) { showDropFeedback('Already there'); return; } // already a child here — no-op
 
     const { key: itemKey, page: itemPage, occurrenceIndex: itemOccurrenceIndex } = parseMoveId(itemMoveId);
     const { key: newParentKey, page: newParentPage, occurrenceIndex: newParentOccurrenceIndex } = parseMoveId(newParentMoveId);
@@ -711,26 +769,49 @@ export default function StructureTree({
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <ul className="structure-tree" data-testid="structure-tree">
-        {onMoveItem && <RootDropZone />}
-        {tree.children.map((child) => (
-          <TreeNode
-            key={child.id}
-            node={child}
-            depth={0}
-            onSelect={onSelect}
-            onSelectContainer={onSelectContainer}
-            onOpenReference={onOpenReference}
-            onJumpContainer={onJumpContainer}
-            rangeIndex={rangeIndex}
-            activePathIds={activePathIds}
-            currentNodeId={currentNodeId}
-            onEditItem={onEditItem}
-            onDeleteItem={onDeleteItem}
-          />
-        ))}
-      </ul>
-    </DndContext>
+    <div className="structure-tree-wrap">
+      <div className="structure-tree-toolbar">
+        <button
+          type="button"
+          className="btn btn-sm btn-secondary"
+          onClick={() => setCollapseSignal((s) => s + 1)}
+          data-testid="structure-collapse-all"
+        >
+          <i className="fa-solid fa-angles-up" /> Collapse all
+        </button>
+      </div>
+      {dropFeedback && (
+        <div className="structure-tree-toast" data-testid="structure-tree-toast">{dropFeedback}</div>
+      )}
+      <DndContext
+        sensors={sensors}
+        onDragStart={clearDragOverTimer}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onDragCancel={clearDragOverTimer}
+      >
+        <ul className="structure-tree" data-testid="structure-tree">
+          {onMoveItem && <RootDropZone />}
+          {tree.children.map((child) => (
+            <TreeNode
+              key={child.id}
+              node={child}
+              depth={0}
+              onSelect={onSelect}
+              onSelectContainer={onSelectContainer}
+              onOpenReference={onOpenReference}
+              onJumpContainer={onJumpContainer}
+              rangeIndex={rangeIndex}
+              activePathIds={activePathIds}
+              currentNodeId={currentNodeId}
+              onEditItem={onEditItem}
+              onDeleteItem={onDeleteItem}
+              collapseSignal={collapseSignal}
+              dragExpandIds={dragExpandIds}
+            />
+          ))}
+        </ul>
+      </DndContext>
+    </div>
   );
 }

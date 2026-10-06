@@ -1,47 +1,44 @@
 version: "3.9"
 
 services:
-  # On Docker Desktop for Windows, containers run inside a WSL2 VM — inbound
-  # reachability from OUTSIDE that VM (including from another Tailscale peer)
-  # depends on Docker Desktop's own port-publish bridge, which only activates
-  # for an explicit "ports:" mapping. Without one, a service can be perfectly
-  # "listening" from inside WSL2 yet still be unreachable from any remote
-  # Tailscale peer, even though outbound-initiated Tailscale traffic (the
-  # tunnel negotiation itself) works fine regardless.
+  # This box is a SHARED machine — a separate, unrelated project ("itender"'s
+  # RokkaAI service) already runs here and uses Tailscale at the Windows-host
+  # level (one interactive GUI login, no authkey, giving the whole Windows
+  # host a single tailscale0 identity/IP). This stack deliberately does NOT
+  # run its own Tailscale client/container — a second containerized Tailscale
+  # node logging into the same tailnet account from the same physical machine
+  # was redundant, and was the actual cause of a Windows Firewall
+  # network-profile issue that previously forced a public-IP workaround (see
+  # DEPLOYMENT.md). Instead, this stack reuses the host's existing Tailscale
+  # identity implicitly: gpu-proxy below is published via a normal Docker
+  # "ports:" mapping, and Docker Desktop's WSL2 port-publish bridge binds
+  # that to ALL host interfaces (0.0.0.0) — including tailscale0 — not just
+  # LAN/WAN. That's the same pattern already proven to work for
+  # rokkaai-app:11600 on this same host.
   #
-  # NOTE: binding this to the Tailscale IP specifically (rather than 0.0.0.0)
-  # is NOT possible here — that IP only exists inside the container/WSL2
-  # world (Tailscale runs as a container, not a native Windows client), so
-  # the Windows host itself can't bind to it. Publishing on 0.0.0.0 means
-  # this port is technically reachable from the regular LAN too, not just
-  # the tailnet — the shared-secret check in Caddyfile is what actually
-  # protects it at that point, not network isolation alone. Matches the
-  # same 0.0.0.0 publish pattern already used for rokkaai-app:11600 on this
-  # same host.
-  tailscale:
-    image: tailscale/tailscale:latest
-    hostname: ocr-gpu
-    environment:
-      - TS_AUTHKEY=${TS_AUTHKEY}
-      - TS_EXTRA_ARGS=--advertise-tags=tag:ocr-gpu
-      - TS_STATE_DIR=/var/lib/tailscale
-    volumes:
-      - tailscale-state:/var/lib/tailscale
-      - /dev/net/tun:/dev/net/tun
-    cap_add: [NET_ADMIN, NET_RAW]
-    ports:
-      - "11610:11610"
-    restart: unless-stopped
+  # On Docker Desktop for Windows, containers run inside a WSL2 VM — inbound
+  # reachability from OUTSIDE that VM (including from a Tailscale peer)
+  # depends on Docker Desktop's own port-publish bridge, which only activates
+  # for an explicit "ports:" mapping.
+  #
+  # NOTE: binding to the Tailscale IP specifically (rather than 0.0.0.0) is
+  # NOT possible here — that IP lives at the Windows-host level, and the
+  # WSL2 port-publish bridge can't be scoped to it. Publishing on 0.0.0.0
+  # means this port is technically reachable from the regular LAN/WAN too,
+  # not just the tailnet — the shared-secret check in Caddyfile is what
+  # actually protects it at that point, not network isolation alone (same
+  # tradeoff already accepted for rokkaai-app:11600). See DEPLOYMENT.md for
+  # an optional Windows Firewall RemoteAddress-scoping hardening step.
 
   ollama:
     image: ollama/ollama:latest
-    network_mode: "service:tailscale"
-    depends_on: [tailscale]
     environment:
-      # Bound to loopback only — never reachable via the tailscale0 interface.
-      # The only path to Ollama from off-box is through the Caddy proxy below,
-      # which enforces the shared-secret check Ollama itself has no hook for.
-      - OLLAMA_HOST=127.0.0.1:11434
+      # Must bind all interfaces now: Caddy reaches this over the compose
+      # default network via container DNS ("ollama"), not a shared network
+      # namespace/loopback. This service still has no "ports:" entry, so
+      # it remains unreachable from the Windows host, LAN, or tailnet
+      # directly — only from other containers in this compose project.
+      - OLLAMA_HOST=0.0.0.0:11434
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped
@@ -51,19 +48,18 @@ services:
   # routed by path (see Caddyfile). Neither service needs its own port.
   gpu-proxy:
     image: caddy:2-alpine
-    network_mode: "service:tailscale"
-    depends_on: [tailscale, ollama, gpu-ocr-api]
+    depends_on: [ollama, gpu-ocr-api]
     environment:
       - GPU_OCR_SHARED_SECRET=${GPU_OCR_SHARED_SECRET}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "0.0.0.0:11610:11610"
     restart: unless-stopped
 
   gpu-ocr-api:
     image: ocr-gpu-api:latest
     build: .
-    network_mode: "service:tailscale"
-    depends_on: [tailscale]
     environment:
       - GPU_OCR_SHARED_SECRET=${GPU_OCR_SHARED_SECRET}
       - GPU_OCR_MAX_CONCURRENT_JOBS=${GPU_OCR_MAX_CONCURRENT_JOBS:-2}
@@ -84,11 +80,12 @@ services:
               capabilities: [gpu]
     volumes:
       - hf_cache:/app/hf_cache
-    # No "ports:" entry — gpu-ocr-api is reachable ONLY through the
-    # tailscale0 interface inside the shared network namespace above.
+    # No "ports:" entry — gpu-ocr-api is reachable ONLY from other
+    # containers in this compose project (i.e. gpu-proxy), via the compose
+    # default network's service-name DNS ("gpu-ocr-api"). Never published
+    # to the host.
     restart: unless-stopped
 
 volumes:
-  tailscale-state:
   ollama_data:
   hf_cache:

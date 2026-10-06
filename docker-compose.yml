@@ -1,37 +1,26 @@
 version: "3.9"
 
 services:
-  # The CPU server itself must stay reachable on the public internet (for the
-  # browser UI and integrating projects), so — unlike the GPU box — this
-  # sidecar does NOT restrict glm-ocr-api's public port. Tailscale here exists
-  # only to give glm-ocr-api an egress path to reach the GPU server's
-  # tailnet-only address; the host port mapping below is declared on this
-  # service (not on glm-ocr-api) because it owns the shared network namespace.
-  tailscale:
-    image: tailscale/tailscale:latest
-    hostname: ocr-cpu
-    environment:
-      - TS_AUTHKEY=${TS_AUTHKEY}
-      - TS_EXTRA_ARGS=--advertise-tags=tag:ocr-cpu
-      - TS_STATE_DIR=/var/lib/tailscale
-    volumes:
-      - tailscale-state:/var/lib/tailscale
-      - /dev/net/tun:/dev/net/tun
-    cap_add: [NET_ADMIN, NET_RAW]
+  # This box is a SHARED machine — confirmed via `tailscale status` showing
+  # it's already logged into the same Tailscale account that
+  # the "itender" RokkaAI project's own service already uses on this host.
+  # This stack deliberately does NOT run its own Tailscale client/container —
+  # a second containerized Tailscale node logging into the same tailnet
+  # account from the same physical machine was redundant. glm-ocr-api reaches
+  # the GPU server's tailnet address (see DEPLOYMENT.md) as a normal outbound
+  # call, routed through the host's existing tailscale0 interface the same
+  # way any other outbound traffic from a container reaches the outside
+  # world — no special network_mode needed for egress.
+  glm-ocr-api:
+    image: ocr-cpu-glm-api:latest
+    build: .
+    restart: unless-stopped
     ports:
       # 12006 is this deployment's designated public port for the OCR service
       # (matching this org's existing per-service port convention). Change the
       # bind address to 127.0.0.1 instead if you're fronting this with your
       # own reverse proxy/TLS terminator rather than exposing it directly.
       - "12006:8000"
-    restart: unless-stopped
-
-  glm-ocr-api:
-    image: ocr-cpu-glm-api:latest
-    build: .
-    network_mode: "service:tailscale"
-    depends_on: [tailscale]
-    restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1
       - RENDER_SCALE=1.5
@@ -68,5 +57,4 @@ services:
       - ocr_data:/app/data
 
 volumes:
-  tailscale-state:
   ocr_data:

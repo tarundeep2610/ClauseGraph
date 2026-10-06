@@ -693,3 +693,60 @@ def resolve_structure_for_job(job_id: str) -> List[Dict[str, Any]]:
     _annotate_resolved_scope_key(root, [])
 
     return candidates
+
+
+def apply_parent_overrides_to_scope_ranges(job_id: str, ranges: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Corrects each range's `scope_key` (its ancestor-key chain) for any
+    drag-and-drop reparenting — the one thing apply_to_scope_ranges above
+    deliberately doesn't touch (see the module note above
+    _apply_parent_overrides_to_tree). Without this, GET /scope-ranges keeps
+    reporting a moved node's PRE-move ancestor chain forever, which the
+    frontend's findActivePathKeys turns straight into activePathIds — so
+    clicking a moved node (or anything nested under one) force-expands its
+    stale old parent elsewhere in the sidebar (StructureTree.jsx's own
+    force-expand effect), not anything the reader actually asked for.
+
+    Cheap no-op when nothing's ever been dragged (the common case): only
+    pays for a full candidate fetch + tree rebuild when there are any
+    parent overrides to apply at all.
+    """
+    parent_overrides = get_parent_overrides(job_id)
+    if not parent_overrides:
+        return ranges
+
+    delta = database.get_reference_targets_since(job_id, since_version=-1)
+    merged = apply_to_references_delta(job_id, delta)
+    candidates: List[Dict[str, Any]] = []
+    for page, by_key in merged.items():
+        for key, rows in by_key.items():
+            for row in rows:
+                row = dict(row)
+                row.setdefault("page", page)
+                row.setdefault("key", key)
+                candidates.append(row)
+
+    root = _build_tree_from_candidates(candidates)
+    _apply_parent_overrides_to_tree(root, parent_overrides)
+
+    # (key, start_page) -> corrected ancestor-key chain, one entry per node
+    # with a primary occurrence of its own — a range's start_page is the
+    # page its container was first opened on, the same page its primary
+    # leaf carries, so this is the identity a range entry can be matched by.
+    corrected_scope_key_by_identity: Dict[Tuple[str, Optional[int]], str] = {}
+
+    def walk(node: Dict[str, Any], ancestor_keys: List[str]) -> None:
+        if node["key"] != "":
+            leaf = _primary_leaf(node)
+            if leaf is not None:
+                corrected_scope_key_by_identity[(node["key"], leaf.get("page"))] = "/".join(ancestor_keys)
+        next_ancestors = ancestor_keys if node["key"] == "" else ancestor_keys + [node["key"]]
+        for child in node["children"].values():
+            walk(child, next_ancestors)
+
+    walk(root, [])
+
+    for r in ranges:
+        corrected = corrected_scope_key_by_identity.get((r["key"], r.get("start_page")))
+        if corrected is not None:
+            r["scope_key"] = corrected
+    return ranges

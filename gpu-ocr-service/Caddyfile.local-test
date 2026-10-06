@@ -1,0 +1,34 @@
+# LOCAL TEST ONLY — frozen copy of Caddyfile's pre-Tailscale-consolidation
+# upstreams (localhost:*), kept here because docker-compose.local-test.yml
+# still runs its own tailscale sidecar and shares its network namespace, so
+# "localhost" is what resolves there — unlike prod's Caddyfile, which now
+# uses compose service-name DNS (ollama:11434, gpu-ocr-api:8000) since prod
+# dropped its tailscale sidecar. Keep this file in sync structurally with
+# Caddyfile (routes/auth logic), just with localhost upstreams instead.
+
+# Single external entry point for the whole GPU box (only one port, 11610, is
+# available on this machine — so both engines share it, routed by path).
+:11610 {
+	# Ollama has no auth of its own, so this path is gated here.
+	handle_path /ollama/* {
+		@authorized header X-Gpu-Ocr-Key {$GPU_OCR_SHARED_SECRET}
+		handle @authorized {
+			# Ollama validates the Host header and rejects anything that doesn't
+			# look local (a DNS-rebinding protection) — Caddy forwards the
+			# original client Host header by default, which Ollama then
+			# rejects with 403. Rewrite it to match what Ollama expects.
+			reverse_proxy localhost:11434 {
+				header_up Host localhost:11434
+			}
+		}
+		handle {
+			respond "Invalid or missing shared secret." 401
+		}
+	}
+	# Everything else (/api/v1/*, /health) goes to gpu-ocr-api, which already
+	# enforces the shared secret on its own /api/v1/* routes and intentionally
+	# leaves /health public.
+	handle {
+		reverse_proxy localhost:8000
+	}
+}
