@@ -6,6 +6,10 @@ vi.mock('../utils/AuthContext', () => ({
   useAuth: () => mockAuth,
 }));
 
+vi.mock('../utils/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }),
+}));
+
 import Header from './Header';
 
 const idleState = { label: 'idle', className: '', text: 'Session active' };

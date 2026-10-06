@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../utils/AuthContext';
+import { useTheme } from '../utils/ThemeContext';
+import { APP_NAME } from '../utils/appInfo';
 
 // Presentational only - the actual health check lives on the backend
 // (gpu_ocr_client.check_health(), surfaced via GET /health); this just maps
@@ -18,6 +20,7 @@ function gpuStatusDisplay(gpuStatus) {
 
 export default function Header({ idleState, gpuStatus, onExit }) {
   const { isAdmin, user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const { label, className, text } = idleState;
   const gpuDisplay = gpuStatusDisplay(gpuStatus);
 
@@ -38,8 +41,8 @@ export default function Header({ idleState, gpuStatus, onExit }) {
   return (
     <header>
       <div className="badge"><i className="fa-solid fa-shield-halved" /> Fail-Safe Persistent Service</div>
-      <h1>GLM-OCR &amp; Baidu Unlimited Engine</h1>
-      <p className="tagline">Survives browser refresh, tab closes &amp; connection drops.</p>
+      <h1>{APP_NAME}</h1>
+      <p className="tagline">Turns scanned documents into searchable, cross-referenced structure.</p>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div id="idlePill" className={className}>
           <i className="fa-solid fa-circle" style={{ fontSize: '0.5rem' }} /> {text ?? label}
@@ -54,6 +57,15 @@ export default function Header({ idleState, gpuStatus, onExit }) {
             <i className="fa-solid fa-power-off" /> Exit &amp; Free Memory
           </button>
         )}
+        <button
+          type="button"
+          className="theme-toggle-btn"
+          onClick={toggleTheme}
+          title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+          data-testid="theme-toggle-btn"
+        >
+          <i className={`fa-solid ${theme === 'light' ? 'fa-moon' : 'fa-sun'}`} />
+        </button>
         {user && (
           <div className="user-menu" ref={menuRef}>
             <button id="userMenuBtn" onClick={() => setMenuOpen((v) => !v)}>

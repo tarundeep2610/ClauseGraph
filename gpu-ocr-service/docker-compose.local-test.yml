@@ -5,6 +5,16 @@ version: "3.9"
 # running the CPU app. See ../run-local-test.ps1 and DEPLOYMENT.md's "Local
 # testing without a GPU" section. The prod file is docker-compose.yml — this
 # is identical to it except gpu-ocr-api has no GPU device reservation.
+#
+# NOTE: unlike the prod docker-compose.yml, this file DOES still run its own
+# tailscale sidecar. That's intentional — this file is meant for a personal
+# dev machine with no pre-existing host-level Tailscale login to conflict
+# with, so the "two Tailscale clients on one box" problem that prod's
+# docker-compose.yml was changed to avoid doesn't apply here. Don't copy
+# prod's tailscale-less pattern into this file unless this file also starts
+# running on a shared/conflicting host. Because this file keeps the shared
+# network namespace (and "localhost" upstreams), it uses its own
+# Caddyfile.local-test instead of the shared Caddyfile prod now uses.
 
 services:
   tailscale:
@@ -39,7 +49,7 @@ services:
     environment:
       - GPU_OCR_SHARED_SECRET=${GPU_OCR_SHARED_SECRET}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.local-test:/etc/caddy/Caddyfile:ro
     restart: unless-stopped
 
   gpu-ocr-api:

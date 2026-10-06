@@ -11,6 +11,10 @@ vi.mock('../utils/AuthContext', () => ({
   useAuth: () => ({ isAdmin: false }),
 }));
 
+vi.mock('../utils/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }),
+}));
+
 // PdfCanvasViewer is tested in its own file — here it's stubbed to expose
 // whatever `pdfSrc` Dashboard fed it (enough to tell a remote-job PDF apart
 // from a locally-selected one and to tell "loaded" apart from "nothing

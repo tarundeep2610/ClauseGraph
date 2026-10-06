@@ -11,6 +11,10 @@ vi.mock('../utils/AuthContext', () => ({
   useAuth: () => ({ isAdmin: false }),
 }));
 
+vi.mock('../utils/ThemeContext', () => ({
+  useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }),
+}));
+
 describe('Dashboard — job submission includes the new batch/escalation params', () => {
   beforeEach(() => {
     vi.clearAllMocks();

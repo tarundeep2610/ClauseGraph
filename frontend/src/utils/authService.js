@@ -1,4 +1,5 @@
 import { UserManager, WebStorageStateStore, User, Log } from 'oidc-client-ts';
+import { APP_NAME } from './appInfo';
 
 Log.setLogger(console);
 Log.setLevel(Log.WARN);
@@ -52,6 +53,11 @@ const settings = {
   extraQueryParams: {
     org_id: orgId || '',
     project_id: projectId || '',
+    // Lets the auth provider's own login/consent screen display this app's
+    // name — same param name tender_ai/frontend's authService.js sends
+    // (there sourced from a separate VITE_PROJECT_NAME; here it's the same
+    // APP_NAME already driving the header/tab title, one source of truth).
+    project_name: APP_NAME,
   },
 };
 
