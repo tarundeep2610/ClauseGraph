@@ -203,6 +203,62 @@ async def test_chunk_pages_override_wins_over_the_jobs_frozen_engine_params(monk
 
 
 @pytest.mark.asyncio
+async def test_overlap_pages_override_zero_wins_over_a_nonzero_default(monkeypatch):
+    """Regression guard for an or-chain trap found during this plan's own
+    audit: overlap=0 ("disable overlap") is a valid, meaningful value that
+    `overlap_pages_override or engine_params.get(...) or config...` would
+    silently discard in favor of a nonzero fallback, since 0 is falsy.
+    Resolved with an explicit `is not None` check instead — this test fails
+    loudly if that regresses back to `or`-chaining."""
+    monkeypatch.setattr(config, "AI_INDEX_CHUNK_OVERLAP_PAGES", 2)  # nonzero default/fallback
+    job_id = _job_with_ai_pages([
+        "page one", "page two", "page three", "page four", "page five", "page six",
+    ], chunk_pages=4)  # no ai_index_chunk_overlap_pages in engine_params -> falls to config unless overridden
+
+    seen_page_nums = []
+
+    async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
+                             include_pleading_points=False, **_rule_prior_kwargs):
+        seen_page_nums.append(list(chunk.page_nums))
+        return ChunkStructureResult(outcome=ChunkOutcome.EMPTY, page_nums=chunk.page_nums,
+                                     headings=[], provider="gemini", model="gemini-2.5-flash")
+
+    monkeypatch.setattr(ai_indexing.StructureIndexer, "extract_structure_for_chunk", _fake_extract)
+
+    result = await ai_reference_index.reindex_job_with_ai(job_id, overlap_pages_override=0)
+    assert result["status"] == "done"
+    # Strictly disjoint chunks (no repeated boundary pages) — if the 0
+    # override were discarded in favor of the config default of 2, chunk 2
+    # would start with pages [3, 4] repeated from chunk 1 instead.
+    assert seen_page_nums == [[1, 2, 3, 4], [5, 6]]
+
+
+@pytest.mark.asyncio
+async def test_review_rule_prior_override_false_wins_over_a_true_default(monkeypatch):
+    """Same or-chain trap, for the boolean knob: False must win over a True
+    engine_params/config fallback, since `False or True` would silently
+    pick True."""
+    monkeypatch.setattr(config, "AI_INDEX_REVIEW_RULE_PRIOR", True)  # truthy default/fallback
+    monkeypatch.setattr(config, "AI_INDEX_CHUNK_OVERLAP_PAGES", 0)
+    job_id = _job_with_ai_pages(["3.0 CONDITIONS\n\nbody text"], chunk_pages=5)
+    # no ai_index_review_rule_prior in engine_params -> falls to config (True) unless overridden
+
+    received_flags = []
+
+    async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
+                             include_pleading_points=False, rule_prior=None, review_rule_prior=False):
+        received_flags.append(review_rule_prior)
+        return ChunkStructureResult(outcome=ChunkOutcome.EMPTY, page_nums=chunk.page_nums,
+                                     headings=[], provider="gemini", model="gemini-2.5-flash")
+
+    monkeypatch.setattr(ai_indexing.StructureIndexer, "extract_structure_for_chunk", _fake_extract)
+
+    result = await ai_reference_index.reindex_job_with_ai(job_id, review_rule_prior_override=False)
+    assert result["status"] == "done"
+    assert received_flags == [False]
+
+
+@pytest.mark.asyncio
 async def test_paused_run_stops_between_chunks_and_resumes_without_reprocessing(monkeypatch):
     job_id = _job_with_ai_pages([
         "ANNEXURE A-1\n\nintro",

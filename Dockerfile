@@ -35,6 +35,7 @@ COPY reference_index.py .
 COPY ai_reference_index.py .
 COPY structure_overrides.py .
 COPY ai_indexing/ ./ai_indexing/
+COPY layout_format.py .
 COPY task_queue.py .
 COPY gpu_ocr_client.py .
 COPY chunking.py .

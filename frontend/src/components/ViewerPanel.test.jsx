@@ -101,6 +101,34 @@ describe('ViewerPanel — per-page confidence badges', () => {
   });
 });
 
+describe('ViewerPanel — formatted_text (layout-aware rendering) fallback', () => {
+  it('renders formatted_text instead of text when present', () => {
+    const job = jobWithPages([
+      { page: 1, text: '3.3 TIME SCHEDULE', formatted_text: '## 3.3 TIME SCHEDULE' },
+    ]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} />);
+    expect(screen.getByRole('heading', { name: '3.3 TIME SCHEDULE' })).toBeInTheDocument();
+  });
+
+  it('falls back to plain text when formatted_text is null (non-grounded page)', () => {
+    const job = jobWithPages([
+      { page: 1, text: 'Plain ungrounded page text', formatted_text: null },
+    ]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} />);
+    expect(screen.getByText('Plain ungrounded page text')).toBeInTheDocument();
+    // Markdown is rendered as a plain <p>, not promoted to a heading — the
+    // page's own "Page 1" label (an <h3> in the component's chrome) is
+    // unrelated to this and still present regardless.
+    expect(screen.getByText('Plain ungrounded page text').tagName).toBe('P');
+  });
+
+  it('falls back to plain text when formatted_text is absent entirely', () => {
+    const job = jobWithPages([{ page: 1, text: 'Page with no formatted_text key at all' }]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} />);
+    expect(screen.getByText('Page with no formatted_text key at all')).toBeInTheDocument();
+  });
+});
+
 describe('ViewerPanel — per-page Retry button', () => {
   it('shows Retry for the failed/review page, not for success/pending/processing, as the reader navigates through them', () => {
     const job = jobWithPages([

@@ -106,6 +106,53 @@ async def test_raw_ocr_text_is_persisted_alongside_the_cleaned_text(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_formatted_text_is_built_from_raw_text_and_text_is_unchanged(tmp_path):
+    """layout_format.build_formatted_markdown() output lands in its own
+    formatted_text column — `text` (what reference_index.py indexes) must
+    stay byte-identical to the plain OCR output, never the formatted
+    rewrite (a formatted blockquote/raw-HTML block yields zero blocks in
+    reference_index.py's parser, confirmed directly — writing it into
+    `text` would silently delete content from the cross-reference index)."""
+    job_id = _make_image_job(tmp_path)
+    raw = "<|det|>title [10, 10, 400, 40]<|/det|>3.3 TIME SCHEDULE"
+    runner = _RawCapturingRunner(text="3.3 TIME SCHEDULE", raw_text=raw)
+
+    await task_queue.process_ocr_job(job_id, run_ocr_func=None, run_unlimited_func=runner, prompts_dict={"document": "p"})
+
+    page = database.get_page(job_id, 1)
+    assert page["text"] == "3.3 TIME SCHEDULE"  # unchanged, indexing-safe
+    assert page["formatted_text"] == "## 3.3 TIME SCHEDULE"
+
+
+@pytest.mark.asyncio
+async def test_formatted_text_is_none_when_raw_text_has_no_tags(tmp_path):
+    """The GLM engine (and any Unlimited-OCR job run without grounding)
+    never emits <|det|> tags at all — formatted_text must stay NULL, the
+    documented fallback-to-`text` contract for the viewer/export."""
+    job_id = _make_image_job(tmp_path)
+    runner = _RawCapturingRunner(text="plain GLM text, no tags", raw_text="plain GLM text, no tags")
+
+    await task_queue.process_ocr_job(job_id, run_ocr_func=None, run_unlimited_func=runner, prompts_dict={"document": "p"})
+
+    page = database.get_page(job_id, 1)
+    assert page["formatted_text"] is None
+
+
+@pytest.mark.asyncio
+async def test_formatted_text_is_none_for_a_failed_page_placeholder(tmp_path):
+    """A failed page stores MANUAL_REVIEW_TEXT in `text` — there's nothing
+    real to format, so formatted_text must be None rather than formatting
+    the placeholder (or, worse, stale raw tags from a prior attempt)."""
+    job_id = _make_image_job(tmp_path)
+    runner = _ScriptedRunner(effects=[RuntimeError("boom")] * 10)
+
+    await task_queue.process_ocr_job(job_id, run_ocr_func=None, run_unlimited_func=runner, prompts_dict={"document": "p"})
+
+    page = database.get_page(job_id, 1)
+    assert page["formatted_text"] is None
+
+
+@pytest.mark.asyncio
 async def test_multipage_job_processes_all_pages_across_chunks(tmp_path):
     job_id = _make_multipage_pdf_job(tmp_path, n_pages=6, chunk_size=5)
     runner = _AlwaysCleanRunner()
@@ -139,6 +186,41 @@ async def test_low_confidence_page_escalates_exactly_once_then_succeeds(tmp_path
     assert len(attempts) == 2
     assert attempts[0]["escalation_level"] == "base"
     assert attempts[1]["escalation_level"] == "combined_recovery"
+
+
+class _SequencedRawCapturingRunner:
+    """Like _RawCapturingRunner, but returns a different (text, raw_text)
+    pair on each successive call — used to confirm the combined-recovery
+    escalation path (task_queue.py's own separate upsert_page call, not
+    score_and_store) builds formatted_text from *its own* raw_text, not a
+    stale value left over from the base pass."""
+    def __init__(self, pairs):
+        self.pairs = list(pairs)
+        self.calls = 0
+
+    async def __call__(self, pil_img, prompt, timeout, raw_capture=None):
+        text, raw_text = self.pairs[self.calls]
+        self.calls += 1
+        if raw_capture is not None:
+            raw_capture["raw_text"] = raw_text
+        return text
+
+
+@pytest.mark.asyncio
+async def test_combined_recovery_escalation_builds_its_own_formatted_text(tmp_path):
+    job_id = _make_image_job(tmp_path)
+    runner = _SequencedRawCapturingRunner([
+        ("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+         "<|det|>title [10, 10, 400, 40]<|/det|>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+        ("A clean and well-formed escalated result for this page.",
+         "<|det|>title [10, 10, 400, 40]<|/det|>A clean and well-formed escalated result for this page."),
+    ])
+
+    await task_queue.process_ocr_job(job_id, run_ocr_func=None, run_unlimited_func=runner, prompts_dict={"document": "p"})
+
+    page = database.get_page(job_id, 1)
+    assert page["text"] == "A clean and well-formed escalated result for this page."
+    assert page["formatted_text"] == "## A clean and well-formed escalated result for this page."
 
 
 @pytest.mark.asyncio

@@ -137,22 +137,38 @@ RESOLVING A GARBLED HEADING: "family_hint" AND "number_hint"
     "family_hint": "annexure"
     "number_hint": "A-1"
 
-OCR-LAYOUT ANNOTATIONS — WHEN PRESENT, A STRONG SIGNAL
+OCR-LAYOUT ANNOTATIONS — WHEN PRESENT, WEIGH THEM; NEVER LET THEM DECIDE ALONE
 - Some pages you are shown have each text block prefixed with a bracketed
   tag like "[OCR-LAYOUT: HEADER]" or "[OCR-LAYOUT: TITLE]" on its own line,
   immediately before the block's text. These come from the OCR engine's own
   visual layout classifier — a judgment about the block's position, size,
   and formatting on the original page image, made independently of what the
-  text actually says.
-- A block tagged HEADER or TITLE is strong evidence it is a real heading,
-  even if its OCR'd text is badly garbled or doesn't otherwise look like a
-  heading (e.g. "AmexureAl" tagged "[OCR-LAYOUT: HEADER]" is almost
-  certainly a heading despite being unreadable as text). Trust this layout
-  signal over your own text-shape judgment when the two conflict.
+  text actually says. Being purely visual, it has no idea whether a
+  prominent-looking block is actually structural or just a decorative line,
+  a running ornament, or a stray caption that happens to sit in a visually
+  prominent spot — only reading the block's own content and what surrounds
+  it can tell you that.
+- A block tagged HEADER or TITLE raises your prior that it's a real
+  heading — most usefully when the OCR'd text itself is too garbled to
+  judge on its own merits (e.g. "AmexureAl" tagged "[OCR-LAYOUT: HEADER]" is
+  almost certainly a heading despite being unreadable as text, since there's
+  nothing else to go on). But the tag must never settle a case the
+  surrounding context and the content-based tests above already argue
+  against. When the tag and the context disagree, read the blocks
+  immediately before and after and decide the way the rest of this prompt
+  already teaches — the same way you'd judge any other borderline case.
 - A block with no such tag, or tagged with a plain-text type (e.g.
   "[OCR-LAYOUT: TEXT]"), should NOT be treated as a heading on the strength
   of the tag alone — it is neutral, not negative; apply the usual rules
   above.
+- A tag may also carry an "INDENTED" marker (e.g. "[OCR-LAYOUT: TEXT,
+  INDENTED]") — the block sits noticeably right of the page's own main text
+  margin. This is often a sub-clause, a nested list item, or part of a
+  signature/address block, not a new top-level heading; its *absence* on a
+  TITLE/HEADER block is mild corroborating evidence (not proof) that the
+  block is a top-level section rather than something nested. Like the
+  type tag itself, weigh it alongside everything else — it never settles a
+  case by itself either.
 - Regardless of any tag, always report "heading_text" as the block's real
   OCR'd text verbatim (never include the "[OCR-LAYOUT: ...]" tag itself in
   "heading_text", and never paraphrase or "correct" the OCR text) — the tag

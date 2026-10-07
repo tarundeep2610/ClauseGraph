@@ -210,6 +210,8 @@ def _load_settings() -> dict:
         "enable_unlimited_grounding": config.ENABLE_UNLIMITED_GROUNDING,
         "enable_ai_indexing": config.AI_INDEXING_ENABLED,
         "ai_index_chunk_pages": config.AI_INDEX_CHUNK_PAGES,
+        "ai_index_review_rule_prior": config.AI_INDEX_REVIEW_RULE_PRIOR,
+        "ai_index_chunk_overlap_pages": config.AI_INDEX_CHUNK_OVERLAP_PAGES,
         "audit_sample_rate": config.OCR_AUDIT_SAMPLE_RATE,
         "audit_high_confidence_min": config.OCR_AUDIT_HIGH_CONFIDENCE_MIN,
         "audit_sample_cap_per_job": config.OCR_AUDIT_SAMPLE_CAP_PER_JOB,
@@ -446,6 +448,7 @@ def save_settings(body: dict, principal: Principal = Depends(_require_admin)):
     allowed_keys = (
         "output_path", "idle_timeout_minutes", "enable_unlimited_long_prompts",
         "enable_unlimited_grounding", "enable_ai_indexing", "ai_index_chunk_pages",
+        "ai_index_review_rule_prior", "ai_index_chunk_overlap_pages",
         "audit_sample_rate", "audit_high_confidence_min", "audit_sample_cap_per_job",
     )
     current.update({k: v for k, v in body.items() if k in allowed_keys})
@@ -614,6 +617,8 @@ async def submit_ocr_job(
         "ai_index_provider": (ai_config_summary or {}).get("provider"),
         "ai_index_model": (ai_config_summary or {}).get("model"),
         "ai_index_chunk_pages": int(settings.get("ai_index_chunk_pages", config.AI_INDEX_CHUNK_PAGES)),
+        "ai_index_review_rule_prior": bool(settings.get("ai_index_review_rule_prior", config.AI_INDEX_REVIEW_RULE_PRIOR)),
+        "ai_index_chunk_overlap_pages": int(settings.get("ai_index_chunk_overlap_pages", config.AI_INDEX_CHUNK_OVERLAP_PAGES)),
     })
 
     # Register job in DB (store original filename for display, safe_filename is the on-disk name)
@@ -785,9 +790,17 @@ async def reindex_job_references(
         ai_wanted = bool(current_settings.get("enable_ai_indexing", config.AI_INDEXING_ENABLED))
         resolved_mode = "ai" if (ai_wanted and ai_indexing.describe_active_config() is not None) else "rule"
     chunk_pages_override = current_settings.get("ai_index_chunk_pages")
+    # Both current (not frozen) settings, same reasoning as chunk_pages_override
+    # above — lets a reviewer A/B review-rule-prior and chunk-overlap on one
+    # job without creating a new one. `.get()` (not `or`) on purpose: both
+    # False and 0 are meaningful values a naive `or`-chain would discard.
+    review_rule_prior_override = current_settings.get("ai_index_review_rule_prior")
+    overlap_pages_override = current_settings.get("ai_index_chunk_overlap_pages")
 
     asyncio.create_task(reference_index.reindex_job(
         job_id, force_mode=resolved_mode, chunk_pages_override=chunk_pages_override,
+        review_rule_prior_override=review_rule_prior_override,
+        overlap_pages_override=overlap_pages_override,
     ))
     return {"message": f"Reference index rebuild started for job {job_id}.", "status": "reindexing"}
 
@@ -1384,7 +1397,12 @@ def download_ocr_result(
     # overlap so it never stitches; batch mode stitches only when it opted in.
     stitch = job.get('processing_mode') == 'batch' and bool(job.get('enable_overlap', True))
 
-    export_pages = [{"page": p["page_num"], "text": p.get("text", "")} for p in pages]
+    # formatted_text (headings/tables/columns) is preferred when present,
+    # same fallback contract as the viewer. Batch-mode/stitched exports never
+    # populate it today (batch processing doesn't thread raw_text through to
+    # the formatter), so this never interacts with seam_stitching's own
+    # overlap/seam detection in practice — that path always sees plain text.
+    export_pages = [{"page": p["page_num"], "text": p.get("formatted_text") or p.get("text", "")} for p in pages]
     body = seam_stitching.render_export(export_pages, clean_tables=clean_tables, stitch=stitch)
 
     if include == "all":

@@ -119,6 +119,33 @@ def test_prompt_teaches_ocr_layout_annotations():
     assert "layout classifier" in STRUCTURE_SYSTEM_PROMPT
 
 
+def test_prompt_weighs_the_layout_tag_rather_than_letting_it_override():
+    """Regression guard for a real bug in the prompt itself, found and
+    fixed separately from reference_index.build_layout_annotated_text's own
+    fix: the original wording told the model to "trust this layout signal
+    over your own text-shape judgment when the two conflict" — a purely
+    visual tag overriding the model's own contextual reading, backwards for
+    a centered-but-decorative block a human would only reject by reading
+    what surrounds it. The tag must raise the model's prior, never settle
+    the case outright."""
+    assert "Trust this layout signal over your own text-shape judgment" not in STRUCTURE_SYSTEM_PROMPT
+    assert "must never settle a case" in STRUCTURE_SYSTEM_PROMPT
+    assert "read the blocks" in STRUCTURE_SYSTEM_PROMPT
+    assert "immediately before and after" in STRUCTURE_SYSTEM_PROMPT
+    # The specific recall case the original wording protected must still be
+    # explained and still work the same way — garbled text with a HEADER/
+    # TITLE tag is still "almost certainly a heading".
+    assert "AmexureAl" in STRUCTURE_SYSTEM_PROMPT
+    assert "almost certainly a heading" in STRUCTURE_SYSTEM_PROMPT
+
+
+def test_prompt_documents_the_indented_marker_as_a_weighted_signal_too():
+    assert "INDENTED" in STRUCTURE_SYSTEM_PROMPT
+    assert "[OCR-LAYOUT: TEXT,\n  INDENTED]" in STRUCTURE_SYSTEM_PROMPT
+    assert "never settles a" in STRUCTURE_SYSTEM_PROMPT
+    assert "case by itself either" in STRUCTURE_SYSTEM_PROMPT
+
+
 def test_prompt_states_the_recall_over_precision_principle():
     """2.0: the general design principle governing every subsequent rule —
     when uncertain, report and flag, never silently omit."""

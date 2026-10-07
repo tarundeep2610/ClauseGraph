@@ -185,6 +185,7 @@ async def run_trial(
     review_flag: bool,
     chunk_pages: "int | None" = None,
     pleading_points_via_ai: "bool | None" = None,
+    overlap_pages: "int | None" = None,
 ) -> Dict[str, float]:
     dup_id = duplicate_job(source_job_id, chunk_pages=chunk_pages)
     try:
@@ -193,6 +194,12 @@ async def run_trial(
             engine_param_updates["ai_index_review_rule_prior"] = True
         if pleading_points_via_ai is not None:
             engine_param_updates["ai_index_pleading_points_via_ai"] = pleading_points_via_ai
+        # Explicit `is not None`, not `if overlap_pages:` — 0 ("disable
+        # overlap") is itself one of the arms being measured and must not
+        # be treated as "no override given" (the same or-chain trap this
+        # plan's audit found and fixed in reindex_job_with_ai itself).
+        if overlap_pages is not None:
+            engine_param_updates["ai_index_chunk_overlap_pages"] = overlap_pages
         if engine_param_updates:
             _set_engine_params(dup_id, engine_param_updates)
 
@@ -230,6 +237,7 @@ async def main_async():
     parser.add_argument("--trials", type=int, default=3, help="Number of trials per configuration")
     parser.add_argument("--enable-review", action="store_true", help="Enable ai_index_review_rule_prior flag")
     parser.add_argument("--chunk-pages", type=int, default=None, help="Override ai_index_chunk_pages on each duplicate")
+    parser.add_argument("--overlap-pages", type=int, default=None, help="Override ai_index_chunk_overlap_pages on each duplicate (0 disables overlap)")
     pleading_group = parser.add_mutually_exclusive_group()
     pleading_group.add_argument("--pleading-points-via-ai", dest="pleading_points_via_ai", action="store_true", default=None, help="Force ai_index_pleading_points_via_ai on")
     pleading_group.add_argument("--no-pleading-points-via-ai", dest="pleading_points_via_ai", action="store_false", help="Force ai_index_pleading_points_via_ai off (tests the prompt-contradiction hypothesis)")
@@ -239,12 +247,16 @@ async def main_async():
     print(f"Loaded gold fixture with {len(gold.get('targets', []))} targets, {len(gold.get('mentions', []))} mentions")
     print(
         f"Running {args.trials} trials with review_flag={args.enable_review}, "
-        f"chunk_pages={args.chunk_pages}, pleading_points_via_ai={args.pleading_points_via_ai}..."
+        f"chunk_pages={args.chunk_pages}, overlap_pages={args.overlap_pages}, "
+        f"pleading_points_via_ai={args.pleading_points_via_ai}..."
     )
 
     results: List[Dict[str, float]] = []
     for i in range(1, args.trials + 1):
-        res = await run_trial(args.job_id, gold, i, args.enable_review, args.chunk_pages, args.pleading_points_via_ai)
+        res = await run_trial(
+            args.job_id, gold, i, args.enable_review, args.chunk_pages,
+            args.pleading_points_via_ai, args.overlap_pages,
+        )
         results.append(res)
 
     # Spread across trials, not just the mean — a single run (good or bad)

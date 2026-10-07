@@ -962,19 +962,25 @@ async def review_mentions_for_job(job_id: str, engine_params: Optional[Dict[str,
 
 async def reindex_job_with_ai(
     job_id: str, start_page: Optional[int] = None, chunk_pages_override: Optional[int] = None,
+    review_rule_prior_override: Optional[bool] = None, overlap_pages_override: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Full-job AI reindex, chunked, with per-chunk fallback to the
     rule-based detector. `start_page`, when given, is a targeted re-run
     (triggered after a single page's manual retry) rather than a full
     rebuild — see the bounded/early-stop logic below.
 
-    `chunk_pages_override`, when given, wins over both the job's own frozen
-    `engine_params.ai_index_chunk_pages` and the config default — used by a
-    manual "Rebuild Cross-References" call (main.py), which always wants the
-    CURRENT chunk-size setting, not whatever was frozen at this job's
-    original creation time (the same reasoning already applied to
+    `chunk_pages_override`, `review_rule_prior_override`, and
+    `overlap_pages_override`, when given, each win over both the job's own
+    frozen `engine_params` and the config default — used by a manual
+    "Rebuild Cross-References" call (main.py), which always wants the
+    CURRENT settings, not whatever was frozen at this job's original
+    creation time (the same reasoning already applied to
     `enable_ai_indexing` there). The always-rule-based auto-trigger right
-    after OCR never passes this, so it stays pinned to the frozen value.
+    after OCR never passes any of these, so it stays pinned to frozen
+    values. `review_rule_prior_override`/`overlap_pages_override` are
+    resolved with explicit `is not None` checks, never `or`-chaining —
+    `False` and `0` are both meaningful values an `or`-chain would silently
+    discard in favor of the engine_params/config fallback.
 
     Every page's indexing input is picked automatically, once, by
     `_page_text`/`reference_index.build_layout_annotated_text` — there is
@@ -983,11 +989,12 @@ async def reindex_job_with_ai(
     carries Unlimited-OCR's `<|det|>type [bbox]<|/det|>` layout tags when
     the job ran with grounding enabled: grounding/persistence always use
     the plain cleaned `text`, and a richer, self-explanatory
-    `[OCR-LAYOUT: ...]`-annotated version (built from `raw_ocr_text` when
-    present and block-aligned) is used ONLY for what gets sent to the AI
-    model's prompt — never a second, separately-stored index. A page OCR'd
-    without grounding has no tags in `raw_ocr_text` at all, so this is a
-    silent no-op (the AI sees the same plain `text` as everything else).
+    `[OCR-LAYOUT: ...]`-annotated version (built straight from `raw_ocr_text`
+    when present, via layout_format.parse_blocks — no alignment with `text`
+    needed or attempted) is used ONLY for what gets sent to the AI model's
+    prompt — never a second, separately-stored index. A page OCR'd without
+    grounding has no tags in `raw_ocr_text` at all, so this is a silent
+    no-op (the AI sees the same plain `text` as everything else).
 
     Checkpoint/resume (start_page=None only — a targeted retry always runs
     from its own explicit start_page): a prior run of THIS function that
@@ -1019,7 +1026,14 @@ async def reindex_job_with_ai(
     # path. Ships behind this flag for A/B testing before becoming the
     # default, mirroring pleading_points_via_ai's own rollout above.
     resolve_parent_via_ai = bool(engine_params.get("ai_index_resolve_parent_via_ai", False))
-    review_rule_prior = bool(engine_params.get("ai_index_review_rule_prior", config.AI_INDEX_REVIEW_RULE_PRIOR))
+    review_rule_prior = (
+        review_rule_prior_override if review_rule_prior_override is not None
+        else bool(engine_params.get("ai_index_review_rule_prior", config.AI_INDEX_REVIEW_RULE_PRIOR))
+    )
+    overlap_pages = (
+        overlap_pages_override if overlap_pages_override is not None
+        else engine_params.get("ai_index_chunk_overlap_pages", config.AI_INDEX_CHUNK_OVERLAP_PAGES)
+    )
     review_mentions = bool(engine_params.get("ai_index_review_mentions", False))
 
     try:
@@ -1060,7 +1074,7 @@ async def reindex_job_with_ai(
     chunks = ai_indexing.plan_chunks(
         page_inputs,
         max_pages=chunk_pages_size,
-        overlap_pages=config.AI_INDEX_CHUNK_OVERLAP_PAGES,
+        overlap_pages=overlap_pages,
     )
     total_chunks = len(chunks)
     bounded_stop = start_page is not None

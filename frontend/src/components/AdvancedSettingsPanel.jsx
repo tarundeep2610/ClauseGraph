@@ -15,6 +15,8 @@ export default function AdvancedSettingsPanel({
   onSaveGrounding,
   onSaveAiIndexing,
   onSaveAiChunkPages,
+  onSaveAiReviewRulePrior,
+  onSaveAiChunkOverlapPages,
   aiIndexStatus,
   onTestAiConnection,
 }) {
@@ -26,6 +28,8 @@ export default function AdvancedSettingsPanel({
   const [longPromptsSaved, setLongPromptsSaved] = useState(false);
   const [groundingSaved, setGroundingSaved] = useState(false);
   const [aiIndexingSaved, setAiIndexingSaved] = useState(false);
+  const [aiReviewRulePriorSaved, setAiReviewRulePriorSaved] = useState(false);
+  const [aiChunkOverlapSaved, setAiChunkOverlapSaved] = useState(false);
   const [aiTestResult, setAiTestResult] = useState(null);
   const [aiTesting, setAiTesting] = useState(false);
 
@@ -326,17 +330,16 @@ export default function AdvancedSettingsPanel({
                   Ask Unlimited-OCR for layout/region tags (grounding)
                 </label>
                 <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
-                  When off (default), Unlimited-OCR processes the page as one global
-                  view with no per-region output. Turning this on switches it into its
-                  "gundam" config instead (cropping the page into regions at a different
-                  resolution) — confirmed, via a direct test against the model, to make
-                  it tag each block with its type and bounding box, feeding the
-                  Structure tree's layout-confidence signal. This changes image
-                  preprocessing for every page of new jobs and future retries, and has
-                  only been verified on one real page so far — worth checking output
-                  quality and timing on a few more before relying on it broadly. Jobs
-                  already in progress keep whatever was frozen in at their own creation
-                  time.
+                  On by default. Unlimited-OCR runs in its "gundam" config
+                  (cropping the page into regions) instead of one global view —
+                  confirmed, via direct tests against the model, to make it tag
+                  each block with its type and bounding box, feeding both the
+                  Structure tree's layout-confidence signal and the formatted
+                  Markdown output (headings, tables, columns). Uncheck this for
+                  a specific job to fall back to the faster single-pass mode
+                  (no per-block tags, so that job's output stays plain text).
+                  Jobs already in progress keep whatever was frozen in at their
+                  own creation time.
                 </p>
                 {groundingSaved && <span className="flash-saved"><i className="fa-solid fa-check" /> Saved</span>}
               </div>
@@ -372,9 +375,66 @@ export default function AdvancedSettingsPanel({
                   <label>Pages per AI call</label>
                   <input
                     type="number" min="1" max="50"
-                    defaultValue={settings.ai_index_chunk_pages || 5}
-                    onBlur={(e) => onSaveAiChunkPages(parseInt(e.target.value, 10) || 5)}
+                    defaultValue={settings.ai_index_chunk_pages || 3}
+                    onBlur={(e) => onSaveAiChunkPages(parseInt(e.target.value, 10) || 3)}
                   />
+                </div>
+              )}
+
+              {!!settings.enable_ai_indexing && (
+                <div className="form-group">
+                  <label>Chunk overlap (pages)</label>
+                  <input
+                    type="number" min="0" max={Math.max((settings.ai_index_chunk_pages || 3) - 1, 0)}
+                    defaultValue={settings.ai_index_chunk_overlap_pages ?? 0}
+                    onBlur={(e) => onSaveAiChunkOverlapPages(parseInt(e.target.value, 10) || 0)}
+                    data-testid="ai-chunk-overlap-input"
+                  />
+                  <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
+                    Re-sends this many boundary pages to the next chunk so a
+                    missed/truncated heading gets a second look. Measured
+                    (qwen3:8b, 3 trials/arm, see
+                    AI_INDEXING_REVIEW_OVERLAP_MEASUREMENT.md): overlap 0/1/2
+                    scored within the same band on precision/recall — no
+                    accuracy benefit found — while higher overlap costs real
+                    extra calls (~28-39% more chunks at overlap 2 vs 0 on a
+                    larger document). Default changed to 0 accordingly.
+                    Frozen per job at creation time; "Rebuild
+                    Cross-References" always uses the current value instead.
+                  </p>
+                  {aiChunkOverlapSaved && <span className="flash-saved"><i className="fa-solid fa-check" /> Saved</span>}
+                </div>
+              )}
+
+              {!!settings.enable_ai_indexing && (
+                <div className="form-group">
+                  <label className="check-row" style={{ textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!settings.ai_index_review_rule_prior}
+                      onChange={(e) => {
+                        onSaveAiReviewRulePrior(e.target.checked);
+                        flash(setAiReviewRulePriorSaved);
+                      }}
+                      data-testid="enable-ai-review-rule-prior-checkbox"
+                    />
+                    Review rule-based detector's draft headings with AI (measured worse — off by default, kept as an opt-in experiment)
+                  </label>
+                  <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
+                    When on, the rule-based detector's own headings are shown
+                    to the AI as a draft to confirm, reject (with a verbatim
+                    quote), or correct — rather than the AI judging headings
+                    from scratch. Measured (qwen3:8b, 3 trials/arm, see
+                    AI_INDEXING_REVIEW_OVERLAP_MEASUREMENT.md): precision
+                    dropped sharply with this on (means 0.39-0.63 vs 0.94-0.98
+                    off) and real structural errors (family-drift) appeared
+                    that never happened with it off — on this model, this
+                    made results worse, not better. Left as a per-job toggle
+                    for further experimentation, not a recommended setting.
+                    Frozen per job at creation time; "Rebuild
+                    Cross-References" always uses the current value instead.
+                  </p>
+                  {aiReviewRulePriorSaved && <span className="flash-saved"><i className="fa-solid fa-check" /> Saved</span>}
                 </div>
               )}
 

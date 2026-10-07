@@ -113,12 +113,15 @@ ENABLE_UNLIMITED_LONG_PROMPTS = os.environ.get("ENABLE_UNLIMITED_LONG_PROMPTS", 
 # model's own save_results=True output file is already stripped of tags by
 # the vendor's own infer() before it's written — the tags only ever exist
 # in the raw generation stream, which is now what raw_text is sourced from.
-# Off by default: gated the same way as ENABLE_UNLIMITED_LONG_PROMPTS
-# above — runtime-overridable via app_settings; this constant is only the
-# fallback default. Kept opt-in (not a default) because gundam mode changes
-# image preprocessing for every page and has only been verified on one
-# real page so far — timing/quality at scale is still unverified.
-ENABLE_UNLIMITED_GROUNDING = os.environ.get("ENABLE_UNLIMITED_GROUNDING", "false").strip().lower() == "true"
+# On by default: gated the same way as ENABLE_UNLIMITED_LONG_PROMPTS above —
+# runtime-overridable via app_settings; this constant is only the fallback
+# default. Originally opt-in-only (gundam mode changes image preprocessing
+# for every page and was measured at 2-4x slower per page at the time) — a
+# real-job measurement on the current GPU service (18.1s/page) found gundam
+# mode far cheaper than that, so the per-job checkbox now defaults to on,
+# with per-job opt-out still available for anyone who wants the faster
+# single-pass mode for a specific job.
+ENABLE_UNLIMITED_GROUNDING = os.environ.get("ENABLE_UNLIMITED_GROUNDING", "true").strip().lower() == "true"
 
 # ─── DB durability/performance ─────────────────────────────────────────────────
 OCR_DB_BUSY_TIMEOUT_MS = int(os.environ.get("OCR_DB_BUSY_TIMEOUT_MS", "5000"))
@@ -143,8 +146,26 @@ AI_INDEX_MODEL = os.environ.get("AI_INDEX_MODEL", "gemini-2.5-flash")
 AI_INDEX_BASE_URL = os.environ.get("AI_INDEX_BASE_URL", "")
 AI_INDEX_API_KEY = os.environ.get("AI_INDEX_API_KEY", "")
 
-AI_INDEX_CHUNK_PAGES = int(os.environ.get("AI_INDEX_CHUNK_PAGES", "5"))
-AI_INDEX_CHUNK_OVERLAP_PAGES = int(os.environ.get("AI_INDEX_CHUNK_OVERLAP_PAGES", "2"))
+# Was 5. Measured (AI_INDEXING_CHUNK_SIZE_MEASUREMENT.md, qwen3:8b via
+# rokkaai, 5 trials at chunk_pages=3 vs. 5 at chunk_pages=10 and 4 valid at
+# chunk_pages=5, review_rule_prior=off, overlap=0, on the 17-page gold
+# fixture): chunk_pages=3 had the best mean precision (0.781 vs 0.700/0.666)
+# and recall (0.754 vs 0.696/0.710), and was the only size with zero
+# family-drift incidents across every trial (chunk_pages=10 produced one
+# FamilyDrift=8 episode). Trial-to-trial variance at every size tested is
+# real and substantial (chunk3 alone ranged 0.651-0.837 precision across 5
+# trials) — this is the known non-deterministic-recall problem, not unique
+# to this setting. Costs ~3.3x more AI calls than chunk_pages=10 for the
+# same document; accepted given the accuracy/stability difference.
+# Re-measure before changing again, especially on a different model.
+AI_INDEX_CHUNK_PAGES = int(os.environ.get("AI_INDEX_CHUNK_PAGES", "3"))
+# Was 2. Measured (AI_INDEXING_REVIEW_OVERLAP_MEASUREMENT.md, qwen3:8b via
+# rokkaai, 3 trials/arm on the 17-page gold fixture): overlap 0/1/2 scored
+# within the same band on precision/recall/scope-accuracy — no measurable
+# accuracy benefit from overlap — while overlap 2 costs ~28-39% more chunks
+# than 0 on a larger document. Changed to 0 since there's no accuracy reason
+# left to pay that cost. Re-measure before changing again.
+AI_INDEX_CHUNK_OVERLAP_PAGES = int(os.environ.get("AI_INDEX_CHUNK_OVERLAP_PAGES", "0"))
 AI_INDEX_CHUNK_CHARS_MAX = int(os.environ.get("AI_INDEX_CHUNK_CHARS_MAX", "60000"))
 AI_INDEX_PAGE_CHARS_MAX = int(os.environ.get("AI_INDEX_PAGE_CHARS_MAX", "12000"))
 # How many neighboring pages (each direction, within the same chunk) to

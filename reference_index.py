@@ -24,7 +24,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import mistune
 
+import config
 import database
+import layout_format
 
 # ─── Vocabulary & pattern definitions ──────────────────────────────────────────
 
@@ -1843,28 +1845,52 @@ def parse_page_blocks(page_text: str) -> List[str]:
 
 def build_layout_annotated_text(clean_text: str, raw_text: Optional[str]) -> str:
     """Builds a page's text annotated with the OCR engine's own per-block
-    layout classification (see parse_layout_blocks) — for the AI-assisted
-    indexer's PROMPT INPUT ONLY (ai_reference_index.py). Grounding and
-    persistence must keep using the plain `clean_text` unchanged, never
-    this annotated form, so a heading string the AI echoes back can still
-    be located against real page blocks.
+    layout classification — for the AI-assisted indexer's PROMPT INPUT ONLY
+    (ai_reference_index.py). Grounding and persistence must keep using the
+    plain `clean_text` unchanged, never this annotated form, so a heading
+    string the AI echoes back can still be located against real page blocks.
 
-    Falls back to `clean_text` unchanged, silently, whenever `raw_text` is
-    absent or its parsed layout-block count doesn't line up 1:1 with
-    `clean_text`'s own parsed blocks — never guess which block a layout
-    type belongs to. Same layout_aligned gate build_targets_for_page's own
-    confidence scoring already relies on."""
+    Sourced entirely from layout_format.parse_blocks(raw_text) — type,
+    position, and content all come from that one parse, so there is no
+    cross-referencing against clean_text's separately-parsed blocks and
+    therefore no alignment to fail. The previous implementation required
+    parse_layout_blocks(raw_text)'s block count to match
+    parse_page_blocks(clean_text)'s mistune-parsed block count 1:1, falling
+    back silently to plain clean_text otherwise — the same alignment
+    fragility measured elsewhere at ~38% success on real pages (empty-content
+    `image` tags dropped on one side, table-cell splitting mismatched on the
+    other). Falls back to `clean_text` only when there's genuinely no tag
+    data to work with (raw_text absent, or no parseable blocks at all).
+
+    Each block also gets an `INDENTED` marker when it sits notably right of
+    the page's own text margin (layout_format.is_indented) — an additional,
+    weighted signal for the model's own judgment, documented in
+    ai_indexing/prompt.py's OCR-LAYOUT section as corroborating, never
+    overriding."""
     if not raw_text:
         return clean_text
-    layout_blocks = parse_layout_blocks(raw_text)
-    blocks = parse_page_blocks(clean_text)
-    if not layout_blocks or len(layout_blocks) != len(blocks):
+    blocks = layout_format.parse_blocks(raw_text)
+    if not blocks:
         return clean_text
+    median_x1 = layout_format.page_median_x1(blocks)
     parts = []
-    for block_text, lb in zip(blocks, layout_blocks):
-        ltype = (lb.get("type") or "").strip().upper() or "TEXT"
-        parts.append(f"[OCR-LAYOUT: {ltype}]\n{block_text}")
-    return "\n\n".join(parts)
+    for b in blocks:
+        if not b.text:
+            continue
+        ltype = (b.type or "").strip().upper() or "TEXT"
+        if layout_format.is_indented(b, median_x1):
+            ltype = f"{ltype}, INDENTED"
+        parts.append(f"[OCR-LAYOUT: {ltype}]\n{b.text}")
+    out = "\n\n".join(parts)
+    # Truncation guard — load-bearing, not a precaution. plan_chunks()
+    # (ai_indexing/prompt.py) already clips clean_text to
+    # AI_INDEX_PAGE_CHARS_MAX and appends this same marker so the model
+    # knows it saw a partial page; raw_text runs up to ~3x the length of
+    # clean_text, so rebuilding from it without this guard would silently
+    # bypass both the clip and the model's own awareness of truncation.
+    if len(out) > config.AI_INDEX_PAGE_CHARS_MAX:
+        out = out[:config.AI_INDEX_PAGE_CHARS_MAX] + "\n\n[... page truncated for length ...]"
+    return out
 
 
 # ─── Mention detection & resolution (server-side badge index) ─────────────────
@@ -3158,6 +3184,8 @@ def _compute_scope_ranges_uncached(job_id: str, total_pages: int) -> List[Dict[s
 async def reindex_job(
     job_id: str, force_mode: Optional[str] = None, start_page: Optional[int] = None,
     chunk_pages_override: Optional[int] = None,
+    review_rule_prior_override: Optional[bool] = None,
+    overlap_pages_override: Optional[int] = None,
 ):
     """Dispatches to the rule-based or AI-based full reindex depending on
     the job's frozen engine_params.ai_indexing_enabled (or force_mode, for
@@ -3169,8 +3197,9 @@ async def reindex_job(
     cheap enough that a partial-rebuild optimization isn't worth the extra
     code path.
 
-    `chunk_pages_override`, also AI-path-only, is passed straight through to
-    ai_reference_index.reindex_job_with_ai — see its docstring.
+    `chunk_pages_override`, `review_rule_prior_override`, and
+    `overlap_pages_override`, all AI-path-only, are passed straight through
+    to ai_reference_index.reindex_job_with_ai — see its docstring.
 
     There is no caller-facing choice between Unlimited-OCR's raw `<|det|>`-
     tagged capture and the plain cleaned text as indexing input — the AI
@@ -3192,6 +3221,8 @@ async def reindex_job(
             import ai_reference_index
             await ai_reference_index.reindex_job_with_ai(
                 job_id, start_page=start_page, chunk_pages_override=chunk_pages_override,
+                review_rule_prior_override=review_rule_prior_override,
+                overlap_pages_override=overlap_pages_override,
             )
         else:
             await _reindex_job_rule_based(job_id)

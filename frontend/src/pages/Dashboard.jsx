@@ -822,6 +822,22 @@ export default function Dashboard() {
     });
     if (resp.ok) setSettings((s) => ({ ...s, ai_index_chunk_pages: pages }));
   }
+  async function handleSaveAiReviewRulePrior(enabled) {
+    const resp = await apiFetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ai_index_review_rule_prior: enabled }),
+    });
+    if (resp.ok) setSettings((s) => ({ ...s, ai_index_review_rule_prior: enabled }));
+  }
+  async function handleSaveAiChunkOverlapPages(pages) {
+    const resp = await apiFetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ai_index_chunk_overlap_pages: pages }),
+    });
+    if (resp.ok) setSettings((s) => ({ ...s, ai_index_chunk_overlap_pages: pages }));
+  }
   async function loadAiIndexStatus() {
     const resp = await apiFetch('/api/ai-index/status');
     if (resp.ok) setAiIndexStatus(await resp.json());
@@ -866,6 +882,8 @@ export default function Dashboard() {
             onSaveGrounding={handleSaveGrounding}
             onSaveAiIndexing={handleSaveAiIndexing}
             onSaveAiChunkPages={handleSaveAiChunkPages}
+            onSaveAiReviewRulePrior={handleSaveAiReviewRulePrior}
+            onSaveAiChunkOverlapPages={handleSaveAiChunkOverlapPages}
             aiIndexStatus={aiIndexStatus}
             onTestAiConnection={handleTestAiConnection}
           />
