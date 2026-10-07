@@ -156,9 +156,20 @@ export default function ViewerPanel({
   } else {
     const data = pageMap.get(currentPdfPage);
     if (data) {
+      // formatted_text (headings/tables/columns, built from the OCR
+      // engine's raw layout tags) is preferred when present — NULL for any
+      // page OCR'd without grounding, or before this capture existed, which
+      // falls back to the plain text exactly as before. Note: a block
+      // rendered as a blockquote (indentation) or inside a raw HTML table
+      // (columns) isn't walked by renderPageMarkdown's mention-anchor
+      // matcher below (same paragraph/heading/list/table-only walk
+      // reference_index.py's own block parser uses) — a mention inside one
+      // of those stays visible but loses its click-to-jump anchor; the rest
+      // of the page is unaffected.
+      const pageText = data.formatted_text || data.text || '';
       currentPageBlock = {
         page: currentPdfPage,
-        bodyHtml: referenceStore ? renderPageMarkdown(data.text || '', data.page, referenceStore) : renderMarkdown(data.text || ''),
+        bodyHtml: referenceStore ? renderPageMarkdown(pageText, data.page, referenceStore) : renderMarkdown(pageText),
         data,
       };
     } else {

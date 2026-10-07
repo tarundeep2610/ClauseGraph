@@ -11,6 +11,7 @@ import chunking
 import confidence
 import context_primer
 import database
+import layout_format
 import reference_index
 from gpu_ocr_client import GPUServiceAuthError, GPUServiceError
 
@@ -341,14 +342,28 @@ async def process_ocr_job(
                 # message instead of a raw traceback/error string in the exported
                 # transcript - the real detail is preserved in the `error` column.
                 stored_text = text
+                is_real_text = True
                 if status != "success" or score.signals.get("engine_error_in_output"):
                     error = error or text or ''
                     stored_text = MANUAL_REVIEW_TEXT
+                    is_real_text = False
+                # Layout-aware rewrite of `text` (headings/tables/columns),
+                # built straight from raw_text's own <|det|> tags — stored in
+                # its own column, never in `text` itself (reference_index.py's
+                # block parser yields zero blocks for a blockquote or a raw
+                # HTML wrapper, so writing this into `text` would silently
+                # delete content from the cross-reference index). None
+                # whenever there's no usable tag data, or `text` isn't the
+                # real OCR output (a placeholder has nothing to format).
+                formatted_text = (
+                    layout_format.build_formatted_markdown(raw_text, stored_text=stored_text)
+                    if is_real_text else None
+                )
                 database.upsert_page(
                     job_id, page_num, status=final_status, text=stored_text, confidence=score.confidence,
                     needs_review=int(score.needs_review), review_reason=(score.reasons[0] if score.reasons else ''),
                     signals=__import__("json").dumps(score.signals), attempts=attempts, source=source,
-                    error=error or '', raw_ocr_text=raw_text,
+                    error=error or '', raw_ocr_text=raw_text, formatted_text=formatted_text,
                 )
                 database.record_page_attempt(
                     job_id, page_num, attempt_no=1, escalation_level="base", engine=engine, scale=scale,
@@ -614,15 +629,24 @@ async def _escalate_page(job_id, page_num, engine, run_ocr_func, run_unlimited_f
         # whatever attempt came before this one).
         stored_text = text
         stored_error = error or ''
+        is_real_text = True
         if new_score.signals.get("engine_error_in_output"):
             stored_error = error or text or ''
             stored_text = MANUAL_REVIEW_TEXT
+            is_real_text = False
+        # Same reasoning and contract as score_and_store()'s own
+        # formatted_text computation above — separate column, built from
+        # raw_text, never written into `text`.
+        formatted_text = (
+            layout_format.build_formatted_markdown(raw_capture.get("raw_text"), stored_text=stored_text)
+            if is_real_text else None
+        )
         database.upsert_page(
             job_id, page_num, status=final_status, text=stored_text, confidence=new_score.confidence,
             needs_review=int(new_score.needs_review),
             review_reason=(new_score.reasons[0] if new_score.reasons else ''),
             signals=__import__("json").dumps(new_score.signals), escalated=1,
-            error=stored_error, raw_ocr_text=raw_capture.get("raw_text"),
+            error=stored_error, raw_ocr_text=raw_capture.get("raw_text"), formatted_text=formatted_text,
         )
         job_for_total = database.get_job(job_id, include_pages=False)
         total_pages = (job_for_total or {}).get('total_pages') or page_num

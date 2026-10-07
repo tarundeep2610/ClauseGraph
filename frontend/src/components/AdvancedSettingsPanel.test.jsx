@@ -190,3 +190,67 @@ describe('AdvancedSettingsPanel — Unlimited-OCR grounding toggle', () => {
     expect(screen.queryByTestId('enable-grounding-checkbox')).not.toBeInTheDocument();
   });
 });
+
+describe('AdvancedSettingsPanel — AI-indexing review-rule-prior & chunk-overlap knobs', () => {
+  const aiIndexingOnProps = {
+    ...baseProps,
+    settings: { ...baseProps.settings, enable_ai_indexing: true, ai_index_chunk_pages: 7 },
+    onSaveAiReviewRulePrior: vi.fn(),
+    onSaveAiChunkOverlapPages: vi.fn(),
+  };
+
+  it('both controls are absent when AI indexing itself is off', () => {
+    mockIsAdmin = true;
+    render(<AdvancedSettingsPanel {...baseProps} />);
+    expect(screen.queryByTestId('enable-ai-review-rule-prior-checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByText('Chunk overlap (pages)')).not.toBeInTheDocument();
+  });
+
+  it('review-rule-prior checkbox is unchecked by default and saves on toggle', () => {
+    mockIsAdmin = true;
+    render(<AdvancedSettingsPanel {...aiIndexingOnProps} />);
+    const checkbox = screen.getByTestId('enable-ai-review-rule-prior-checkbox');
+    expect(checkbox.checked).toBe(false);
+    checkbox.click();
+    expect(aiIndexingOnProps.onSaveAiReviewRulePrior).toHaveBeenCalledWith(true);
+  });
+
+  it('review-rule-prior checkbox reflects settings.ai_index_review_rule_prior=true as checked', () => {
+    mockIsAdmin = true;
+    render(
+      <AdvancedSettingsPanel
+        {...aiIndexingOnProps}
+        settings={{ ...aiIndexingOnProps.settings, ai_index_review_rule_prior: true }}
+      />
+    );
+    expect(screen.getByTestId('enable-ai-review-rule-prior-checkbox').checked).toBe(true);
+  });
+
+  it('is hidden for a non-admin user even with AI indexing on', () => {
+    mockIsAdmin = false;
+    render(<AdvancedSettingsPanel {...aiIndexingOnProps} />);
+    expect(screen.queryByTestId('enable-ai-review-rule-prior-checkbox')).not.toBeInTheDocument();
+  });
+
+  it('chunk-overlap input defaults to 0 (measured: no accuracy benefit from overlap) and saves the typed value on blur', () => {
+    mockIsAdmin = true;
+    render(<AdvancedSettingsPanel {...aiIndexingOnProps} />);
+    const input = screen.getByTestId('ai-chunk-overlap-input');
+    expect(input.value).toBe('0');
+    input.focus();
+    Object.defineProperty(input, 'value', { value: '2', configurable: true });
+    input.blur();
+    expect(aiIndexingOnProps.onSaveAiChunkOverlapPages).toHaveBeenCalledWith(2);
+  });
+
+  it('chunk-overlap input reflects a persisted value of 2, not the 0 default', () => {
+    mockIsAdmin = true;
+    render(
+      <AdvancedSettingsPanel
+        {...aiIndexingOnProps}
+        settings={{ ...aiIndexingOnProps.settings, ai_index_chunk_overlap_pages: 2 }}
+      />
+    );
+    expect(screen.getByTestId('ai-chunk-overlap-input').value).toBe('2');
+  });
+});

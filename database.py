@@ -188,6 +188,23 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # column already exists
 
+    # Migrate existing databases that predate formatted_text — a layout-aware
+    # rewrite of `text` (headings, tables, columns) built from raw_ocr_text's
+    # <|det|> tags by layout_format.build_formatted_markdown(). NULL whenever
+    # there's no usable tag data (non-grounded jobs, GLM engine, batch mode,
+    # or any page OCR'd before this capture existed) — consumers (viewer,
+    # export) fall back to `text` on NULL, so this is always safe. Deliberately
+    # a separate column, never a rewrite of `text` itself: reference_index.py's
+    # mistune-based block parser yields zero blocks for a blockquote or a raw
+    # HTML wrapper (confirmed directly against the model), so formatted
+    # Markdown written into `text` would silently vanish from the
+    # cross-reference index. `text` must stay exactly what it is today.
+    try:
+        cursor.execute("ALTER TABLE ocr_pages ADD COLUMN formatted_text TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ocr_reference_targets (
             job_id TEXT NOT NULL,
@@ -819,7 +836,7 @@ def upsert_page(job_id: str, page_num: int, **fields):
         "chunk_id", "is_boundary", "status", "text", "confidence", "needs_review",
         "review_reason", "signals", "attempts", "escalated", "source",
         "overlap_alt_text", "primer_source_page", "duration_ms", "reviewed_by",
-        "reviewed_at", "original_text", "error", "raw_ocr_text",
+        "reviewed_at", "original_text", "error", "raw_ocr_text", "formatted_text",
     }
     cols = [k for k in fields if k in allowed]
     if not cols:
