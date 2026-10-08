@@ -190,8 +190,7 @@ async def run_trial(
     dup_id = duplicate_job(source_job_id, chunk_pages=chunk_pages)
     try:
         engine_param_updates = {}
-        if review_flag:
-            engine_param_updates["ai_index_review_rule_prior"] = True
+        engine_param_updates["ai_index_review_rule_prior"] = bool(review_flag)
         if pleading_points_via_ai is not None:
             engine_param_updates["ai_index_pleading_points_via_ai"] = pleading_points_via_ai
         # Explicit `is not None`, not `if overlap_pages:` — 0 ("disable
@@ -210,7 +209,8 @@ async def run_trial(
             f"Trial {trial_idx}: status={res.get('status')} | "
             f"Target P={scores['target_precision']:.3f} R={scores['target_recall']:.3f} "
             f"ScopeAcc={scores['scope_accuracy']:.3f} FamilyDrift={scores['family_drift_count']} | "
-            f"Mention P={scores['mention_precision']:.3f} R={scores['mention_recall']:.3f}"
+            f"Mention P={scores['mention_precision']:.3f} R={scores['mention_recall']:.3f}",
+            flush=True,
         )
         return scores
     finally:

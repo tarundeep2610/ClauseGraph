@@ -416,6 +416,97 @@ async def _resolve_parent_via_ai(
     return _parse_parent_choice_answer(completion.text, len(candidate_labels))
 
 
+_COLON_INTRO_RE = re.compile(r':\s*(?:[-–—]|->)?\s*$|[-–—]\s*>\s*$')
+_SUBLIST_MARKER_RE = re.compile(r'^\s*\(?(?P<marker>[a-zA-Z]|[ivxlcdmIVXLCDM]+)(?:\)\.?|\.)\s+(?P<text>\S.*)$')
+
+
+def _is_noise_or_footer(text: str) -> bool:
+    s = text.strip()
+    if not s or s.startswith("⏱️") or re.match(r"^\s*\d+\s*$", s) or re.match(r"^\s*[-–—]?\s*[:\.]\s*\d+", s):
+        return True
+    if re.search(r"\.(?:doc|docx|pdf|txt)\b", s, re.I):
+        return True
+    if re.match(r"^!\[.*?\]\(.*?\)$", s):
+        return True
+    return False
+
+
+def _clean_block(text: str) -> str:
+    s = re.sub(r"<\|/?det\|>.*?<\|/?det\|>", "", text)
+    s = re.sub(r"<\|[^>]*\|>", "", s)
+    return s.strip()
+
+
+def _recover_colon_sublists_in_chunk(
+    headings: List[Any], page_blocks: Dict[int, List[str]]
+) -> List[Any]:
+    if not headings or not page_blocks:
+        return headings
+
+    sorted_pages = sorted(page_blocks.keys())
+    existing_norms = {_norm_for_match(h.heading_text) for h in headings}
+    new_headings: List[Any] = []
+
+    for h in headings:
+        new_headings.append(h)
+        stripped = h.heading_text.strip()
+        if not _COLON_INTRO_RE.search(stripped) or stripped.lower().startswith("note:"):
+            continue
+
+        start_p = h.start_page
+        if start_p not in page_blocks:
+            continue
+        h_blocks = page_blocks[start_p]
+        loc = locate_heading_block(h_blocks, h.heading_text, used_block_idxs=set())
+        if loc is None:
+            continue
+        found_idx = loc[0]
+
+        curr_p_idx = sorted_pages.index(start_p) if start_p in sorted_pages else -1
+        if curr_p_idx == -1:
+            continue
+
+        consecutive_run = []
+        stopped = False
+
+        for p_idx in range(curr_p_idx, len(sorted_pages)):
+            if stopped:
+                break
+            p_num = sorted_pages[p_idx]
+            p_b_list = page_blocks[p_num]
+            b_start = (found_idx + 1) if p_idx == curr_p_idx else 0
+            for b_i in range(b_start, len(p_b_list)):
+                block_raw = p_b_list[b_i]
+                if _is_noise_or_footer(block_raw):
+                    continue
+                block_clean = _clean_block(block_raw)
+                m = _SUBLIST_MARKER_RE.match(block_clean)
+                if m:
+                    consecutive_run.append((p_num, block_clean, m.group("marker")))
+                else:
+                    if _COLON_INTRO_RE.search(block_clean) and len(block_clean.split()) <= 20:
+                        continue
+                    stopped = True
+                    break
+
+        if len(consecutive_run) >= 2:
+            for run_p, run_clean, marker in consecutive_run:
+                run_norm = _norm_for_match(run_clean)
+                if run_norm not in existing_norms:
+                    existing_norms.add(run_norm)
+                    synth_h = ai_indexing.AIHeading(
+                        heading_text=run_clean[:200],
+                        start_page=run_p,
+                        parent_ref=h.heading_text,
+                        level=h.level + 1,
+                        family_hint="point",
+                        number_hint=marker.lower(),
+                    )
+                    new_headings.append(synth_h)
+
+    return new_headings
+
+
 async def _ground_and_resolve_chunk(
     headings: List[Any],  # List[ai_indexing.AIHeading], already normalized + sorted by start_page
     page_blocks: Dict[int, List[str]],
@@ -431,6 +522,7 @@ async def _ground_and_resolve_chunk(
     resolve against the same state apply_heading_events_to_scope will later
     reconstruct for real. Returns ({page_num: [event, ...]}, warning_counts)."""
     headings = _dedupe_same_page_headings(headings)
+    headings = _recover_colon_sublists_in_chunk(headings, page_blocks)
 
     # Parent container end_page extension: a container cannot close before its children.
     heading_lookup = {_norm_for_match(h.heading_text): h for h in headings}
@@ -470,6 +562,15 @@ async def _ground_and_resolve_chunk(
 
     for h in headings:
         is_subdoc_root = reference_index.is_subdoc_root_candidate(h.heading_text, h.family_hint)
+        # Container-aware Table of Contents suppression
+        is_inside_toc = (
+            bool(h.parent_ref) and h.parent_ref.strip().upper() in ("INDEX", "TABLE OF CONTENTS")
+        ) or (
+            any(lbl.strip().upper() in ("INDEX", "TABLE OF CONTENTS") for lbl in sim_stack_labels)
+            and (h.start_page <= 2 or not is_subdoc_root)
+        )
+        if is_inside_toc and h.heading_text.strip().upper() not in ("INDEX", "TABLE OF CONTENTS"):
+            continue
         depth, warn = _resolve_depth_for_heading(
             h.parent_ref, h.level, carry_ref_map, chunk_heading_depths, sim_stack_len,
             carry_label_map=carry_label_map,

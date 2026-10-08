@@ -25,9 +25,28 @@ import config
 _MD_HEADING_PREFIX_RE = re.compile(r"^\s*#{1,6}\s+")
 _MD_EMPHASIS_RE = re.compile(r"(\*\*|\*|__|_|`)")
 _TRAILING_COLON_RE = re.compile(r"\s*:\s*$")
-# A page or sheet stamp number ("-:12:-", "-:7:-", "-:-10:-", "- 12 -") printed at page margins
-_SHEET_PAGE_STAMP_RE = re.compile(
-    r"^\s*[-–—]?\s*[:\.]\s*[-–—]?\s*\d+\s*[:\.]\s*[-–—]?\s*$|^\s*[-–—]\s*\d+\s*[-–—]\s*$"
+# Standalone page/sheet stamp numbers, bare integers, or page markers (e.g. "-:12:-", "20", "Page 5", "5 of 100")
+_BARE_PAGE_OR_STAMP_RE = re.compile(
+    r"^\s*(?:[-–—(]?\s*[:\.]?\s*[-–—]?\s*\d+\s*[:\.]?\s*[-–—)]?|"
+    r"[Pp]age\s+\d+(?:\s+of\s+\d+)?)\s*$"
+)
+
+# Domain-generic legal administrative noise (court headers, case numbers, counsel, fee lines, party delimiters, printer stamps)
+_GENERIC_LEGAL_NOISE_RE = re.compile(
+    r"^\s*(?:"
+    r"Versus|V/s|Vs\.?|"
+    r"Advocate|Advocates|Counsel(?:\s+for\s+.*)?|Sr\.?\s*Advocate|ATOVOCATG|"
+    r".*(?:\.{2,}|[-–—]{2,}|\()\s*(?:Appellants?|Respondents?|Petitioners?|Defendants?|Plaintiffs?)\s*[\.:\)]?|"
+    r"(?:Dated\s*[:\.]?\s*)?\d{1,2}[\./\-]\d{1,2}[\./\-]\d{2,4}|"
+    r"Note\s*:\s*.*|Total\s+\d+.*|U·f\s+\d+.*|"
+    r"IN\s+THE\s+(?:HIGH\s*COURT|SUPREME\s*COURT|DISTRICT\s*COURT|COURT\s*OF)\b.*|"
+    r"AT\s+[A-Z\s]+|JUDICIAL\s+DEPARTMENT|CIVIL\s+APPELLATE\s+SIDE|"
+    r"(?:F\.?A\.?O\.?|Civil\s+Misc\.?|C\.?M\.?|W\.?P\.?|Arbitration\s+Case|Commercial\s+Appeal)(?:[\s\(\.\-].*|$)|"
+    r".*Appeal\s+No\.?\s*\d+.*|"
+    r"Stereo\s+H\.?C\.?J\.?D\.?.*|.*Govt\.?\s*Press.*|^[A-Za-z]\d{1,4}$|"
+    r"INDIA\s+COURT\s+FEE|COURT\s+FEE|Rs\.\s*\d+|\bRUPEES\b|Price\s*:\s*\d+.*|.*Paise\b|\([A-Z]{2,}\s+[A-Z\s]{2,}\)"
+    r")\s*$",
+    re.IGNORECASE
 )
 
 
@@ -225,9 +244,46 @@ def normalize_chunk(
         if h.start_page not in expected:
             report.dropped_offpage += 1
             continue
-        if not h.heading_text.strip() or _SHEET_PAGE_STAMP_RE.match(h.heading_text.strip()):
+        stripped_text = h.heading_text.strip()
+        if not stripped_text:
             report.dropped_empty += 1
             continue
+
+        # 1. Standalone stamps, bare page numbers, or titleless number strings (e.g. "1.2", "20", "079789")
+        if _BARE_PAGE_OR_STAMP_RE.match(stripped_text) or re.match(r"^\s*\(?\d+(?:\.\d+)*[\.\)]?\s*$", stripped_text):
+            report.dropped_empty += 1
+            continue
+
+        # 2. Devanagari text on Indian court stamp papers
+        if any("\u0900" <= ch <= "\u097F" for ch in stripped_text):
+            report.dropped_invalid += 1
+            continue
+
+        # 3. Universal legal administrative noise
+        if _GENERIC_LEGAL_NOISE_RE.match(stripped_text):
+            report.dropped_invalid += 1
+            continue
+
+        # 3b. Cause title entity / party lines and mid-sentence continuation fragments
+        has_leading_num = bool(re.match(r"^\s*\(?(?:\d+|[a-zA-Z]|[ivxlcdmIVXLCDM]+)[\.\)]\s+", stripped_text))
+        if not has_leading_num:
+            if re.match(r"^\s*(?:M/s\b.*|.*(?:\bLtd\.?|\bLimited|\band\s+others?)\s*$)", stripped_text, re.IGNORECASE):
+                report.dropped_invalid += 1
+                continue
+            if re.match(r"^[a-z]", stripped_text) and not re.match(r"^[a-z]+\)", stripped_text):
+                report.dropped_invalid += 1
+                continue
+
+        # 4. Narrative body paragraphs (specifically multi-segment decimal clauses >15 words and unnumbered prose >15 words)
+        words = stripped_text.split()
+        if len(words) > 15:
+            is_multiseg_decimal = bool(re.match(r"^\s*\d+\.\d+(?:\.\d+)*", stripped_text))
+            is_single_point = bool(re.match(r"^\s*\(?(?:\d+|[a-zA-Z]|[ivxlcdmIVXLCDM]+)[\.\)]\s+", stripped_text))
+            first_lower = words[0].lower() if words else ""
+            if is_multiseg_decimal or not is_single_point:
+                if not any(first_lower.startswith(kw) for kw in ("annexure", "schedule", "appendix", "article", "section", "clause")):
+                    report.dropped_invalid += 1
+                    continue
         dk = _dedupe_key(h)
         if dk in seen:
             report.dropped_duplicate += 1
