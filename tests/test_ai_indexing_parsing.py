@@ -128,8 +128,15 @@ def test_one_overlong_heading_does_not_discard_the_rest_of_the_chunk():
     far past any sane length. Pydantic's max_length used to reject the
     WHOLE headings array atomically on that one item, discarding 9 other
     genuinely good headings in the same response and falling the entire
-    chunk back to rules. Must now just truncate that one item instead."""
-    overlong = "3.4.1 " + ("The contractor is responsible for ensuring compliance. " * 10)
+    chunk back to rules. Must now just truncate that one item instead.
+
+    Uses a single-segment numbered paragraph (pleading-point shaped, not a
+    multi-segment decimal contract clause) so normalize_chunk's narrative-
+    prose filter (added later, see test_overlong_narrative_prose_paragraph_
+    is_dropped_not_truncated below) doesn't also fire here — this test is
+    specifically about the truncate-vs-discard-the-whole-array bug, not
+    about which shapes count as narrative prose."""
+    overlong = "16. " + ("It is further argued that the delay was attributable to the respondent. " * 8)
     raw = json.dumps({"headings": [
         {"heading_text": "ANNEXURE A-1", "start_page": 1, "level": 1},
         {"heading_text": overlong, "start_page": 5, "level": 2},
@@ -139,6 +146,24 @@ def test_one_overlong_heading_does_not_discard_the_rest_of_the_chunk():
     assert len(chunk.headings) == 3
     assert chunk.headings[1].heading_text == overlong[:300]
     assert report.dropped_invalid == 0
+
+
+def test_overlong_narrative_prose_paragraph_is_dropped_not_truncated():
+    """Fix #4 ('Narrative Prose vs. Outline Paragraph Discrimination',
+    AI_INDEXING_ACCURACY_INVESTIGATION.md §11.2): a multi-segment decimal
+    clause (here "3.4.1 ...") that reads as a verb-bearing body paragraph
+    (>15 words) is dropped entirely by normalize_chunk, not truncated and
+    kept — unlike the single-segment pleading-point case above, which is
+    legitimately a heading even when long. The other two genuine headings
+    in the same response must still survive untouched."""
+    overlong = "3.4.1 " + ("The contractor is responsible for ensuring compliance. " * 10)
+    raw = json.dumps({"headings": [
+        {"heading_text": "ANNEXURE A-1", "start_page": 1, "level": 1},
+        {"heading_text": overlong, "start_page": 5, "level": 2},
+        {"heading_text": "4.0 SETTLEMENT OF DISPUTES", "start_page": 6, "level": 1},
+    ]})
+    chunk, _report = parse_structure_response(raw, expected_pages=[1, 5, 6])
+    assert [h.heading_text for h in chunk.headings] == ["ANNEXURE A-1", "4.0 SETTLEMENT OF DISPUTES"]
 
 
 def test_a_genuinely_malformed_item_is_dropped_not_fatal():

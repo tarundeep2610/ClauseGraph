@@ -308,6 +308,7 @@ _ROMAN_VALID_LETTERS = set("IVXLCDM")
 # document... ii) HVPN Technical Specification..."), invisible entirely
 # under the previous regex set. See the `subpoint` family/gate below.
 _SUBPOINT_ROMAN_RE = re.compile(r"^\s*(?P<numeral>[ivxlcdm]+)\)\s+[A-Z]")
+_SUBLIST_MARKER_RE = re.compile(r"^\s*\(?(?P<marker>[a-zA-Z]|[ivxlcdmIVXLCDM]+)(?:\)\.?|\.)\s+(?P<text>\S.*)$")
 
 
 def _resolve_ground_or_point_match(
@@ -3047,19 +3048,48 @@ def mint_key_for_heading(
     # asserted this line is a heading, so a longer label must not be
     # silently rejected the way an unproven text heuristic would need to.
     dm = _DECIMAL_NUMBER_HEAD_RE.match(stripped)
-    if dm:
+    if dm and not _is_date_shaped_number(dm.group("number")):
         number = dm.group("number")
-        segments = _numseg(number)
-        key = f"numheading:{number}"
         label_part = stripped[dm.end():].strip()
-        own_label = f"{number} {label_part}" if label_part else number
-        return "numheading", key, own_label, segments, boundary_ordinal
+        # Must have a substantive label (e.g. "1.1 SCOPE" or "2.0 CONTRACT DOCUMENTS").
+        # A bare number ("1.2") without a label is rejected.
+        if len(label_part) >= 2:
+            segments = _numseg(number)
+            key = f"numheading:{number}"
+            own_label = f"{number} {label_part}"
+            return "numheading", key, own_label, segments, boundary_ordinal
 
     lm = re.match(r"^\s*(?P<letter>[A-Z])\.\s+(?P<label>.+)$", stripped)
     if lm:
         letter = lm.group("letter")
         key = f"letterheading:{letter}"
         return "letterheading", key, f"{letter}. {lm.group('label').strip()}", None, boundary_ordinal
+
+    # Gated on family_hint, not a bare shape match: _SUBLIST_MARKER_RE matches
+    # ANY lettered/roman-prefixed line ("(A) ...", "(i) ...", "a. ..."), which
+    # is also exactly the shape apply_heading_events_to_scope's forced_family
+    # mechanism conservatively falls through to the generic subdoc bucket for
+    # whenever _resolve_ground_or_point_match can't confidently place it (no
+    # active ground/pleading scope, or the text doesn't fit that resolver's
+    # shape). A bare `sm` match with no family_hint used to also fire this
+    # branch — confirmed regression (tests/test_ai_reference_index_stack_machine.py,
+    # 3 cases): it intercepted genuine real sub-headings outside any
+    # grounds/pleading/colon-recovery context (e.g. "(i)" under a plain
+    # "Article 1", or a sequential-letter run under "GROUNDS OF APPEAL" that
+    # the ground/point resolver itself declined to resolve) and flattened them
+    # to `point` leaves instead of letting them fall through to become real
+    # containers — exactly the fallback the surrounding design already relies
+    # on. family_hint is only ever set by the AI itself or by
+    # _recover_colon_sublists_in_chunk's synthesized headings, so requiring it
+    # restricts this branch to what it was actually built for.
+    sm = _SUBPOINT_ROMAN_RE.match(stripped) or _SUBLIST_MARKER_RE.match(stripped)
+    if family_hint in ("point", "subpoint") and (number_hint or sm):
+        marker = number_hint.lower() if number_hint else (
+            sm.group("numeral").lower() if ("numeral" in sm.groupdict() and sm.group("numeral")) else sm.group("marker").lower()
+        )
+        key = f"point:{marker}"
+        own_label = stripped
+        return "point", key, own_label, None, boundary_ordinal
 
     # Last resort before the generic subdoc bucket: the AI's own hint for
     # a heading nothing above could parse at all — see this function's
@@ -3251,7 +3281,9 @@ def apply_heading_events_to_scope(
         # — so a later roman-valid letter appeared to nest under whichever
         # non-roman letter was most recently pushed, every time.
         forced_family = None
-        if _ground_scope_active(nested_stack):
+        if ev.get("family_hint") in ("point", "ground"):
+            forced_family = ev.get("family_hint")
+        elif _ground_scope_active(nested_stack):
             forced_family = "ground"
         elif _pleading_scope_active(nested_stack):
             forced_family = "point"
@@ -3270,6 +3302,8 @@ def apply_heading_events_to_scope(
                     bare_digit_m = re.match(r"^\s*\(?(?P<number>\d+)(?:\.|\))?\s*$", stripped_text)
                     if bare_digit_m and not _is_date_shaped_number(bare_digit_m.group("number")):
                         resolved = (bare_digit_m.group("number"), bare_digit_m.end(), False)
+                    elif ev.get("number_hint"):
+                        resolved = (ev["number_hint"], len(stripped_text), False)
             if resolved is None:
                 forced_family = None
 
