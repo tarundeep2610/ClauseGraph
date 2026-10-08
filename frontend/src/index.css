@@ -536,6 +536,13 @@ input[type="range"]::-webkit-slider-thumb {
   color: var(--muted); border-style: dashed; background: rgba(var(--overlay), 0.04);
 }
 .page-reference-badge--approximate:hover { background: rgba(var(--overlay), 0.08); }
+/* Undefined reference — code/term found on the page with no definition
+   anywhere in the document. Rendered as a visually-distinct, non-navigating pill. */
+.page-reference-badge--undefined {
+  color: var(--muted); border-style: dotted; background: transparent;
+  cursor: default; opacity: 0.75;
+}
+.page-reference-badge--undefined:hover { background: transparent; }
 
 .structure-tree-wrap { display: flex; flex-direction: column; gap: 8px; }
 .structure-tree-toolbar { display: flex; justify-content: flex-end; }

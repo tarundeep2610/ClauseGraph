@@ -181,6 +181,7 @@ class _OpenAIChatProvider(BaseProvider):
             self._client = AsyncOpenAI(
                 api_key=self.cfg.api_key.get_secret_value(),
                 base_url=self.cfg.base_url or self.default_base_url,
+                default_headers=self.cfg.extra.get("extra_headers") or None,
             )
         return self._client
 

@@ -48,6 +48,7 @@ export default function PageReferenceBadges({ mentions, referenceStore, scopeRan
   if (!mentions || mentions.length === 0) return null;
 
   function handleBadgeClick(mention) {
+    if (mention.undefined) return;
     const { exact, approximate } = resolveMention(referenceStore, mention.key);
     if (exact.length + approximate.length === 0) return;
     // Only an EXACT single candidate is safe to auto-open — a candidate
@@ -80,7 +81,14 @@ export default function PageReferenceBadges({ mentions, referenceStore, scopeRan
         <button
           key={mention.key}
           type="button"
-          className={`page-reference-badge${mention.approximate ? ' page-reference-badge--approximate' : ''}`}
+          className={`page-reference-badge${
+            mention.undefined
+              ? ' page-reference-badge--undefined'
+              : mention.approximate
+                ? ' page-reference-badge--approximate'
+                : ''
+          }`}
+          disabled={Boolean(mention.undefined)}
           onClick={() => handleBadgeClick(mention)}
           data-testid={`page-reference-badge-${mention.key}`}
         >

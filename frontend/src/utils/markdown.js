@@ -75,6 +75,63 @@ function normalizeKey(keyword, prefixRaw, numberRaw) {
   return `${family}:${prefixPart}${number}`;
 }
 
+// ─── Docref & Defined-Term vocabulary (mirrors reference_index.py) ────────────
+
+const DOCREF_LABEL_ALTS =
+  'technical specification|specification|tender enquiry|enquiry|tender|' +
+  'bidding document|bid(?:ding)?|proposal|offer|quotation|purchase order|' +
+  'work order|letter of award|letter|memo(?:randum)?|file|invoice|agreement|' +
+  'contract|claim|arbitration case|case|award|order|misc(?:ellaneous)?';
+
+const DOCREF_BARE_NUMERIC_LABELS = new Set(['claim', 'case', 'arbitration case']);
+
+const DOCREF_START_RE = new RegExp(`\\b(?:${DOCREF_LABEL_ALTS})\\b`, 'i');
+
+const DOCREF_MENTION_RE = new RegExp(
+  `^\\b(${DOCREF_LABEL_ALTS})\\b\\.?[\\s-]*Nos?\\.?[\\s-]*:?\\s*([A-Za-z0-9](?:[A-Za-z0-9()\\-]|/(?:\\s*)?){0,49}(?:\\s+\\([A-Za-z0-9/()\\-]+\\))?)`,
+  'i'
+);
+
+export function normalizeDocrefCode(code) {
+  const clean = code.trim().replace(/[.,;:\-/ ]+$/, '');
+  return clean.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+}
+
+export function docrefKey(code) {
+  return `docref:${normalizeDocrefCode(code).toLowerCase()}`;
+}
+
+export function isPlausibleDocrefCode(code, label) {
+  const cleanCode = code.trim().replace(/[.,;:\-/ ]+$/, '');
+  if (!cleanCode) return false;
+  if (cleanCode.includes('<|') || cleanCode.includes('|>') || cleanCode.toLowerCase().includes('det')) return false;
+  if (!/\d/.test(cleanCode)) return false;
+  const norm = normalizeDocrefCode(cleanCode);
+  if (!norm) return false;
+  const normLabel = label.toLowerCase().trim();
+  if (['page', 'clause', 'section', 'article'].includes(normLabel)) return false;
+  if (/^\d+$/.test(norm)) {
+    if (DOCREF_BARE_NUMERIC_LABELS.has(normLabel)) {
+      return norm.length >= 1 && norm.length <= 4;
+    }
+    return false;
+  }
+  return true;
+}
+
+export function normalizeTermKey(term) {
+  const clean = term.trim().replace(/^the\s+/i, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  return clean;
+}
+
+export function termKey(term) {
+  return `term:${normalizeTermKey(term)}`;
+}
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -97,7 +154,7 @@ function leafText(token) {
   // xref token during lexing, before this fingerprint pass ever runs on the
   // same shared token tree. `raw` preserves the original matched substring,
   // so plain-text reconstruction stays correct regardless of linkification.
-  if (token.type === 'xref') return token.raw || '';
+  if (token.type === 'xref' || token.type === 'docxref' || token.type === 'termxref') return token.raw || '';
   if (Array.isArray(token.tokens)) return token.tokens.map(leafText).join('');
   return '';
 }
@@ -220,6 +277,179 @@ function createXrefExtension(pageNum, store) {
   };
 }
 
+function tryMatchDocXref(src, pageNum, store) {
+  const m = DOCREF_MENTION_RE.exec(src);
+  if (!m) return null;
+  const [raw, label, codeRaw] = m;
+  const code = codeRaw.trim().replace(/[.,;:\-/ ]+$/, '');
+  if (!isPlausibleDocrefCode(code, label)) return null;
+
+  let key = docrefKey(code);
+  const pageMentions = store?.mentionsByPage?.get(pageNum);
+  if (pageMentions) {
+    const matchingMention = pageMentions.find(
+      (item) => item.key.startsWith('docref:') && (item.raw_text === raw || item.raw === raw || item.key === key)
+    );
+    if (matchingMention) {
+      if (matchingMention.resolution === 'suppressed') return null;
+      key = matchingMention.key;
+    } else {
+      const verdicts = pageMentions.filter((item) => item.key === key);
+      if (verdicts.length > 0 && verdicts.every((item) => item.resolution === 'suppressed')) {
+        return null;
+      }
+    }
+  }
+
+  return { type: 'docxref', raw, key, label, code };
+}
+
+export function createDocXrefExtension(pageNum, store) {
+  return {
+    name: 'docxref',
+    level: 'inline',
+    start(src) {
+      const m = DOCREF_START_RE.exec(src);
+      return m ? m.index : undefined;
+    },
+    tokenizer(src) {
+      return tryMatchDocXref(src, pageNum, store) || undefined;
+    },
+    renderer(token) {
+      const { exact, approximate } = resolveMention(store, token.key);
+      if (exact.length + approximate.length === 0) {
+        return escapeHtml(token.raw);
+      }
+      const pageMentions = store?.mentionsByPage?.get(pageNum);
+      const serverVerdict = pageMentions?.find(
+        (item) => item.key === token.key && item.resolution !== 'suppressed',
+      );
+      const isApproximate = serverVerdict
+        ? serverVerdict.resolution === 'approximate'
+        : exact.length === 0;
+      const cls = isApproximate ? 'xref-link xref-link--approximate' : 'xref-link';
+      return `<a href="#" class="${cls}" data-xref-key="${escapeAttr(token.key)}">${escapeHtml(token.raw)}</a>`;
+    },
+  };
+}
+
+function getActiveTermDefinitions(store, pageNum) {
+  const termsMap = new Map();
+  if (store?.byExactKey) {
+    for (const k of store.byExactKey.keys()) {
+      if (k.startsWith('term:')) {
+        const name = k.slice(5).trim();
+        if (name) termsMap.set(name, k);
+      }
+    }
+  }
+  const pageMentions = store?.mentionsByPage?.get(pageNum);
+  if (pageMentions) {
+    for (const m of pageMentions) {
+      if (m.key?.startsWith('term:')) {
+        const name = m.key.slice(5).trim();
+        if (name && !termsMap.has(name)) termsMap.set(name, m.key);
+      }
+    }
+  }
+  return termsMap;
+}
+
+export function createTermXrefExtension(pageNum, store) {
+  const termsMap = getActiveTermDefinitions(store, pageNum);
+  if (!termsMap.size) {
+    return {
+      name: 'termxref',
+      level: 'inline',
+      start() { return undefined; },
+      tokenizer() { return undefined; },
+      renderer(token) { return escapeHtml(token.raw); },
+    };
+  }
+
+  const shortTerms = [];
+  const longTerms = [];
+  for (const name of termsMap.keys()) {
+    if (name.length <= 4) {
+      shortTerms.push(name.toUpperCase());
+    } else {
+      longTerms.push(name);
+    }
+  }
+  shortTerms.sort((a, b) => b.length - a.length);
+  longTerms.sort((a, b) => b.length - a.length);
+
+  const shortPat = shortTerms.length ? shortTerms.map(escapeRegex).join('|') : null;
+  const longPat = longTerms.length ? longTerms.map(escapeRegex).join('|') : null;
+
+  const shortGlobalRe = shortPat ? new RegExp(`\\b(?:${shortPat})\\b`, 'g') : null;
+  const longGlobalRe = longPat ? new RegExp(`\\b(?:${longPat})\\b`, 'gi') : null;
+
+  const shortAnchorRe = shortPat ? new RegExp(`^\\b(?:${shortPat})\\b`) : null;
+  const longAnchorRe = longPat ? new RegExp(`^\\b(?:${longPat})\\b`, 'i') : null;
+
+  return {
+    name: 'termxref',
+    level: 'inline',
+    start(src) {
+      let minIndex = undefined;
+      if (shortGlobalRe) {
+        shortGlobalRe.lastIndex = 0;
+        const m = shortGlobalRe.exec(src);
+        if (m) minIndex = m.index;
+      }
+      if (longGlobalRe) {
+        longGlobalRe.lastIndex = 0;
+        const m = longGlobalRe.exec(src);
+        if (m && (minIndex === undefined || m.index < minIndex)) {
+          minIndex = m.index;
+        }
+      }
+      return minIndex;
+    },
+    tokenizer(src) {
+      let raw = null;
+      if (shortAnchorRe) {
+        const m = shortAnchorRe.exec(src);
+        if (m) raw = m[0];
+      }
+      if (!raw && longAnchorRe) {
+        const m = longAnchorRe.exec(src);
+        if (m) raw = m[0];
+      }
+      if (!raw) return undefined;
+
+      const normKey = termKey(raw);
+      const key = termsMap.get(normalizeTermKey(raw)) || normKey;
+
+      const pageMentions = store?.mentionsByPage?.get(pageNum);
+      if (pageMentions) {
+        const verdicts = pageMentions.filter((item) => item.key === key);
+        if (verdicts.length > 0 && verdicts.every((item) => item.resolution === 'suppressed')) {
+          return undefined;
+        }
+      }
+
+      return { type: 'termxref', raw, key };
+    },
+    renderer(token) {
+      const { exact, approximate } = resolveMention(store, token.key);
+      if (exact.length + approximate.length === 0) {
+        return escapeHtml(token.raw);
+      }
+      const pageMentions = store?.mentionsByPage?.get(pageNum);
+      const serverVerdict = pageMentions?.find(
+        (item) => item.key === token.key && item.resolution !== 'suppressed',
+      );
+      const isApproximate = serverVerdict
+        ? serverVerdict.resolution === 'approximate'
+        : exact.length === 0;
+      const cls = isApproximate ? 'xref-link xref-link--approximate' : 'xref-link';
+      return `<a href="#" class="${cls}" data-xref-key="${escapeAttr(token.key)}">${escapeHtml(token.raw)}</a>`;
+    },
+  };
+}
+
 // ─── Per-page render (Phase B) ─────────────────────────────────────────────────
 // Single combined lex/render pass: mention-linkifying (via the xref extension
 // above, applied during .lexer()) and fingerprint-based target-anchor tagging
@@ -231,7 +461,13 @@ const _RENDER_CACHE_LIMIT = 2000;
 
 function lexPageWithXrefs(pageText, pageNum, store) {
   const instance = new Marked();
-  instance.use({ extensions: [createXrefExtension(pageNum, store)] });
+  instance.use({
+    extensions: [
+      createXrefExtension(pageNum, store),
+      createDocXrefExtension(pageNum, store),
+      createTermXrefExtension(pageNum, store),
+    ],
+  });
   const tokens = instance.lexer(pageText || '');
   return { instance, tokens };
 }
@@ -249,11 +485,15 @@ export function getPageMentions(pageText, pageNum, store) {
     if (m.resolution === 'suppressed') continue;
     if (seen.has(m.key)) continue;
     seen.add(m.key);
-    mentions.push({
+    const item = {
       key: m.key,
       raw: m.raw_text || m.raw,
       approximate: m.resolution === 'approximate',
-    });
+    };
+    if (m.resolution === 'undefined') {
+      item.undefined = true;
+    }
+    mentions.push(item);
   }
   return mentions;
 }

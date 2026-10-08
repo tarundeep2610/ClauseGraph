@@ -39,6 +39,8 @@ from ai_indexing.schema import (
     AIHeading,
     AIMentionChunk,
     AIMentionReview,
+    AIDocrefVerdict,
+    AIDocrefReview,
     AIPriorRejection,
     AIStructureChunk,
     NormalizationReport,
@@ -46,12 +48,13 @@ from ai_indexing.schema import (
     VALID_REJECTION_REASONS,
     normalize_chunk,
 )
-from ai_indexing.parsing import parse_mention_response, parse_structure_response
+from ai_indexing.parsing import parse_mention_response, parse_structure_response, parse_docref_review_response
 from ai_indexing.prompt import (
     CarryContext,
     ChunkPlan,
     PageInput,
     build_mention_review_prompt,
+    build_docref_review_prompt,
     build_structure_prompt,
     plan_chunks,
 )

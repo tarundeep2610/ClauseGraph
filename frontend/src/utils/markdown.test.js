@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { renderPageMarkdown, getPageMentions } from './markdown';
+import {
+  renderPageMarkdown,
+  getPageMentions,
+  normalizeDocrefCode,
+  docrefKey,
+  isPlausibleDocrefCode,
+  normalizeTermKey,
+  termKey,
+} from './markdown';
 import { createReferenceStore, mergeDelta, resolveMention, getPageScopeKey } from './referenceStore';
 
 function storeWithDelta(changedPages, version = 1, changedMentions = {}) {
@@ -176,5 +184,121 @@ describe('getPageMentions', () => {
     const store = createReferenceStore();
     const mentions = getPageMentions('Some text with no mentions.', 5, store);
     expect(mentions).toEqual([]);
+  });
+
+  it('includes an undefined mention with undefined: true', () => {
+    const store = storeWithDelta(
+      {},
+      1,
+      { 5: [{ key: 'docref:xyz123', raw_text: 'Tender Enquiry No. XYZ-123', resolution: 'undefined', suppressed_reason: 'unresolved' }] }
+    );
+    const mentions = getPageMentions('Tender Enquiry No. XYZ-123 is cited.', 5, store);
+    expect(mentions).toEqual([
+      { key: 'docref:xyz123', raw: 'Tender Enquiry No. XYZ-123', approximate: false, undefined: true },
+    ]);
+  });
+});
+
+describe('docref and term normalization and plausibility', () => {
+  it('normalizes hyphen/space variants of docref codes', () => {
+    expect(normalizeDocrefCode('REC-064')).toBe('REC064');
+    expect(normalizeDocrefCode('REC 064')).toBe('REC064');
+    expect(normalizeDocrefCode('REC-064.')).toBe('REC064');
+    expect(docrefKey('REC-064')).toBe('docref:rec064');
+  });
+
+  it('validates plausibility of docref codes', () => {
+    expect(isPlausibleDocrefCode('REC-064', 'Technical Specification')).toBe(true);
+    expect(isPlausibleDocrefCode('1', 'Claim')).toBe(true);
+    expect(isPlausibleDocrefCode('5', 'File')).toBe(false); // bare numeral rejected for non-whitelisted labels
+    expect(isPlausibleDocrefCode('4', 'Page')).toBe(false); // structural label rejected
+    expect(isPlausibleDocrefCode('5', 'Clause')).toBe(false); // structural label rejected
+    expect(isPlausibleDocrefCode('ABC', 'Tender')).toBe(false); // no digits rejected
+    expect(isPlausibleDocrefCode('<|det|>REC-064<|/det|>', 'Specification')).toBe(false); // tag fragments rejected
+  });
+
+  it('normalizes term keys by stripping leading "the" and lowering whitespace', () => {
+    expect(normalizeTermKey('Contractor')).toBe('contractor');
+    expect(normalizeTermKey('the Contractor')).toBe('contractor');
+    expect(normalizeTermKey('  The   Works  ')).toBe('works');
+    expect(termKey('NIT')).toBe('term:nit');
+  });
+});
+
+describe('renderPageMarkdown — docref linkifying', () => {
+  it('links a docref mention that resolves to an exact candidate', () => {
+    const store = storeWithDelta({
+      64: { 'docref:rec064': [{ anchor_id: 'target-rec064', collapsed_key: 'docref:rec064' }] },
+    });
+    const html = renderPageMarkdown('See Technical Specification No. REC-064 for requirements.', 10, store);
+    expect(html).toContain('data-xref-key="docref:rec064"');
+    expect(html).toContain('class="xref-link"');
+    expect(html).toContain('Technical Specification No. REC-064');
+  });
+
+  it('leaves a single-page or undefined docref mention as plain text in the markdown body', () => {
+    const store = storeWithDelta(
+      {},
+      1,
+      { 5: [{ key: 'docref:single123', raw_text: 'Tender No. SINGLE-123', resolution: 'undefined' }] }
+    );
+    const html = renderPageMarkdown('Tender No. SINGLE-123 appears only here.', 5, store);
+    expect(html).not.toContain('<a');
+    expect(html).toContain('Tender No. SINGLE-123');
+  });
+
+  it('links a fuzzy-folded docref mention using the server verdict resolution', () => {
+    const store = storeWithDelta(
+      { 64: { 'docref:rec064': [{ anchor_id: 't1', collapsed_key: 'docref:rec064' }] } },
+      1,
+      { 12: [{ key: 'docref:rec064', raw_text: 'Technical Specification No. REC-054', resolution: 'approximate' }] }
+    );
+    const html = renderPageMarkdown('Technical Specification No. REC-054 has been reviewed.', 12, store);
+    expect(html).toContain('class="xref-link xref-link--approximate"');
+    expect(html).toContain('data-xref-key="docref:rec064"');
+    expect(html).toContain('Technical Specification No. REC-054');
+  });
+
+  it('links docref mentions inside layout-aware formatted_text headings and lists', () => {
+    const store = storeWithDelta({
+      64: { 'docref:rec064': [{ anchor_id: 'target-rec064', collapsed_key: 'docref:rec064' }] },
+    });
+    const formatted = '## 3.3 Technical Specification No. REC-064\n\n- Refer to Technical Specification No. REC-064';
+    const html = renderPageMarkdown(formatted, 10, store);
+    expect(html).toContain('<h2>3.3 <a href="#" class="xref-link" data-xref-key="docref:rec064">Technical Specification No. REC-064</a></h2>');
+    expect(html).toContain('<li>Refer to <a href="#" class="xref-link" data-xref-key="docref:rec064">Technical Specification No. REC-064</a></li>');
+  });
+});
+
+describe('renderPageMarkdown — defined term linkifying', () => {
+  it('links an exact defined term mention like NIT or Contractor', () => {
+    const store = storeWithDelta({
+      2: {
+        'term:contractor': [{ anchor_id: 't-contractor', collapsed_key: 'term:contractor' }],
+        'term:nit': [{ anchor_id: 't-nit', collapsed_key: 'term:nit' }],
+      },
+    });
+    const html = renderPageMarkdown('The Contractor submitted the bid under the NIT terms.', 10, store);
+    expect(html).toContain('data-xref-key="term:contractor"');
+    expect(html).toContain('data-xref-key="term:nit"');
+  });
+
+  it('does not link lowercase prose for short abbreviation terms', () => {
+    const store = storeWithDelta({
+      2: { 'term:nit': [{ anchor_id: 't-nit', collapsed_key: 'term:nit' }] },
+    });
+    const html = renderPageMarkdown('Do not nit pick on small details.', 10, store);
+    expect(html).not.toContain('data-xref-key="term:nit"');
+    expect(html).not.toContain('<a');
+  });
+
+  it('links defined terms inside layout-aware formatted_text bolding and lists', () => {
+    const store = storeWithDelta({
+      2: { 'term:contractor': [{ anchor_id: 't-contractor', collapsed_key: 'term:contractor' }] },
+    });
+    const formatted = '**Contractor** obligations:\n\n1. The Contractor must deliver the equipment.';
+    const html = renderPageMarkdown(formatted, 10, store);
+    expect(html).toContain('<strong><a href="#" class="xref-link" data-xref-key="term:contractor">Contractor</a></strong>');
+    expect(html).toContain('<a href="#" class="xref-link" data-xref-key="term:contractor">Contractor</a>');
   });
 });

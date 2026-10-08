@@ -275,3 +275,96 @@ def test_job_details_response_surfaces_reindexing_flag(client, auth_headers):
         assert resp.json()["reference_index_reindexing"] is True
     finally:
         reference_index._active_reindex_jobs.discard(job_id)
+
+
+@pytest.mark.asyncio
+async def test_docref_reindex_and_single_page_retry():
+    # 2 pages referencing REC-064: page 1 earliest, page 2 second
+    job_id = _job_with_pages([
+        "Technical Specification No. REC-064 is defined here.",
+        "As per Technical Specification No. REC-064 above.",
+    ])
+
+    await reference_index.reindex_job(job_id)
+
+    # Check targets: exactly one docref target on earliest page 1
+    targets = database.get_reference_targets_for_job(job_id)
+    docref_targets = [t for t in targets if t["key"] == "docref:rec064"]
+    assert len(docref_targets) == 1
+    assert docref_targets[0]["page"] == 1
+    assert docref_targets[0]["detection_source"] == "rule"
+
+    # Check mentions: page 1 has NO self-mention for docref:rec064
+    mentions_p1 = database.get_reference_mentions_since(job_id, -1).get(1, [])
+    assert not any(m["key"] == "docref:rec064" for m in mentions_p1)
+
+    # Page 2 has resolved mention for docref:rec064
+    mentions_p2 = database.get_reference_mentions_since(job_id, -1).get(2, [])
+    p2_docref = [m for m in mentions_p2 if m["key"] == "docref:rec064"]
+    assert len(p2_docref) == 1
+    assert p2_docref[0]["resolution"] == "exact"
+
+    # Single-page-retry on page 1 leaves docref target intact
+    total_pages = 2
+    await reference_index.update_reference_index_for_page(
+        job_id, 1, "Technical Specification No. REC-064 is defined here.", total_pages
+    )
+    targets_after_retry = database.get_reference_targets_for_job(job_id)
+    docref_targets_after = [t for t in targets_after_retry if t["key"] == "docref:rec064"]
+    assert len(docref_targets_after) == 1
+    assert docref_targets_after[0]["page"] == 1
+
+
+@pytest.mark.asyncio
+async def test_term_coverage_cap_drops_boilerplate_term_keeps_rare_one():
+    # 25-page job (>= TERM_MAX_PAGE_COVERAGE_MIN_JOB_SIZE): "Equipment" is
+    # hereinafter-defined on page 1 and bare-mentioned on 23 more pages
+    # (24/25 = 96% coverage, boilerplate) -- must be dropped entirely. "NIT"
+    # is defined once and mentioned on only 2 pages (12% coverage) -- must
+    # survive untouched by the cap.
+    pages_text = [
+        'The Supplier is herein after referred to as the "Equipment" which expression '
+        "shall include all plant and material. The Equipment and Notice Inviting Tender "
+        "(NIT) are deliverables."
+    ]
+    for _ in range(23):
+        pages_text.append("The Equipment shall be inspected on site.")
+    pages_text.append("As per the NIT, inspection is mandatory.")
+    assert len(pages_text) == 25
+
+    job_id = _job_with_pages(pages_text)
+    await reference_index.reindex_job(job_id)
+
+    targets = database.get_reference_targets_for_job(job_id)
+    keys = {t["key"] for t in targets}
+    assert "term:equipment" not in keys, "boilerplate term exceeding the coverage cap must be dropped"
+    assert "term:nit" in keys, "rare term under the coverage cap must survive"
+
+    all_mentions = database.get_reference_mentions_since(job_id, -1)
+    equipment_mentions = [
+        m for page_mentions in all_mentions.values() for m in page_mentions
+        if m["key"] == "term:equipment"
+    ]
+    assert equipment_mentions == [], "no mentions should be emitted for a dropped term either"
+
+
+@pytest.mark.asyncio
+async def test_term_coverage_cap_not_enforced_below_min_job_size():
+    # 5-page job (< TERM_MAX_PAGE_COVERAGE_MIN_JOB_SIZE): "Equipment" covers
+    # 100% of pages, which would exceed the 30% cap on a larger job, but on a
+    # short job the cap must not apply at all.
+    pages_text = [
+        'The Supplier is herein after referred to as the "Equipment" which expression '
+        "shall include all plant and material."
+    ]
+    for _ in range(4):
+        pages_text.append("The Equipment shall be inspected on site.")
+    assert len(pages_text) == 5
+
+    job_id = _job_with_pages(pages_text)
+    await reference_index.reindex_job(job_id)
+
+    targets = database.get_reference_targets_for_job(job_id)
+    keys = {t["key"] for t in targets}
+    assert "term:equipment" in keys, "cap must not apply below TERM_MAX_PAGE_COVERAGE_MIN_JOB_SIZE"
+

@@ -294,3 +294,32 @@ class AIMentionChunk(BaseModel):
 
     model_config = {"extra": "ignore"}
 
+
+class AIDocrefVerdict(BaseModel):
+    key: str = Field(default="")
+    definition_occurrence_id: str = Field(default="none")
+    evidence_quote: str = Field(default="")
+
+    model_config = {"extra": "ignore"}
+
+    @field_validator("key", mode="before")
+    @classmethod
+    def _coerce_key(cls, v):
+        return str(v).strip() if v else ""
+
+    @field_validator("definition_occurrence_id", mode="before")
+    @classmethod
+    def _coerce_occ_id(cls, v):
+        return str(v).strip() if v else "none"
+
+    @field_validator("evidence_quote", mode="before")
+    @classmethod
+    def _truncate_quote(cls, v):
+        return str(v).strip()[:120] if v else ""
+
+
+class AIDocrefReview(BaseModel):
+    reviews: List[AIDocrefVerdict] = Field(default_factory=list)
+
+    model_config = {"extra": "ignore"}
+

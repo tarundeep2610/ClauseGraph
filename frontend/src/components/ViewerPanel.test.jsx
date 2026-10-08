@@ -127,6 +127,30 @@ describe('ViewerPanel — formatted_text (layout-aware rendering) fallback', () 
     render(<ViewerPanel {...baseProps} jobDetails={job} />);
     expect(screen.getByText('Page with no formatted_text key at all')).toBeInTheDocument();
   });
+
+  it('linkifies docref and term mentions when rendering layout-aware formatted_text', () => {
+    const store = storeWithDelta({
+      2: {
+        'term:contractor': [{ anchor_id: 't-contractor', collapsed_key: 'term:contractor', page: 2 }],
+        'docref:rec064': [{ anchor_id: 't-rec064', collapsed_key: 'docref:rec064', page: 2 }],
+      },
+    });
+    const job = jobWithPages([
+      {
+        page: 1,
+        text: 'Plain fallback',
+        formatted_text: '## Technical Specification No. REC-064\n\n**Contractor** obligations.',
+      },
+    ]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} referenceStore={store} />);
+    const docrefLink = document.querySelector('a[data-xref-key="docref:rec064"]');
+    expect(docrefLink).toBeInTheDocument();
+    expect(docrefLink).toHaveTextContent('Technical Specification No. REC-064');
+
+    const termLink = document.querySelector('a[data-xref-key="term:contractor"]');
+    expect(termLink).toBeInTheDocument();
+    expect(termLink).toHaveTextContent('Contractor');
+  });
 });
 
 describe('ViewerPanel — per-page Retry button', () => {
