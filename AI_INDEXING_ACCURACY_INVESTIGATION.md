@@ -677,57 +677,54 @@ Implemented `_recover_colon_sublists_in_chunk`:
 
 ### 11.3 Quantitative Benchmark Results
 
-#### A. 17-Page Excerpt Fixture (`108ba949`) — Full Evaluation
+**Correction (2026-10-08):** the numbers originally reported in this section compared across different fixtures (100-page vs 17-page), different page ranges (75 vs 100 pages), and different code states, and presented them as a single improvement arc. They weren't comparable. This section has been rewritten as same-fixture, same-config rows per provider/code-state, per the project's own re-measurement. It also surfaces a real regression the original 8 fixes introduced (§11.3 item 7's `_SUBLIST_MARKER_RE` branch fired unconditionally, flattening any lettered/roman sub-heading outside a recognized grounds/pleading scope into a `point` leaf instead of nesting it as a container) — found by running the full test suite (not done before this correction), fixed by gating that branch on `family_hint in ("point", "subpoint")`, and verified against all 708→709 backend tests plus 306 frontend tests, all green.
 
-Evaluated with `qwen3:8b` via RokkaAI (`chunk_pages=3`, `review_rule_prior=false`):
+All rows below use the corrected project defaults (`chunk_pages=3`, `review_rule_prior=false`) unless marked "stale config".
 
-| Metric | Pre-Fix Baseline | Post-Fix Result | Delta / Status | Target Goal |
-|---|---|---|---|---|
-| **Target Precision** | 37.6% – 71.4% (volatile) | **84.7%** | **+13.3% to +47.1%** | $\ge 70.0\%$ (Exceeded) |
-| **Target Recall** | 69.1% – 81.2% | **82.8%** | **+1.6% to +13.7%** | $\ge 75.0\%$ (Exceeded) |
-| **Scope Accuracy** | 0.214 – 0.480 | **0.750** | **+0.270 to +0.536** | Significant gain |
-| **Family Drift** | 0 – 3 | **0** | **Zero structural drift** | 0 |
-| **Total Detected Targets** | 120+ (inflated) | **87** | **Matches gold (87) exactly** | Minimal noise |
-| **Mention Precision** | 99.3% | **99.3%** | Maintained | $\ge 95.0\%$ |
+#### A. 17-Page Excerpt Fixture (`108ba949`)
 
-*Verification:* The 17-page test exceeded all accuracy goals. Every pleading point and lettered ground nested under its proper parent section with zero structural drift.
+| Provider | Code state | Precision | Recall | Scope Acc | Family Drift | Notes |
+|---|---|---|---|---|---|---|
+| qwen3:8b (RokkaAI) | pre-8-fixes | mean 0.714 (0.421–0.897, 3 trials) | mean 0.812 (0.747–0.885) | 0.214 (max 0.231) | 0 | baseline |
+| qwen3:8b (RokkaAI) | post-8-fixes, **pre-regression-fix** | 0.847 (1 trial) | 0.828 | 0.750 | 0 | precision/recall sit inside the pre-fix trial spread above — not a confirmed gain on their own; scope accuracy (0.214→0.750) is the one metric that clears the noise band |
+| Gemini (`gemini-flash-lite-latest`) | post-regression-fix | mean 0.940 (0.910–0.956, 3 trials) | mean 0.969 (0.931–0.989) | mean 0.524 (0.235–0.791) | 0 | different provider — not a delta against the qwen rows, a separate data point |
 
-#### B. 100-Page Appeal Fixture (`bb417471`) — Comparative Evaluation (Pages 1–75)
+*Verification:* target count matched gold (87) exactly on the post-8-fixes qwen run; mention precision was 99.3% there. Zero family drift across every row.
 
-During the 100-page benchmark run, upstream RokkaAI (`https://ai.rokkalabs.com`) experienced an unscheduled outage mid-run at chunk 26 of 34 (processing completed through page 75 of 100). Comparative analysis across the completed chunks demonstrates dramatic improvements:
+#### B. 100-Page Appeal Fixture (`bb417471`)
 
-| Metric / Dimension | Pre-Fix Baseline (Full Run) | Post-Fix (Through Page 75) | Impact / Observation |
-|---|---|---|---|
-| **Total Detected Targets** | **425** (massive FP inflation) | **279** | **146 false positives eliminated** |
-| **Target Precision** | **37.6% – 47.3%** | **57.7%** | **+10.4% to +20.1% precision jump** |
-| **Page 1 Subdoc Ordinals** | Shifted: `subdoc:1` (F.A.O.), `subdoc:4` (INDEX) | **Aligned: `subdoc:1` (INDEX)** | **Root ordinal shift resolved** |
-| **Page 7 Subdoc Ordinals** | Shifted: `subdoc:5` (RESPECTFULLY SHOWETH) | **Aligned: `subdoc:2` (RESPECTFULLY SHOWETH)** | **Matches gold expectation** |
-| **Page 8 Subdoc Ordinals** | Shifted: `subdoc:6` (Affidavit) | **Aligned: `subdoc:3` (Affidavit)** | **Matches gold expectation** |
+| Provider | Code state | Coverage | Precision | Recall | Scope Acc | Family Drift | Mention P/R |
+|---|---|---|---|---|---|---|---|
+| qwen3:8b (RokkaAI) | post-8-fixes, pre-regression-fix, **stale engine_params** (`chunk_pages=2`, `review_rule_prior=true`) | full 100 pages | 0.219–0.253 | 0.522–0.531 | 0.624 | — | 0.883 / — |
+| qwen3:8b (RokkaAI) | post-8-fixes, pre-regression-fix, corrected config | full 100 pages | 0.376 | 0.691 | 0.480 | — | 0.993 / — |
+| qwen3:8b (RokkaAI) | post-8-fixes, pre-regression-fix | **pages 1–75 only** (upstream RokkaAI outage at chunk 26/34) | 0.577 | — | — | — | — |
+| Gemini (`gemini-flash-lite-latest`) | post-regression-fix | full 100 pages, **chunk-verified**: 34/34 chunks `ok`, last page covered = 100 | 0.682 | 0.746 | 0.471 | 3 | 1.000 / 0.963 |
 
-*Ordinal Synchronization Impact:* In the pre-fix run, `RESPECTFULLY SHOWETH` on Page 7 and `Affidavit` on Page 8 were assigned `subdoc:5` and `subdoc:6`, causing all child pleading points to mismatch gold keys. In the post-fix run, Page 1 noise and TOC entries were eliminated, allowing `INDEX` to mint cleanly as `subdoc:1`, `RESPECTFULLY SHOWETH` as `subdoc:2`, and `Affidavit` as `subdoc:3`, perfectly restoring alignment with the gold standard.
+The pages-1–75 row is kept only because it was already published; it is not comparable to the full-100-page rows and should not be read as a continuation of the stale/corrected-config rows above it. The Gemini row is the only one on this fixture with its chunk-level completion independently confirmed via `database.get_ai_index_report()` rather than assumed from a clean exit — see [[project-qwen-ollama-vs-rokkaai]] in project memory for the verification run.
+
+No qwen3:8b run exists yet against this fixture *after* the regression fix, so there is currently no valid qwen-vs-qwen before/after comparison on the 100-page fixture — only the Gemini row is both post-fix and fully verified.
 
 #### C. Unit Test Suite Validation
-Executed full test suite against updated indexer modules:
-- `tests/test_reference_index_reindex.py`
-- `tests/test_reference_index_docref.py`
-- `tests/test_reference_index_defined_terms.py`
-- `tests/test_ai_docref_review.py`
-- `tests/test_reference_index_generic_triggers.py`
 
-**Result:** **62 passed in 13.56s (100% pass rate)**.
+Initial validation (62 tests, a targeted subset) passed, but running the **full** suite surfaced the regression described above. After the fix:
+
+- Backend: `python -m pytest tests/ -q` → **709 passed**.
+- Frontend: `npx vitest run` → **306 passed**.
 
 ---
 
 ### 11.4 Operational Status & Next Steps
 
 1. **Codebase & Deployment State:**
-   - All code modifications in `ai_indexing/schema.py`, `reference_index.py`, `ai_reference_index.py`, and `scripts/score_reference_index.py` are synchronized with the Docker container `ocr-services-glm-ocr-api-1`.
-   - The idle timeout watchdog in `/app/data/settings.json` is disabled (`idle_timeout_minutes: 0`).
+   - The sublist-marker regression (§11.3 correction) is fixed and committed, along with a correction to the 100-page gold fixture itself (a letterhead on p92 had been mis-authored as a heading — removed, not a code bug).
+   - Full test suite green: 709 backend / 306 frontend.
+   - All code is synchronized with the Docker container `ocr-services-glm-ocr-api-1`. The idle timeout watchdog in `/app/data/settings.json` remains disabled (`idle_timeout_minutes: 0`).
    - Temporary evaluation records in `/app/data/ocr_jobs.db` have been cleaned up.
 2. **Upstream Endpoint Availability:**
-   - RokkaAI (`https://ai.rokkalabs.com`) is currently offline (returning 502 Bad Gateway / connection refused).
-   - Once RokkaAI service is restored, the final 100-page benchmark can be completed via:
+   - RokkaAI (`https://ai.rokkalabs.com`) has been unreliable across this investigation (outages, slow qwen3:8b responses). The container was switched to `AI_INDEX_PROVIDER=gemini` (`gemini-flash-lite-latest`) for the post-regression-fix re-measurement in §11.3 — fast (2s responses) and no quota issues observed.
+   - No qwen3:8b run exists yet against the fixed code; if RokkaAI becomes reliable again, re-running it would let the pre/post-regression-fix comparison be completed on the original provider:
      ```bash
      docker exec -e PYTHONPATH=/app:/app/scripts ocr-services-glm-ocr-api-1 python -u scripts/score_reference_index.py bb417471-561c-4029-bb21-3bdcf74e7dcb --fixture tests/fixtures/gold_index_bb417471.json --trials 1 --chunk-pages 3
      ```
+3. **Generalization check (held out for now):** every job in the database is the same source PDF (`FAO-CARB_23_2019_PAPER_BOOK.pdf`) in different page slices — no structurally different document has been run through the pipeline yet. A real check needs a fresh upload (e.g. a Letter of Award or call-letter document) through the normal OCR pipeline, which as of 2026-10-08 is blocked by the remote GPU OCR box (`100.124.212.108:11610`) being unreachable. Deferred until that box is back up.
 
