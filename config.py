@@ -145,6 +145,13 @@ AI_INDEX_PROVIDER = os.environ.get("AI_INDEX_PROVIDER", "gemini")
 AI_INDEX_MODEL = os.environ.get("AI_INDEX_MODEL", "gemini-2.5-flash")
 AI_INDEX_BASE_URL = os.environ.get("AI_INDEX_BASE_URL", "")
 AI_INDEX_API_KEY = os.environ.get("AI_INDEX_API_KEY", "")
+# Optional extra HTTP headers for the openai_compatible provider's client,
+# as a JSON object string — e.g. '{"x-gpu-ocr-key": "..."}' to reach an
+# Ollama instance sitting behind this project's own gated Caddy /ollama/*
+# route (see gpu_ocr_client.py's identical header for the GLM-OCR engine's
+# own calls to the same box). Empty/unset for every deployment that talks
+# to a provider directly — this changes nothing unless explicitly set.
+AI_INDEX_EXTRA_HEADERS_JSON = os.environ.get("AI_INDEX_EXTRA_HEADERS_JSON", "")
 
 # Was 5. Measured (AI_INDEXING_CHUNK_SIZE_MEASUREMENT.md, qwen3:8b via
 # rokkaai, 5 trials at chunk_pages=3 vs. 5 at chunk_pages=10 and 4 valid at

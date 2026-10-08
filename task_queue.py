@@ -69,6 +69,9 @@ async def trigger_ai_reindex_safe(job_id: str, start_page: "int | None" = None):
             if (job.get("engine_params") or {}).get("ai_index_review_mentions"):
                 import ai_reference_index
                 await ai_reference_index.review_mentions_for_job(job_id, job.get("engine_params"))
+            if (job.get("engine_params") or {}).get("ai_index_override_docrefs") or (job.get("engine_params") or {}).get("ai_index_review_docrefs"):
+                import ai_reference_index
+                await ai_reference_index.review_docrefs_for_job(job_id, job.get("engine_params"))
             return
         await reference_index.reindex_job(job_id, start_page=start_page)
     except Exception as e:

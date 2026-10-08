@@ -6,6 +6,7 @@ to the database or returned to the frontend. This is one shared provider
 config for the whole deployment, not a per-user/per-job credential store.
 """
 
+import json
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
@@ -33,6 +34,18 @@ def resolve_active_config() -> ResolvedAIConfig:
             "authenticate with. Set AI_INDEX_API_KEY (and AI_INDEX_PROVIDER/MODEL/"
             "BASE_URL as needed) in the server's environment and restart it."
         )
+    extra: Dict[str, Any] = {}
+    if config.AI_INDEX_EXTRA_HEADERS_JSON:
+        try:
+            headers = json.loads(config.AI_INDEX_EXTRA_HEADERS_JSON)
+        except (ValueError, TypeError) as e:
+            raise AIConfigError(
+                f"AI_INDEX_EXTRA_HEADERS_JSON is not valid JSON: {e}"
+            ) from e
+        if not isinstance(headers, dict):
+            raise AIConfigError("AI_INDEX_EXTRA_HEADERS_JSON must be a JSON object.")
+        extra["extra_headers"] = {str(k): str(v) for k, v in headers.items()}
+
     provider_config = ProviderConfig(
         provider=config.AI_INDEX_PROVIDER,
         model=config.AI_INDEX_MODEL,
@@ -43,6 +56,7 @@ def resolve_active_config() -> ResolvedAIConfig:
         temperature=config.AI_INDEX_TEMPERATURE,
         poll_interval_s=config.AI_ROKKAAI_POLL_INTERVAL_SECONDS,
         poll_timeout_s=config.AI_ROKKAAI_POLL_TIMEOUT_SECONDS,
+        extra=extra,
     )
     return ResolvedAIConfig(provider_config=provider_config, chunk_pages=config.AI_INDEX_CHUNK_PAGES)
 

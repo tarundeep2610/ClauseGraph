@@ -16,7 +16,7 @@ import re
 from typing import Any, Dict, List, Tuple
 
 from ai_indexing.errors import AIInvalidOutputError
-from ai_indexing.schema import AIHeading, AIMentionReview, AIPriorRejection, AIStructureChunk, NormalizationReport, normalize_chunk
+from ai_indexing.schema import AIHeading, AIMentionReview, AIDocrefVerdict, AIPriorRejection, AIStructureChunk, NormalizationReport, normalize_chunk
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 _LEADING_CHATTER_RE = re.compile(r"^[^{\[]*(?=[{\[])", re.DOTALL)
@@ -211,6 +211,30 @@ def parse_mention_response(raw: str) -> List[AIMentionReview]:
         if isinstance(item, dict):
             try:
                 valid.append(AIMentionReview(**item))
+            except Exception:
+                pass
+    return valid
+
+
+def parse_docref_review_response(raw: str) -> List[AIDocrefVerdict]:
+    """Parses model response for docref definition review into a list of AIDocrefVerdict objects."""
+    fenced = strip_code_fences(raw)
+    extracted = extract_json_object(fenced)
+    repaired = repair_truncated_json(extracted)
+    try:
+        envelope = parse_json_object(repaired)
+    except Exception:
+        return []
+
+    reviews_raw = envelope.get("reviews") if isinstance(envelope, dict) else envelope
+    if not isinstance(reviews_raw, list):
+        return []
+
+    valid: List[AIDocrefVerdict] = []
+    for item in reviews_raw:
+        if isinstance(item, dict):
+            try:
+                valid.append(AIDocrefVerdict(**item))
             except Exception:
                 pass
     return valid

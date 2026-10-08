@@ -959,6 +959,84 @@ async def review_mentions_for_job(job_id: str, engine_params: Optional[Dict[str,
                 database.upsert_reference_mentions_for_page(job_id, pn, page_m, version)
 
 
+async def review_docrefs_for_job(job_id: str, engine_params: Optional[Dict[str, Any]] = None) -> None:
+    """Phase 5b: AI review of docref definition targets for a job.
+    Finds docref:* keys with 2+ occurrences across the job, prompts the AI to identify
+    which occurrence is the actual definition (or 'none' to keep the Phase 1 provisional baseline),
+    and promotes the target if an override is chosen."""
+    targets = database.get_reference_targets_for_job(job_id)
+    docref_targets = {t["key"]: t for t in targets if t["key"].startswith("docref:")}
+    if not docref_targets:
+        return
+
+    all_mentions = database.get_all_reference_mentions_for_job(job_id)
+    occs_by_key: Dict[str, List[Dict[str, Any]]] = {}
+    for key, t in docref_targets.items():
+        occ_id = f"occ_p{t['page']}_{t.get('occurrence_index', 0)}"
+        occs_by_key.setdefault(key, []).append({
+            "occurrence_id": occ_id,
+            "page": t["page"],
+            "occurrence_index": t.get("occurrence_index", 0),
+            "raw_text": t.get("own_label") or t.get("fingerprint") or key,
+            "snippet": t.get("snippet", ""),
+            "fingerprint": t.get("fingerprint", ""),
+            "is_current_target": True,
+        })
+    for m in all_mentions:
+        if m["key"].startswith("docref:") and m["key"] in occs_by_key:
+            occ_id = f"occ_p{m['page']}_{m.get('occurrence_index', 0)}"
+            occs_by_key[m["key"]].append({
+                "occurrence_id": occ_id,
+                "page": m["page"],
+                "occurrence_index": m.get("occurrence_index", 0),
+                "raw_text": m.get("raw_text", ""),
+                "snippet": m.get("raw_text", ""),
+                "fingerprint": m.get("raw_text", ""),
+                "is_current_target": False,
+            })
+
+    candidate_keys = {k: occs for k, occs in occs_by_key.items() if len(occs) >= 2}
+    if not candidate_keys:
+        return
+
+    try:
+        resolved = ai_indexing.resolve_active_config()
+    except ai_indexing.AIConfigError as e:
+        print(f"[DocrefReview] AIConfigError: {e}")
+        return
+
+    provider = await ai_indexing.get_provider(resolved.provider_config)
+    sys_prompt, user_prompt = ai_indexing.build_docref_review_prompt(candidate_keys)
+
+    try:
+        completion = await provider.complete(system_prompt=sys_prompt, user_prompt=user_prompt)
+        verdicts = ai_indexing.parse_docref_review_response(completion.text)
+    except Exception as e:
+        print(f"[DocrefReview] Error reviewing docrefs: {e}")
+        return
+
+    for verdict in verdicts:
+        key = verdict.key
+        chosen_id = verdict.definition_occurrence_id
+        if not chosen_id or chosen_id.lower() == "none" or key not in candidate_keys:
+            continue
+        occs = candidate_keys[key]
+        chosen_occ = next((o for o in occs if o["occurrence_id"] == chosen_id), None)
+        if not chosen_occ:
+            continue
+        current_target = docref_targets.get(key)
+        if not current_target:
+            continue
+        if chosen_occ["page"] != current_target["page"] or chosen_occ["occurrence_index"] != current_target.get("occurrence_index", 0):
+            chosen_occ["detection_model"] = resolved.provider_config.model
+            database.promote_docref_target(
+                job_id,
+                key,
+                from_page=current_target["page"],
+                to_occurrence=chosen_occ,
+            )
+
+
 
 async def reindex_job_with_ai(
     job_id: str, start_page: Optional[int] = None, chunk_pages_override: Optional[int] = None,
@@ -1366,5 +1444,7 @@ async def reindex_job_with_ai(
     reference_index.build_mention_index_for_job(job_id)
     if review_mentions:
         await review_mentions_for_job(job_id, engine_params)
+    if (engine_params or {}).get("ai_index_override_docrefs") or (engine_params or {}).get("ai_index_review_docrefs"):
+        await review_docrefs_for_job(job_id, engine_params)
     database.update_ai_index_report(job_id, status=final_status, error=final_error)
     return {"status": final_status, "pages_done": pages_done_total, "total_chunks": total_chunks}

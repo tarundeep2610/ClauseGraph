@@ -227,6 +227,77 @@ describe('PageReferenceBadges', () => {
     fireEvent.click(screen.getByTestId('page-reference-badge-point:2'));
     expect(screen.getByTestId('page-reference-candidates-modal')).toHaveTextContent('para 2');
   });
+
+  it('renders an undefined mention as a disabled, non-navigating badge with the --undefined modifier class', () => {
+    const store = createReferenceStore();
+    render(
+      <PageReferenceBadges
+        mentions={[{ key: 'docref:single123', raw: 'Tender No. SINGLE-123', undefined: true }]}
+        referenceStore={store}
+        scopeRanges={[]}
+        currentPage={5}
+        onOpenReference={vi.fn()}
+      />
+    );
+    const badge = screen.getByTestId('page-reference-badge-docref:single123');
+    expect(badge).toHaveClass('page-reference-badge--undefined');
+    expect(badge).toBeDisabled();
+  });
+
+  it('clicking an undefined badge does not call onOpenReference or open the candidates modal', () => {
+    const store = createReferenceStore();
+    const onOpenReference = vi.fn();
+    render(
+      <PageReferenceBadges
+        mentions={[{ key: 'docref:single123', raw: 'Tender No. SINGLE-123', undefined: true }]}
+        referenceStore={store}
+        scopeRanges={[]}
+        currentPage={5}
+        onOpenReference={onOpenReference}
+      />
+    );
+    fireEvent.click(screen.getByTestId('page-reference-badge-docref:single123'));
+    expect(onOpenReference).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('page-reference-candidates-modal')).not.toBeInTheDocument();
+  });
+
+  it('clicking a docref badge with a single target navigates directly to target page', () => {
+    const store = storeWithDelta({
+      64: { 'docref:rec064': [{ anchor_id: 't-rec064', collapsed_key: 'docref:rec064', page: 64 }] },
+    });
+    const onOpenReference = vi.fn();
+    render(
+      <PageReferenceBadges
+        mentions={[{ key: 'docref:rec064', raw: 'Technical Specification No. REC-064' }]}
+        referenceStore={store}
+        scopeRanges={[]}
+        currentPage={10}
+        onOpenReference={onOpenReference}
+      />
+    );
+    fireEvent.click(screen.getByTestId('page-reference-badge-docref:rec064'));
+    expect(onOpenReference).toHaveBeenCalledTimes(1);
+    expect(onOpenReference.mock.calls[0][0].page).toBe(64);
+  });
+
+  it('clicking a defined-term badge navigates directly to term definition page', () => {
+    const store = storeWithDelta({
+      2: { 'term:contractor': [{ anchor_id: 't-contractor', collapsed_key: 'term:contractor', page: 2 }] },
+    });
+    const onOpenReference = vi.fn();
+    render(
+      <PageReferenceBadges
+        mentions={[{ key: 'term:contractor', raw: 'Contractor' }]}
+        referenceStore={store}
+        scopeRanges={[]}
+        currentPage={15}
+        onOpenReference={onOpenReference}
+      />
+    );
+    fireEvent.click(screen.getByTestId('page-reference-badge-term:contractor'));
+    expect(onOpenReference).toHaveBeenCalledTimes(1);
+    expect(onOpenReference.mock.calls[0][0].page).toBe(2);
+  });
 });
 
 describe('sortCandidates', () => {

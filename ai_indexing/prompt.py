@@ -9,7 +9,7 @@ risk. See ai_reference_index.py for how parent_ref is actually resolved.
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import config
 
@@ -830,5 +830,54 @@ def build_mention_review_prompt(
 
     parts.append(MENTION_REVIEW_OUTPUT_CONTRACT)
     return MENTION_REVIEW_SYSTEM_PROMPT, "\n\n".join(parts)
+
+
+DOCREF_REVIEW_SYSTEM_PROMPT = """\
+You are an expert legal document analyst determining the true definition or reproduced source location for document references (such as contracts, specifications, proposals, or claims) cited across a document.
+For each document reference key, you are given all occurrences found in the document with their page numbers and context.
+Your job is to determine which occurrence represents the actual definition (such as the heading or page where the document/claim is substantively set out, reproduced, or described) rather than a passing citation.
+If no occurrence is an actual substantive definition/reproduction (e.g. all are passing citations), return "none" for definition_occurrence_id.
+
+RULES:
+1. "definition_occurrence_id" MUST be either the exact ID of the defining occurrence (e.g. "occ_p913_0") or "none".
+2. If selecting an occurrence, you should provide an exact verbatim "evidence_quote" (at least 8 characters) from the context.
+3. Return strict JSON matching the schema below.
+"""
+
+DOCREF_REVIEW_OUTPUT_CONTRACT = """\
+# OUTPUT FORMAT (strict JSON — exactly this shape, nothing else)
+{
+  "reviews": [
+    {
+      "key": "docref:1",
+      "definition_occurrence_id": "occ_p913_0",
+      "evidence_quote": "Claim No. 1 — Levy of stage penalty"
+    },
+    {
+      "key": "docref:rec064",
+      "definition_occurrence_id": "none",
+      "evidence_quote": ""
+    }
+  ]
+}
+"""
+
+
+def build_docref_review_prompt(
+    occurrences_by_key: Dict[str, List[Dict[str, Any]]],
+    page_texts: Optional[Dict[int, str]] = None,
+) -> Tuple[str, str]:
+    parts = []
+    parts.append("# DOCUMENT REFERENCES FOR DEFINITION REVIEW")
+    for key, occs in occurrences_by_key.items():
+        parts.append(f"\n## KEY: {key}")
+        for occ in occs:
+            occ_id = occ.get("occurrence_id") or f"occ_p{occ['page']}_{occ.get('occurrence_index', 0)}"
+            snippet = occ.get("snippet") or occ.get("raw_text") or ""
+            parts.append(f"- ID: {occ_id} | Page {occ['page']} | Text: {occ.get('raw_text')} | Context: \"{snippet}\"")
+
+    parts.append("\n" + DOCREF_REVIEW_OUTPUT_CONTRACT)
+    return DOCREF_REVIEW_SYSTEM_PROMPT, "\n".join(parts)
+
 
 

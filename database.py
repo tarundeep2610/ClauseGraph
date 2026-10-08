@@ -1150,7 +1150,7 @@ def delete_reference_targets_for_page(job_id: str, page_num: int):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "DELETE FROM ocr_reference_targets WHERE job_id = ? AND page = ?",
+        "DELETE FROM ocr_reference_targets WHERE job_id = ? AND page = ? AND key NOT LIKE 'docref:%' AND key NOT LIKE 'term:%'",
         (job_id, page_num),
     )
     conn.commit()
@@ -1163,7 +1163,7 @@ def upsert_reference_targets_for_page(job_id: str, page_num: int, targets: List[
     stale rows behind."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM ocr_reference_targets WHERE job_id = ? AND page = ?", (job_id, page_num))
+    cursor.execute("DELETE FROM ocr_reference_targets WHERE job_id = ? AND page = ? AND key NOT LIKE 'docref:%' AND key NOT LIKE 'term:%'", (job_id, page_num))
     for t in targets:
         cursor.execute("""
             INSERT INTO ocr_reference_targets (
@@ -1215,6 +1215,172 @@ def touch_reference_index_pages(job_id: str, page_nums: List[int], version: int)
             "UPDATE ocr_pages SET reference_index_touched_version = ? WHERE job_id = ? AND page_num = ?",
             (version, job_id, page_num),
         )
+    conn.commit()
+    conn.close()
+
+
+def upsert_docref_targets_for_job(job_id: str, targets: List[Dict[str, Any]], version: int) -> None:
+    """Whole-job upsert for docref targets: deletes only key LIKE 'docref:%' rows
+    so page-scoped targets are untouched, then inserts all computed docref targets."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM ocr_reference_targets WHERE job_id = ? AND key LIKE 'docref:%'", (job_id,))
+    for t in targets:
+        cursor.execute("""
+            INSERT INTO ocr_reference_targets (
+                job_id, key, page, occurrence_index, anchor_id, snippet, truncated,
+                continues_on_page, scope_key, scope_label, scope_provisional,
+                collapsed_key, fingerprint, written_at_version,
+                scope_chain, subdoc_label, subdoc_index,
+                heading_confidence, heading_confidence_reasons, own_label,
+                detection_source, detection_model, start_line_hint
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            job_id, t["key"], t["page"], t.get("occurrence_index", 0), t.get("anchor_id"),
+            t.get("snippet", ""), int(bool(t.get("truncated"))), t.get("continues_on_page"),
+            t.get("scope_key"), t.get("scope_label"), int(bool(t.get("scope_provisional"))),
+            t.get("collapsed_key") or t["key"], t.get("fingerprint", ""), version,
+            json.dumps(t.get("scope_chain") or []), t.get("subdoc_label"), t.get("subdoc_index"),
+            t.get("heading_confidence", "high"), json.dumps(t.get("heading_confidence_reasons") or []),
+            t.get("own_label"),
+            t.get("detection_source", "rule"), t.get("detection_model"), t.get("start_line_hint"),
+        ))
+    touched_pages = set(t["page"] for t in targets)
+    for page_num in touched_pages:
+        cursor.execute(
+            "UPDATE ocr_pages SET reference_index_touched_version = ? WHERE job_id = ? AND page_num = ?",
+            (version, job_id, page_num),
+        )
+    conn.commit()
+    conn.close()
+
+
+def upsert_term_targets_for_job(job_id: str, targets: List[Dict[str, Any]], version: int) -> None:
+    """Whole-job upsert for defined term targets: deletes only key LIKE 'term:%' rows
+    so other families are untouched, then inserts all computed term targets."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM ocr_reference_targets WHERE job_id = ? AND key LIKE 'term:%'", (job_id,))
+    for t in targets:
+        cursor.execute("""
+            INSERT INTO ocr_reference_targets (
+                job_id, key, page, occurrence_index, anchor_id, snippet, truncated,
+                continues_on_page, scope_key, scope_label, scope_provisional,
+                collapsed_key, fingerprint, written_at_version,
+                scope_chain, subdoc_label, subdoc_index,
+                heading_confidence, heading_confidence_reasons, own_label,
+                detection_source, detection_model, start_line_hint
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            job_id, t["key"], t["page"], t.get("occurrence_index", 0), t.get("anchor_id"),
+            t.get("snippet", ""), int(bool(t.get("truncated"))), t.get("continues_on_page"),
+            t.get("scope_key"), t.get("scope_label"), int(bool(t.get("scope_provisional"))),
+            t.get("collapsed_key") or t["key"], t.get("fingerprint", ""), version,
+            json.dumps(t.get("scope_chain") or []), t.get("subdoc_label"), t.get("subdoc_index"),
+            t.get("heading_confidence", "high"), json.dumps(t.get("heading_confidence_reasons") or []),
+            t.get("own_label"),
+            t.get("detection_source", "rule"), t.get("detection_model"), t.get("start_line_hint"),
+        ))
+    touched_pages = set(t["page"] for t in targets)
+    for page_num in touched_pages:
+        cursor.execute(
+            "UPDATE ocr_pages SET reference_index_touched_version = ? WHERE job_id = ? AND page_num = ?",
+            (version, job_id, page_num),
+        )
+    conn.commit()
+    conn.close()
+
+
+def promote_docref_target(job_id: str, key: str, from_page: int, to_occurrence: Dict[str, Any]) -> None:
+    """Moves a docref target row from from_page to to_occurrence's page, re-adds the
+    previously-defining occurrence as an ordinary mention on from_page, removes the mention
+    row for the newly-promoted occurrence on to_occurrence's page, and stamps detection_source='ai'."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # 1. Fetch old target row
+    cursor.execute("""
+        SELECT * FROM ocr_reference_targets
+        WHERE job_id = ? AND key = ? AND page = ?
+    """, (job_id, key, from_page))
+    old_target = cursor.fetchone()
+    old_target_dict = dict(old_target) if old_target else {}
+
+    to_page = to_occurrence["page"]
+    to_occ_idx = to_occurrence.get("occurrence_index", 0)
+
+    # 2. Remove the mention row for the newly-promoted occurrence on to_page
+    cursor.execute("""
+        DELETE FROM ocr_reference_mentions
+        WHERE job_id = ? AND key = ? AND page = ? AND occurrence_index = ?
+    """, (job_id, key, to_page, to_occ_idx))
+
+    # 3. Update the target row in ocr_reference_targets
+    new_anchor_id = to_occurrence.get("anchor_id") or f"target-{key.replace(':', '-')}-{to_page}"
+    cursor.execute("""
+        UPDATE ocr_reference_targets
+        SET page = ?, occurrence_index = ?, anchor_id = ?, snippet = ?,
+            fingerprint = ?, own_label = ?, detection_source = 'ai',
+            detection_model = ?
+        WHERE job_id = ? AND key = ? AND page = ?
+    """, (
+        to_page,
+        to_occ_idx,
+        new_anchor_id,
+        to_occurrence.get("snippet", ""),
+        to_occurrence.get("fingerprint", to_occurrence.get("raw_text", "")),
+        to_occurrence.get("own_label", to_occurrence.get("raw_text", "")),
+        to_occurrence.get("detection_model", "ai"),
+        job_id,
+        key,
+        from_page,
+    ))
+
+    # 4. Bump reference index version
+    cursor.execute("SELECT reference_index_version FROM ocr_jobs WHERE job_id = ?", (job_id,))
+    v_row = cursor.fetchone()
+    version = (v_row[0] if v_row else 0) + 1
+    cursor.execute("UPDATE ocr_jobs SET reference_index_version = ? WHERE job_id = ?", (version, job_id))
+
+    # 5. Re-add the previously-defining occurrence as an ordinary mention on from_page
+    cursor.execute("""
+        SELECT COALESCE(MAX(occurrence_index), -1) + 1
+        FROM ocr_reference_mentions
+        WHERE job_id = ? AND page = ?
+    """, (job_id, from_page))
+    next_occ_idx = cursor.fetchone()[0]
+
+    old_raw = old_target_dict.get("own_label") or old_target_dict.get("fingerprint") or key
+    cursor.execute("""
+        INSERT INTO ocr_reference_mentions (
+            job_id, page, occurrence_index, key, raw_text, block_index,
+            resolution, suppressed_reason, detection_source, detection_model,
+            written_at_version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        job_id,
+        from_page,
+        next_occ_idx,
+        key,
+        old_raw,
+        0,
+        "exact",
+        None,
+        "ai",
+        to_occurrence.get("detection_model", "ai"),
+        version,
+    ))
+
+    # 6. Stamp touched version on both pages
+    cursor.execute(
+        "UPDATE ocr_pages SET reference_index_touched_version = ? WHERE job_id = ? AND page_num = ?",
+        (version, job_id, from_page),
+    )
+    cursor.execute(
+        "UPDATE ocr_pages SET reference_index_touched_version = ? WHERE job_id = ? AND page_num = ?",
+        (version, job_id, to_page),
+    )
+
     conn.commit()
     conn.close()
 

@@ -43,6 +43,208 @@ MENTION_RE = re.compile(
     re.IGNORECASE,
 )
 
+# ─── Document Reference (docref) & Defined Terms (term) patterns ─────────────
+
+_DOCREF_LABEL_ALTS = (
+    r"technical specification|specification|tender enquiry|enquiry|tender|"
+    r"bidding document|bid(?:ding)?|proposal|offer|quotation|purchase order|"
+    r"work order|letter of award|letter|memo(?:randum)?|file|invoice|agreement|"
+    r"contract|claim|arbitration case|case|award|order|misc(?:ellaneous)?"
+)
+
+_DOCREF_BARE_NUMERIC_LABELS = {"claim", "case", "arbitration case"}
+
+DOCREF_START_RE = re.compile(rf"\b(?:{_DOCREF_LABEL_ALTS})\b", re.IGNORECASE)
+DOCREF_MENTION_RE = re.compile(
+    rf"\b(?P<label>{_DOCREF_LABEL_ALTS})\b\.?\s*Nos?\.?\s*:?\s*"
+    r"(?P<code>[A-Za-z0-9](?:[A-Za-z0-9()\-]|/(?:\s*)?){0,49}(?:\s+\([A-Za-z0-9/()\-]+\))?)",
+    re.IGNORECASE,
+)
+
+PAREN_ABBR_RE = re.compile(
+    r"(?P<full>[A-Z][A-Za-z&/\-]*(?:\s+[A-Za-z&/\-]+){0,6})\s*\(\s*(?P<abbr>[A-Za-z][A-Za-z&/.\-]{1,9})\s*(?:,\s*for\s+short)?\s*\)"
+)
+
+HEREINAFTER_RE = re.compile(
+    r'here\s*(?:in\s*)?after\s+(?:referred\s+to\s+as|called)\s+(?:the\s+)?["\'"“”‘’]?(?P<term>[A-Za-z][A-Za-z\s&/\-]{1,45}?)["\'"“”‘’]?\s*(?:\b(?:or|and)\b\s+["\'"“”‘’]?[A-Za-z][A-Za-z\s&/\-]{0,45}?["\'"“”‘’]?\s*)?(?:[.,;)]|which\s+expression)',
+    re.IGNORECASE,
+)
+
+_TERM_STOP_WORDS = {"of", "the", "and", "for", "to", "in"}
+
+
+def normalize_docref_code(code: str) -> str:
+    """Uppercase and strip all whitespace and punctuation from docref code."""
+    clean = code.strip().rstrip(".,;:-/ ")
+    return re.sub(r"[^A-Za-z0-9]", "", clean).upper()
+
+
+def docref_key(code: str) -> str:
+    return f"docref:{normalize_docref_code(code).lower()}"
+
+
+def _is_plausible_docref_code(code: str, label: str) -> bool:
+    clean_code = code.strip().rstrip(".,;:-/ ")
+    if not clean_code:
+        return False
+    if "<|" in clean_code or "|>" in clean_code or "det" in clean_code.lower():
+        return False
+    # Must contain at least one digit
+    if not any(c.isdigit() for c in clean_code):
+        return False
+    norm = normalize_docref_code(clean_code)
+    if not norm:
+        return False
+    norm_label = label.lower().strip()
+    if norm_label in {"page", "clause", "section", "article"}:
+        return False
+    # Reject bare short numerals unless label in _DOCREF_BARE_NUMERIC_LABELS
+    if norm.isdigit():
+        if norm_label in _DOCREF_BARE_NUMERIC_LABELS:
+            return 1 <= len(norm) <= 4
+        return False
+    return True
+
+
+def _is_acronym_of(abbr: str, phrase: str) -> bool:
+    """Accept only when the abbreviation's letters match the initials of the trailing
+    significant words of the preceding phrase (ignoring of/the/and/for/to/in)."""
+    abbr_clean = re.sub(r"[^A-Za-z]", "", abbr).upper()
+    if len(abbr_clean) < 2:
+        return False
+    words = re.findall(r"[A-Za-z]+", phrase)
+    if not words:
+        return False
+
+    def matches(w_idx: int, a_idx: int) -> bool:
+        if a_idx == len(abbr_clean):
+            return w_idx == len(words)
+        if w_idx == len(words):
+            return False
+        w = words[w_idx]
+        w_init = w[0].upper()
+        if w_init == abbr_clean[a_idx]:
+            if matches(w_idx + 1, a_idx + 1):
+                return True
+        if w.lower() in _TERM_STOP_WORDS:
+            if matches(w_idx + 1, a_idx):
+                return True
+        return False
+
+    for start_idx in range(len(words)):
+        if words[start_idx][0].upper() == abbr_clean[0]:
+            if matches(start_idx, 0):
+                return True
+    return False
+
+
+def normalize_term_key(term: str) -> str:
+    clean = re.sub(r"^(?:the\s+)", "", term.strip(), flags=re.IGNORECASE)
+    clean = re.sub(r"\s+", " ", clean).strip().lower()
+    return clean
+
+
+# Known OCR glyph confusables, letter -> its digit look-alike. Applied only
+# to letters (digits already stand for themselves), so translating a code
+# through this table yields a "confusable-canonical form": two codes that
+# differ only by these specific glyph swaps collapse to the identical string.
+# This exists because some confusions are SYSTEMATIC, not rare -- real case:
+# "E1070151" (23 occurrences) vs "EI070151" (14 occurrences) across a
+# 955-page job. The old frequency-asymmetry-only approach (below) requires
+# one spelling to be ~5x rarer than the other to fold, which can never fire
+# when an OCR engine makes the same substitution consistently and both
+# spellings end up common. Grouping by this canonical form first, at ANY
+# frequency, fixes that; the fuzzy fallback remains for one-off typos this
+# exact-after-translation table doesn't cover.
+_CONFUSABLE_LETTER_TO_DIGIT = str.maketrans({
+    "I": "1", "L": "1",
+    "O": "0",
+    "S": "5",
+    "B": "8",
+    "Z": "2",
+    "G": "6",
+})
+
+
+def _canonical_confusable_form(code: str) -> str:
+    return code.translate(_CONFUSABLE_LETTER_TO_DIGIT)
+
+
+def reconcile_docref_variants(
+    raw_codes: List[str],
+) -> Tuple[Dict[str, str], Dict[str, str]]:
+    """
+    Given raw docref codes across the job, computes frequency of each normalized code
+    and folds variants into a dominant key in two stages:
+
+    1. Confusable-canonical grouping, at ANY frequency: codes that become
+       byte-identical after mapping known OCR-confusable letters to their
+       digit look-alike (I/L->1, O->0, S->5, B->8, Z->2, G->6) are grouped
+       together regardless of which spelling is more common -- a systematic
+       glyph confusion produces both spellings in bulk, so a frequency
+       threshold can never safely apply here.
+    2. Residual fuzzy folding, 3x frequency threshold: for codes left alone
+       by stage 1, fold a rare variant into a code that is both >=3x more
+       frequent and near-identical (SequenceMatcher ratio >= 0.80, length
+       within 1) -- this catches one-off typos the confusable map doesn't
+       express (e.g. "XENPROJECTS" (17) vs "GENPROJECTS" (4), not a glyph
+       confusion but a plausible single-character OCR slip at that
+       frequency gap). 3x (not the original 5x) because stage 1 now absorbs
+       the high-frequency systematic cases, leaving only rarer one-offs for
+       this stage to catch.
+
+    Returns (dominant_map, resolution_map) where resolution_map maps normalized code
+    to 'exact' or 'approximate'.
+    """
+    from collections import Counter
+    norm_codes = [normalize_docref_code(c) for c in raw_codes if normalize_docref_code(c)]
+    counts = Counter(norm_codes)
+    dominant_map: Dict[str, str] = {}
+    resolution_map: Dict[str, str] = {}
+
+    # Stage 1: confusable-canonical grouping, independent of frequency.
+    by_confusable: Dict[str, List[str]] = {}
+    for code in counts:
+        by_confusable.setdefault(_canonical_confusable_form(code), []).append(code)
+
+    remaining = dict(counts)
+    for variants in by_confusable.values():
+        if len(variants) < 2:
+            continue
+        dominant = max(variants, key=lambda c: (counts[c], -len(c)))
+        for v in variants:
+            dominant_map[v] = dominant
+            resolution_map[v] = "exact" if v == dominant else "approximate"
+            remaining.pop(v, None)
+
+    # Stage 2: residual fuzzy folding for codes stage 1 left untouched.
+    sorted_by_freq = sorted(remaining.items(), key=lambda x: (x[1], len(x[0])), reverse=True)
+
+    for v_code, v_count in remaining.items():
+        best_dominant = None
+        best_ratio = 0.0
+        for d_code, d_count in sorted_by_freq:
+            if d_code == v_code:
+                continue
+            if d_count < 3 * v_count:
+                continue
+            if abs(len(d_code) - len(v_code)) > 1:
+                continue
+            ratio = difflib.SequenceMatcher(None, d_code, v_code).ratio()
+            if ratio >= 0.80 and ratio > best_ratio:
+                best_ratio = ratio
+                best_dominant = d_code
+
+        if best_dominant:
+            dominant_map[v_code] = best_dominant
+            resolution_map[v_code] = "approximate"
+        else:
+            dominant_map[v_code] = v_code
+            resolution_map[v_code] = "exact"
+
+    return dominant_map, resolution_map
+
+
 PAGE_FOOTER_RE = re.compile(r"^\s*of\s+\d+\b", re.IGNORECASE)
 EXTERNAL_LAW_SIGNAL_RE = re.compile(
     r"of\s+the\s+(?:[A-Za-z][\w\s]{0,30}?\s*)?\b(?:Act|Code|Constitution|Rules|Regulations)\b|\bCPC\b|\bIPC\b|\bCrPC\b|\b(?:19|20)\d{2}\b",
@@ -2193,44 +2395,440 @@ def _scan_text_for_mentions(
             pos = match_index + len(start_m.group(0))
 
 
+def _walk_blocks_from_tokens(tok_list):
+    for tok in tok_list:
+        t = tok.get("type")
+        if t == "block_code":
+            continue
+        if t == "block_html":
+            clean = _strip_html(tok.get("raw", ""))
+            if clean:
+                yield ("html", clean)
+            continue
+        if t == "list":
+            for child in tok.get("children", []):
+                yield from _walk_blocks_from_tokens([child])
+            continue
+        if t in _CONTAINER_TYPES:
+            yield from _walk_blocks_from_tokens(tok.get("children", []))
+            continue
+        if t in _BLOCK_TYPES:
+            clean = _extract_mention_clean_text(tok)
+            if clean:
+                yield ("text", clean)
+
+
+def build_docref_index_for_job(
+    job_id: str, version: int
+) -> Tuple[List[Dict[str, Any]], Dict[int, List[Dict[str, Any]]], Set[Tuple[int, int, int]]]:
+    """Whole-job docref scanning, fuzzy-variant reconciliation, and target creation pass.
+    The lowest (page, block_index, start) occurrence of a code spanning 2+ pages becomes
+    its provisional baseline target; all other occurrences become mentions.
+    Single-page codes do not create targets, landing in resolution='undefined'.
+    Returns (targets, occurrences_by_page, definition_positions).
+    """
+    pages = database.get_pages(job_id)
+    raw_occurrences: List[Dict[str, Any]] = []
+
+    for page in pages:
+        page_num = page["page_num"]
+        page_text = page.get("text") or ""
+        tokens, _ = _get_parser().parse(page_text)
+        block_idx = 0
+        for b_type, b_text in _walk_blocks_from_tokens(tokens):
+            clean_b_text = re.sub(r"<\|/?det\|>.*?<\|/?det\|>", "", b_text)
+            clean_b_text = re.sub(r"<\|[^>]*\|>", "", clean_b_text)
+            for m in DOCREF_MENTION_RE.finditer(clean_b_text):
+                label = m.group("label")
+                code_raw = m.group("code")
+                code = code_raw.strip().rstrip(".,;:-/ ")
+                if not _is_plausible_docref_code(code, label):
+                    continue
+                start_char = m.start()
+                raw_match = m.group(0)
+                snippet_start = max(0, start_char - 40)
+                snippet_end = min(len(clean_b_text), start_char + len(raw_match) + 60)
+                snippet = clean_b_text[snippet_start:snippet_end].replace("\n", " ").strip()
+                raw_occurrences.append({
+                    "page": page_num,
+                    "block_index": block_idx,
+                    "start": start_char,
+                    "label": label,
+                    "code": code,
+                    "raw_text": raw_match,
+                    "snippet": snippet,
+                })
+            block_idx += 1
+
+    if not raw_occurrences:
+        database.upsert_docref_targets_for_job(job_id, [], version)
+        return [], {}, set()
+
+    dominant_map, resolution_map = reconcile_docref_variants([occ["code"] for occ in raw_occurrences])
+
+    by_key: Dict[str, List[Dict[str, Any]]] = {}
+    for occ in raw_occurrences:
+        norm = normalize_docref_code(occ["code"])
+        canonical_norm = dominant_map.get(norm, norm)
+        canonical_key = f"docref:{canonical_norm.lower()}"
+        occ["key"] = canonical_key
+        occ["canonical_norm"] = canonical_norm
+        occ["resolution"] = resolution_map.get(norm, "exact")
+        by_key.setdefault(canonical_key, []).append(occ)
+
+    targets: List[Dict[str, Any]] = []
+    definition_positions: Set[Tuple[int, int, int]] = set()
+
+    for key, occs in by_key.items():
+        unique_pages = {o["page"] for o in occs}
+        if len(unique_pages) >= 2:
+            occs.sort(key=lambda o: (o["page"], o["block_index"], o["start"]))
+            first = occs[0]
+            definition_positions.add((first["page"], first["block_index"], first["start"]))
+            targets.append({
+                "key": key,
+                "page": first["page"],
+                "occurrence_index": 0,
+                "anchor_id": f"target-{key.replace(':', '-')}-{first['page']}",
+                "snippet": first["snippet"],
+                "truncated": False,
+                "continues_on_page": None,
+                "scope_key": None,
+                "scope_label": None,
+                "scope_provisional": 0,
+                "collapsed_key": key,
+                "fingerprint": first["raw_text"],
+                "scope_chain": [],
+                "heading_confidence": "high",
+                "heading_confidence_reasons": [],
+                "own_label": first["raw_text"],
+                "detection_source": "rule",
+                "detection_model": None,
+                "start_line_hint": None,
+            })
+
+    database.upsert_docref_targets_for_job(job_id, targets, version)
+
+    occurrences_by_page: Dict[int, List[Dict[str, Any]]] = {}
+    for occ in raw_occurrences:
+        occurrences_by_page.setdefault(occ["page"], []).append(occ)
+
+    return targets, occurrences_by_page, definition_positions
+
+
+# A term/abbreviation whose definition+mention page coverage exceeds this
+# share of the job is dropped entirely -- real case: a 955-page arbitration
+# paper book's repeated bank-guarantee proforma defines "Equipment",
+# "Contract", and "Contractor" via "hereinafter referred to as", each
+# spanning 30-45% of the document. Technically a correct definition, but a
+# badge on a third of every page carries no navigational value. Abbreviations
+# like GCC/SCC/NIT/ITB all sit at 6-8% coverage in the same document and are
+# unaffected by this cap.
+TERM_MAX_PAGE_COVERAGE = 0.30
+# Only enforced once the job has at least this many pages -- on a short job,
+# 30% is one or two pages, and a term legitimately used throughout a 5-page
+# document would be wrongly suppressed.
+TERM_MAX_PAGE_COVERAGE_MIN_JOB_SIZE = 20
+
+
+def build_term_index_for_job(
+    job_id: str, version: int
+) -> Tuple[List[Dict[str, Any]], Dict[int, List[Dict[str, Any]]], Set[Tuple[int, int, int]]]:
+    """Whole-job defined term scanning and target creation pass.
+    Discovers (ABBR) definitions validated via _is_acronym_of, plus 'hereinafter referred to as'.
+    Lowest (page, block_index, start) becomes target.
+    Terms whose page coverage exceeds TERM_MAX_PAGE_COVERAGE (see above) are
+    dropped entirely -- no target, no mentions.
+    Returns (targets, occurrences_by_page, definition_positions).
+    """
+    pages = database.get_pages(job_id)
+    total_pages = len(pages)
+    definitions: List[Dict[str, Any]] = []
+
+    for page in pages:
+        page_num = page["page_num"]
+        page_text = page.get("text") or ""
+        tokens, _ = _get_parser().parse(page_text)
+        block_idx = 0
+        for b_type, b_text in _walk_blocks_from_tokens(tokens):
+            clean_b_text = re.sub(r"<\|/?det\|>.*?<\|/?det\|>", "", b_text)
+            clean_b_text = re.sub(r"<\|[^>]*\|>", "", clean_b_text)
+
+            # 1. Parenthetical abbreviations
+            for m in PAREN_ABBR_RE.finditer(clean_b_text):
+                full = m.group("full").strip()
+                abbr = m.group("abbr").strip()
+                if _is_acronym_of(abbr, full):
+                    key = f"term:{re.sub(r'[^A-Za-z0-9]', '', abbr).lower()}"
+                    start_char = m.start()
+                    snippet = clean_b_text[max(0, start_char - 40):min(len(clean_b_text), start_char + len(m.group(0)) + 60)].replace("\n", " ").strip()
+                    definitions.append({
+                        "key": key,
+                        "term": abbr,
+                        "page": page_num,
+                        "block_index": block_idx,
+                        "start": start_char,
+                        "raw_text": m.group(0),
+                        "snippet": snippet,
+                        "is_abbr": True,
+                    })
+
+            # 2. Hereinafter definitions
+            for m in HEREINAFTER_RE.finditer(clean_b_text):
+                term = m.group("term").strip().strip("\"'“”‘’")
+                if term:
+                    norm = normalize_term_key(term)
+                    key = f"term:{norm}"
+                    start_char = m.start()
+                    snippet = clean_b_text[max(0, start_char - 40):min(len(clean_b_text), start_char + len(m.group(0)) + 60)].replace("\n", " ").strip()
+                    definitions.append({
+                        "key": key,
+                        "term": term,
+                        "page": page_num,
+                        "block_index": block_idx,
+                        "start": start_char,
+                        "raw_text": m.group(0),
+                        "snippet": snippet,
+                        "is_abbr": False,
+                    })
+            block_idx += 1
+
+    if not definitions:
+        database.upsert_term_targets_for_job(job_id, [], version)
+        return [], {}, set()
+
+    by_key: Dict[str, List[Dict[str, Any]]] = {}
+    for d in definitions:
+        by_key.setdefault(d["key"], []).append(d)
+
+    definition_positions: Set[Tuple[int, int, int]] = set()
+    first_by_key: Dict[str, Dict[str, Any]] = {}
+    for key, def_list in by_key.items():
+        def_list.sort(key=lambda d: (d["page"], d["block_index"], d["start"]))
+        first = def_list[0]
+        first_by_key[key] = first
+        definition_positions.add((first["page"], first["block_index"], first["start"]))
+
+    # Bare mention scanning across pages -- done BEFORE targets are built so
+    # that total (definition + mention) page coverage per key is known up
+    # front and can gate which keys actually survive (see
+    # TERM_MAX_PAGE_COVERAGE above).
+    term_specs = []
+    for key, first in first_by_key.items():
+        term_text = first["term"]
+        if first["is_abbr"]:
+            pat = re.compile(rf"\b{re.escape(term_text)}\b")
+        else:
+            pat = re.compile(rf"\b{re.escape(term_text)}\b", re.IGNORECASE)
+        term_specs.append((key, term_text, pat))
+
+    raw_occurrences_by_key: Dict[str, List[Dict[str, Any]]] = {}
+    pages_seen_by_key: Dict[str, Set[int]] = {key: {d["page"] for d in def_list} for key, def_list in by_key.items()}
+
+    for page in pages:
+        page_num = page["page_num"]
+        page_text = page.get("text") or ""
+        tokens, _ = _get_parser().parse(page_text)
+        block_idx = 0
+        for b_type, b_text in _walk_blocks_from_tokens(tokens):
+            clean_b_text = re.sub(r"<\|/?det\|>.*?<\|/?det\|>", "", b_text)
+            clean_b_text = re.sub(r"<\|[^>]*\|>", "", clean_b_text)
+            for key, term_text, pat in term_specs:
+                for m in pat.finditer(clean_b_text):
+                    start_char = m.start()
+                    pages_seen_by_key[key].add(page_num)
+                    raw_occurrences_by_key.setdefault(key, []).append({
+                        "key": key,
+                        "page": page_num,
+                        "block_index": block_idx,
+                        "start": start_char,
+                        "raw_text": m.group(0),
+                        "resolution": "exact",
+                    })
+            block_idx += 1
+
+    if total_pages >= TERM_MAX_PAGE_COVERAGE_MIN_JOB_SIZE:
+        max_pages = TERM_MAX_PAGE_COVERAGE * total_pages
+        survivors = {key for key, pg_set in pages_seen_by_key.items() if len(pg_set) <= max_pages}
+    else:
+        survivors = set(by_key.keys())
+
+    targets: List[Dict[str, Any]] = []
+    for key, first in first_by_key.items():
+        if key not in survivors:
+            definition_positions.discard((first["page"], first["block_index"], first["start"]))
+            continue
+        targets.append({
+            "key": key,
+            "page": first["page"],
+            "occurrence_index": 0,
+            "anchor_id": f"target-{key.replace(':', '-')}-{first['page']}",
+            "snippet": first["snippet"],
+            "truncated": False,
+            "continues_on_page": None,
+            "scope_key": None,
+            "scope_label": None,
+            "scope_provisional": 0,
+            "collapsed_key": key,
+            "fingerprint": first["raw_text"],
+            "scope_chain": [],
+            "heading_confidence": "high",
+            "heading_confidence_reasons": [],
+            "own_label": first["raw_text"],
+            "detection_source": "rule",
+            "detection_model": None,
+            "start_line_hint": None,
+        })
+
+    database.upsert_term_targets_for_job(job_id, targets, version)
+
+    occurrences_by_page: Dict[int, List[Dict[str, Any]]] = {}
+    for key, occs in raw_occurrences_by_key.items():
+        if key not in survivors:
+            continue
+        for occ in occs:
+            if (occ["page"], occ["block_index"], occ["start"]) in definition_positions:
+                continue
+            occurrences_by_page.setdefault(occ["page"], []).append(occ)
+
+    return targets, occurrences_by_page, definition_positions
+
+
 def detect_mentions_for_page(
     page_text: str,
     page_num: int,
     target_index: Any,
+    definition_positions: Optional[Set[Tuple[int, int, int]]] = None,
+    docref_page_occurrences: Optional[List[Dict[str, Any]]] = None,
+    term_page_occurrences: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """Detects and resolves mentions on page_num against target_index.
     Returns list of mention dicts with page, occurrence_index, key, raw_text,
-    block_index, resolution ('exact'|'approximate'|'suppressed'), suppressed_reason."""
+    block_index, resolution ('exact'|'approximate'|'suppressed'|'undefined'), suppressed_reason."""
     lookup = TargetLookupIndex.from_store_like(target_index)
     tokens, _ = _get_parser().parse(page_text or "")
     out: List[Dict[str, Any]] = []
 
-    def _walk_blocks(tok_list):
-        for tok in tok_list:
-            t = tok.get("type")
-            if t == "block_code":
-                continue
-            if t == "block_html":
-                clean = _strip_html(tok.get("raw", ""))
-                if clean:
-                    yield ("html", clean)
-                continue
-            if t == "list":
-                for child in tok.get("children", []):
-                    yield from _walk_blocks([child])
-                continue
-            if t in _CONTAINER_TYPES:
-                yield from _walk_blocks(tok.get("children", []))
-                continue
-            if t in _BLOCK_TYPES:
-                clean = _extract_mention_clean_text(tok)
-                if clean:
-                    yield ("text", clean)
-
     block_idx = 0
-    for b_type, b_text in _walk_blocks(tokens):
+    for b_type, b_text in _walk_blocks_from_tokens(tokens):
         _scan_text_for_mentions(b_text, lookup, block_idx, out)
         block_idx += 1
+
+    # 1. Process docref mentions
+    if docref_page_occurrences is not None:
+        for occ in docref_page_occurrences:
+            pos_tuple = (page_num, occ["block_index"], occ["start"])
+            if definition_positions and pos_tuple in definition_positions:
+                continue
+            key = occ["key"]
+            exact, approx = lookup.resolve(key)
+            if exact or approx:
+                resolution = occ.get("resolution", "exact" if exact else "approximate")
+                suppressed_reason = None
+            else:
+                resolution = "undefined"
+                suppressed_reason = "unresolved"
+            out.append({
+                "occurrence_index": len(out),
+                "key": key,
+                "raw_text": occ["raw_text"],
+                "block_index": occ["block_index"],
+                "resolution": resolution,
+                "suppressed_reason": suppressed_reason,
+                "detection_source": "rule",
+                "detection_model": None,
+            })
+    else:
+        block_idx = 0
+        for b_type, b_text in _walk_blocks_from_tokens(tokens):
+            clean_b_text = re.sub(r"<\|/?det\|>.*?<\|/?det\|>", "", b_text)
+            clean_b_text = re.sub(r"<\|[^>]*\|>", "", clean_b_text)
+            for m in DOCREF_MENTION_RE.finditer(clean_b_text):
+                label = m.group("label")
+                code_raw = m.group("code")
+                code = code_raw.strip().rstrip(".,;:-/ ")
+                if not _is_plausible_docref_code(code, label):
+                    continue
+                start_char = m.start()
+                pos_tuple = (page_num, block_idx, start_char)
+                if definition_positions and pos_tuple in definition_positions:
+                    continue
+                key = docref_key(code)
+                exact, approx = lookup.resolve(key)
+                if exact:
+                    resolution = "exact"
+                    suppressed_reason = None
+                elif approx:
+                    resolution = "approximate"
+                    suppressed_reason = None
+                else:
+                    resolution = "undefined"
+                    suppressed_reason = "unresolved"
+                out.append({
+                    "occurrence_index": len(out),
+                    "key": key,
+                    "raw_text": m.group(0),
+                    "block_index": block_idx,
+                    "resolution": resolution,
+                    "suppressed_reason": suppressed_reason,
+                    "detection_source": "rule",
+                    "detection_model": None,
+                })
+            block_idx += 1
+
+    # 2. Process term mentions
+    if term_page_occurrences is not None:
+        for occ in term_page_occurrences:
+            pos_tuple = (page_num, occ["block_index"], occ["start"])
+            if definition_positions and pos_tuple in definition_positions:
+                continue
+            key = occ["key"]
+            exact, approx = lookup.resolve(key)
+            if exact or approx:
+                resolution = "exact" if exact else "approximate"
+                suppressed_reason = None
+            else:
+                resolution = "undefined"
+                suppressed_reason = "unresolved"
+            out.append({
+                "occurrence_index": len(out),
+                "key": key,
+                "raw_text": occ["raw_text"],
+                "block_index": occ["block_index"],
+                "resolution": resolution,
+                "suppressed_reason": suppressed_reason,
+                "detection_source": "rule",
+                "detection_model": None,
+            })
+    else:
+        term_keys = [k for k in lookup.by_exact_key.keys() if k.startswith("term:")]
+        if term_keys:
+            block_idx = 0
+            for b_type, b_text in _walk_blocks_from_tokens(tokens):
+                clean_b_text = re.sub(r"<\|/?det\|>.*?<\|/?det\|>", "", b_text)
+                clean_b_text = re.sub(r"<\|[^>]*\|>", "", clean_b_text)
+                for tk in term_keys:
+                    term_name = tk[5:]
+                    if len(term_name) <= 4:
+                        pat = re.compile(rf"\b{re.escape(term_name.upper())}\b")
+                    else:
+                        pat = re.compile(rf"\b{re.escape(term_name)}\b", re.IGNORECASE)
+                    for m in pat.finditer(clean_b_text):
+                        start_char = m.start()
+                        pos_tuple = (page_num, block_idx, start_char)
+                        if definition_positions and pos_tuple in definition_positions:
+                            continue
+                        out.append({
+                            "occurrence_index": len(out),
+                            "key": tk,
+                            "raw_text": m.group(0),
+                            "block_index": block_idx,
+                            "resolution": "exact",
+                            "suppressed_reason": None,
+                            "detection_source": "rule",
+                            "detection_model": None,
+                        })
+                block_idx += 1
 
     for m in out:
         m["page"] = page_num
@@ -2239,7 +2837,8 @@ def detect_mentions_for_page(
 
 def build_mention_index_for_job(job_id: str) -> None:
     """Whole-job mention detection pass: executes once target indexing is complete.
-    Builds mentions for each page and persists them into ocr_reference_mentions.
+    Builds docref and defined-term targets across the job, then builds mentions
+    for each page and persists them into ocr_reference_mentions.
 
     Registers itself in `_active_reindex_jobs` for the call's duration (reentrant-
     safe: only discards it if THIS call was the one that added it) so
@@ -2255,15 +2854,26 @@ def build_mention_index_for_job(job_id: str) -> None:
     if not already_active:
         _active_reindex_jobs.add(job_id)
     try:
+        version = database.get_reference_index_version(job_id)
+        docref_targets, docref_occs_by_page, def_pos_docref = build_docref_index_for_job(job_id, version)
+        term_targets, term_occs_by_page, def_pos_term = build_term_index_for_job(job_id, version)
+        definition_positions = def_pos_docref | def_pos_term
+
         targets = database.get_reference_targets_for_job(job_id)
         target_lookup = TargetLookupIndex(targets)
         pages = database.get_pages(job_id)
-        version = database.get_reference_index_version(job_id)
 
         for page in pages:
             page_num = page["page_num"]
             page_text = page.get("text") or ""
-            mentions = detect_mentions_for_page(page_text, page_num, target_lookup)
+            mentions = detect_mentions_for_page(
+                page_text,
+                page_num,
+                target_lookup,
+                definition_positions=definition_positions,
+                docref_page_occurrences=docref_occs_by_page.get(page_num, []),
+                term_page_occurrences=term_occs_by_page.get(page_num, []),
+            )
             database.upsert_reference_mentions_for_page(job_id, page_num, mentions, version)
     finally:
         if not already_active:
@@ -3247,5 +3857,8 @@ async def _reindex_job_rule_based(job_id: str):
     if (job.get("engine_params") or {}).get("ai_index_review_mentions"):
         import ai_reference_index
         await ai_reference_index.review_mentions_for_job(job_id, job.get("engine_params"))
+    if (job.get("engine_params") or {}).get("ai_index_override_docrefs") or (job.get("engine_params") or {}).get("ai_index_review_docrefs"):
+        import ai_reference_index
+        await ai_reference_index.review_docrefs_for_job(job_id, job.get("engine_params"))
 
 
