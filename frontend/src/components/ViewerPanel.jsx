@@ -270,6 +270,25 @@ export default function ViewerPanel({
     setItemModal({ mode: 'add', initialValues: { heading: '', startPage: currentPdfPage, endPage: currentPdfPage } });
   }
 
+  // Per-node "add" button (StructureTree's onAddItem) — same modal, but the
+  // new entry is placed as a child of the clicked node afterward instead of
+  // landing at the tree root. `targetContext` ({targetDescriptor,
+  // existingChildren}, built by StructureTree.handleAddChildClick) rides
+  // along in itemModal state and is handed back to onAddStructureItem on
+  // submit, unchanged from how it arrived — this component doesn't need to
+  // understand its shape, only carry it through. Defaults the page range to
+  // the target node's own page rather than whatever's in the main PDF
+  // viewport right now, since that's almost always the more useful starting
+  // point for something being added under a specific section.
+  function openAddChildModal({ targetDescriptor, existingChildren }) {
+    setItemModalError('');
+    setItemModal({
+      mode: 'add',
+      targetContext: { targetDescriptor, existingChildren },
+      initialValues: { heading: '', startPage: targetDescriptor.page, endPage: targetDescriptor.page },
+    });
+  }
+
   function openEditItemModal(descriptor) {
     setItemModalError('');
     setItemModal({
@@ -284,7 +303,7 @@ export default function ViewerPanel({
     setItemModalError('');
     try {
       if (itemModal.mode === 'add') {
-        if (onAddStructureItem) await onAddStructureItem(values);
+        if (onAddStructureItem) await onAddStructureItem(values, itemModal.targetContext);
       } else if (onEditStructureItem) {
         await onEditStructureItem(itemModal.descriptor, values);
       }
@@ -426,6 +445,7 @@ export default function ViewerPanel({
                 onEditItem={onEditStructureItem ? openEditItemModal : undefined}
                 onDeleteItem={onDeleteStructureItem ? setDeleteTarget : undefined}
                 onMoveItem={onMoveStructureItem}
+                onAddItem={onAddStructureItem ? openAddChildModal : undefined}
                 parentOverrides={parentOverrides}
                 sortOverrides={sortOverrides}
               />

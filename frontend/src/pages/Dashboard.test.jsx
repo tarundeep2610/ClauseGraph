@@ -1086,7 +1086,9 @@ describe('Dashboard — Structure-tab reading modal + content cache', () => {
     };
   }
 
-  it('opens the reading modal, fetches the PDF + text in parallel on first click, serves the cache on a repeat click without re-fetching, and leaves the main viewer untouched throughout', async () => {
+  // Magnifying-glass/jump button is temporarily disabled in StructureTree.jsx (currently the only way
+  // the Structure tab opens the reading modal) — re-enable this test alongside it.
+  it.skip('opens the reading modal, fetches the PDF + text in parallel on first click, serves the cache on a repeat click without re-fetching, and leaves the main viewer untouched throughout', async () => {
     const job = {
       job_id: 'job-chunk', filename: 'doc.pdf', status: 'completed',
       total_pages: 900, processed_pages: 900, engine: 'unlimited',
@@ -1159,7 +1161,8 @@ describe('Dashboard — Structure-tab reading modal + content cache', () => {
     expect(filePagesCalls).toHaveLength(1);
   });
 
-  it('evicts and revokes the oldest cached chunk once more than the cache bound have been viewed', async () => {
+  // Depends on the temporarily-disabled magnifying-glass/jump button (see above) to open the modal.
+  it.skip('evicts and revokes the oldest cached chunk once more than the cache bound have been viewed', async () => {
     const N = 11; // one more than CHUNK_CACHE_MAX (10)
     const job = {
       job_id: 'job-cache', filename: 'doc.pdf', status: 'completed',
@@ -1278,5 +1281,84 @@ describe('Dashboard — Structure item edit only sends fields that actually chan
 
     await waitFor(() => expect(patchCalls).toHaveLength(1));
     expect(patchCalls[0]).toEqual({ heading: 'Renamed Annexure' });
+  });
+});
+
+describe('Dashboard — add-as-child chains create with one move', () => {
+  let originalCreateObjectURL;
+  let originalRevokeObjectURL;
+
+  beforeEach(() => {
+    originalCreateObjectURL = global.URL.createObjectURL;
+    originalRevokeObjectURL = global.URL.revokeObjectURL;
+    global.URL.createObjectURL = vi.fn(() => 'blob:fake-url');
+    global.URL.revokeObjectURL = vi.fn();
+  });
+
+  afterEach(() => {
+    global.URL.createObjectURL = originalCreateObjectURL;
+    global.URL.revokeObjectURL = originalRevokeObjectURL;
+  });
+
+  it('clicking a node\'s add button creates the item then moves it under that node, in one user action', async () => {
+    const job = {
+      job_id: 'job-add-child', filename: 'doc.pdf', status: 'completed',
+      total_pages: 900, processed_pages: 900, engine: 'unlimited',
+      created_at: new Date().toISOString(),
+    };
+    const postCalls = [];
+    const moveCalls = [];
+
+    apiFetch.mockImplementation(async (url, opts) => {
+      if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
+      if (url === '/api/jobs') return { ok: true, json: async () => [job] };
+      if (url === '/api/jobs/job-add-child/file') {
+        return { ok: true, blob: async () => new Blob(['main pdf'], { type: 'application/pdf' }) };
+      }
+      if (url === '/api/jobs/job-add-child/structure-items' && opts?.method === 'POST') {
+        postCalls.push(JSON.parse(opts.body));
+        return { ok: true, json: async () => ({ manual_key: 'manual:new1', job_id: job.job_id, heading: 'New Clause', start_page: 427, end_page: 427 }) };
+      }
+      if (url === '/api/jobs/job-add-child/structure-items/move') {
+        moveCalls.push(JSON.parse(opts.body));
+        return { ok: true, json: async () => ({}) };
+      }
+      if (url.split('?')[0] === '/api/jobs/job-add-child') {
+        return { ok: true, json: async () => ({ ...job, reference_index_version: 1, pages_data: [] }) };
+      }
+      if (url.startsWith('/api/jobs/job-add-child/references')) {
+        return {
+          ok: true,
+          json: async () => ({
+            reference_index_version: 1,
+            changed_pages: { 427: { 'annexure:a-2': [{ anchor_id: 'a-leaf', collapsed_key: 'annexure:a-2', key: 'annexure:a-2', page: 427, occurrence_index: 0, scope_chain: [] }] } },
+          }),
+        };
+      }
+      if (url === '/api/jobs/job-add-child/scope-ranges') {
+        return { ok: true, json: async () => ({ reference_index_version: 1, ranges: [{ key: 'annexure:a-2', scope_key: '', depth: 0, start_page: 427, end_page: 446 }] }) };
+      }
+      if (url === '/api/jobs/job-add-child/structure-hierarchy-overrides') {
+        return { ok: true, json: async () => ({ reference_index_version: 1, parents: [], order: [] }) };
+      }
+      return { ok: false };
+    });
+
+    render(<Dashboard />);
+    await screen.findByTestId('mock-pdf-canvas-viewer');
+    fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
+    await screen.findByText('Annexure A-2');
+
+    fireEvent.click(screen.getByTestId('structure-add-child-root/annexure:a-2'));
+    fireEvent.change(screen.getByTestId('structure-item-heading-input'), { target: { value: 'New Clause' } });
+    fireEvent.click(screen.getByTestId('structure-item-modal-submit'));
+
+    await waitFor(() => expect(moveCalls).toHaveLength(1));
+    expect(postCalls).toEqual([{ heading: 'New Clause', start_page: 427, end_page: 427 }]);
+    expect(moveCalls[0]).toEqual({
+      item_key: 'manual:new1', item_page: 427, item_occurrence_index: 0,
+      new_parent_key: 'annexure:a-2', new_parent_page: 427, new_parent_occurrence_index: 0,
+      ordered_siblings: [{ item_key: 'manual:new1', item_page: 427, item_occurrence_index: 0 }],
+    });
   });
 });

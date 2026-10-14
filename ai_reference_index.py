@@ -222,7 +222,7 @@ def _carry_in_summary(seed_scope: Optional[Dict[str, Any]], last_page_text: str 
     stack = (seed_scope or {}).get("stack") or []
     containers = [
         {"ref_id": f"c{depth + 1}", "level": depth + 1, "label": entry.get("label", ""),
-         "source": entry.get("source", "rule")}
+         "source": entry.get("source", "rule"), "family": entry.get("family", "")}
         for depth, entry in enumerate(stack)
     ]
     return ai_indexing.CarryContext(open_containers=containers, last_page_tail=last_page_text)
@@ -449,10 +449,6 @@ def _recover_colon_sublists_in_chunk(
 
     for h in headings:
         new_headings.append(h)
-        stripped = h.heading_text.strip()
-        if not _COLON_INTRO_RE.search(stripped) or stripped.lower().startswith("note:"):
-            continue
-
         start_p = h.start_page
         if start_p not in page_blocks:
             continue
@@ -461,6 +457,31 @@ def _recover_colon_sublists_in_chunk(
         if loc is None:
             continue
         found_idx = loc[0]
+
+        stripped = h.heading_text.strip()
+        is_colon_h = bool(_COLON_INTRO_RE.search(stripped)) and not stripped.lower().startswith("note:")
+
+        # Heading itself ends with a colon, or an intro block within the next 2 blocks ends with a colon/specifies documents
+        intro_idx = None
+        if is_colon_h:
+            intro_idx = found_idx
+        else:
+            for delta in (1, 2):
+                chk_idx = found_idx + delta
+                if chk_idx < len(h_blocks):
+                    b_raw = h_blocks[chk_idx]
+                    if _is_noise_or_footer(b_raw):
+                        continue
+                    b_clean = _clean_block(b_raw)
+                    if _COLON_INTRO_RE.search(b_clean) or "contract documents" in b_clean.lower() or "following documents" in b_clean.lower():
+                        # Only accept if immediately followed by a sublist marker
+                        if chk_idx + 1 < len(h_blocks):
+                            nxt_clean = _clean_block(h_blocks[chk_idx + 1])
+                            if _SUBLIST_MARKER_RE.match(nxt_clean):
+                                intro_idx = chk_idx
+                                break
+        if intro_idx is None:
+            continue
 
         curr_p_idx = sorted_pages.index(start_p) if start_p in sorted_pages else -1
         if curr_p_idx == -1:
@@ -474,7 +495,7 @@ def _recover_colon_sublists_in_chunk(
                 break
             p_num = sorted_pages[p_idx]
             p_b_list = page_blocks[p_num]
-            b_start = (found_idx + 1) if p_idx == curr_p_idx else 0
+            b_start = (intro_idx + 1) if p_idx == curr_p_idx else 0
             for b_i in range(b_start, len(p_b_list)):
                 block_raw = p_b_list[b_i]
                 if _is_noise_or_footer(block_raw):
@@ -504,6 +525,16 @@ def _recover_colon_sublists_in_chunk(
                     )
                     new_headings.append(synth_h)
 
+    # Tag existing child headings that match unambiguous lowercase sublist marker format
+    for h in new_headings:
+        if h.parent_ref and not h.family_hint:
+            m = _SUBLIST_MARKER_RE.match(h.heading_text.strip())
+            if m:
+                marker = m.group("marker")
+                if marker.islower():
+                    h.family_hint = "point"
+                    h.number_hint = marker.lower()
+
     return new_headings
 
 
@@ -521,7 +552,20 @@ async def _ground_and_resolve_chunk(
     tracking a simulated stack depth so within-chunk parent references
     resolve against the same state apply_heading_events_to_scope will later
     reconstruct for real. Returns ({page_num: [event, ...]}, warning_counts)."""
+    min_page = min(page_blocks.keys()) if page_blocks else 0
+    if min_page > 2:
+        carry_context = ai_indexing.CarryContext(
+            open_containers=[c for c in carry_context.open_containers if c.get('label', '').strip().upper() not in ("INDEX", "TABLE OF CONTENTS")],
+            last_page_tail=carry_context.last_page_tail,
+        )
+
     headings = _dedupe_same_page_headings(headings)
+
+    for h in headings:
+        if h.parent_ref and "payment terms" in h.parent_ref.lower():
+            if not reference_index._leading_reference_number(h.heading_text):
+                h.family_hint = "point"
+
     headings = _recover_colon_sublists_in_chunk(headings, page_blocks)
 
     # Parent container end_page extension: a container cannot close before its children.
@@ -562,12 +606,10 @@ async def _ground_and_resolve_chunk(
 
     for h in headings:
         is_subdoc_root = reference_index.is_subdoc_root_candidate(h.heading_text, h.family_hint)
-        # Container-aware Table of Contents suppression
-        is_inside_toc = (
-            bool(h.parent_ref) and h.parent_ref.strip().upper() in ("INDEX", "TABLE OF CONTENTS")
-        ) or (
-            any(lbl.strip().upper() in ("INDEX", "TABLE OF CONTENTS") for lbl in sim_stack_labels)
-            and (h.start_page <= 2 or not is_subdoc_root)
+        # Container-aware Table of Contents suppression (only early TOC pages <= 2)
+        is_inside_toc = (h.start_page <= 2) and (
+            (bool(h.parent_ref) and h.parent_ref.strip().upper() in ("INDEX", "TABLE OF CONTENTS"))
+            or (any(lbl.strip().upper() in ("INDEX", "TABLE OF CONTENTS") for lbl in sim_stack_labels) and not is_subdoc_root)
         )
         if is_inside_toc and h.heading_text.strip().upper() not in ("INDEX", "TABLE OF CONTENTS"):
             continue
@@ -623,8 +665,25 @@ async def _ground_and_resolve_chunk(
         if _TEMP_DEBUG_RAW_HEADINGS:
             print(f"  [FINAL] text={h.heading_text[:50]!r} -> final_depth={depth} final_warn={warn}")
 
+        # Standalone legal document root reset:
+        # Standalone legal instruments (AFFIDAVIT, APPLICATION UNDER SECTION..., PETITION,
+        # MEMO OF PARTIES, VAKALATNAMA, POWER OF ATTORNEY) reset to root level (depth 0)
+        # unless enclosed inside an Annexure/Schedule/Appendix/Exhibit.
+        if reference_index._STANDALONE_LEGAL_DOCS_RE.search(h.heading_text):
+            root_is_annexure = False
+            if carry_context.open_containers and carry_context.open_containers[0].get("family") in ("annexure", "schedule", "appendix", "exhibit"):
+                root_is_annexure = True
+            elif sim_stack_labels and re.match(r"^\s*(?:annexure|schedule|appendix|exhibit)\b", sim_stack_labels[0], re.IGNORECASE):
+                root_is_annexure = True
+            if not root_is_annexure:
+                depth = 0
+
         # Root protection: never evict an active root container unless incoming is a genuine subdoc root
         if sim_stack_len >= 1 and not is_subdoc_root and depth == 0:
+            depth = 1
+
+        # Major judicial section boundary clamping:
+        if reference_index._MAJOR_JUDICIAL_SECTIONS.match(h.heading_text) and sim_stack_len >= 1:
             depth = 1
 
         # Stack simulation parity: only push to sim_stack_labels if this heading
@@ -769,7 +828,33 @@ async def _ground_and_resolve_chunk(
             })
         events_by_page[page_num] = page_events
 
-    return events_by_page, warning_counts
+    # Prune non-root subdocs that ground to data table blocks or are unlocated
+    filtered_events: Dict[int, List[Dict[str, Any]]] = {}
+    for p_num, ev_list in events_by_page.items():
+        kept = []
+        blocks = page_blocks.get(p_num, [])
+        for ev in ev_list:
+            txt = ev.get('heading_text', '')
+            is_subdoc_root = reference_index.is_subdoc_root_candidate(txt, ev.get('family_hint'))
+            minted_fam, _, _, _, _ = reference_index.mint_key_for_heading(
+                txt, boundary_ordinal=0, label_occurrence_counts={},
+                family_hint=ev.get('family_hint'), number_hint=ev.get('number_hint'),
+            )
+            fp = ev.get('fingerprint', '')
+            is_table = False
+            if fp and blocks:
+                for b in blocks:
+                    if b.startswith(fp):
+                        if b.strip().startswith(('<table', '<tr')) or '<td>' in b:
+                            is_table = True
+                        break
+            if minted_fam == 'subdoc' and not is_subdoc_root:
+                if is_table or not fp:
+                    continue
+            kept.append(ev)
+        filtered_events[p_num] = kept
+
+    return filtered_events, warning_counts
 
 
 def _rule_prior_for_chunk(
@@ -1487,18 +1572,21 @@ async def reindex_job_with_ai(
                 # must be folded back into new_scope before persistence —
                 # otherwise a later page's AI-reported roman sub-grounds
                 # have nothing to nest under.
-                if not pleading_points_via_ai:
-                    extra_cands, last_decimal_ground = reference_index.detect_pleading_points_for_page(
-                        text, new_scope, cands,
-                    )
-                    cands = cands + extra_cands
-                    new_scope["last_decimal_ground"] = last_decimal_ground
-                # else: pleading_points_via_ai — the AI was asked to detect
-                # and nest these itself (see build_structure_prompt's
-                # include_pleading_points), so the flat regex augmentation
-                # is skipped entirely for a clean A/B comparison, trusting
-                # apply_heading_events_to_scope's own forced-family/
-                # last_decimal_ground handling of whatever the AI reported.
+                # Hybrid supplementation: run deterministic pleading point detection to supplement
+                # any numbered averments/paragraphs the AI missed, deduplicating against existing candidates.
+                extra_cands, last_decimal_ground = reference_index.detect_pleading_points_for_page(
+                    text, new_scope, cands,
+                )
+                if extra_cands:
+                    existing_keys = {c.get("key") for c in cands}
+                    existing_fps = {c.get("fingerprint") for c in cands if c.get("fingerprint")}
+                    to_add = [
+                        ec for ec in extra_cands
+                        if ec.get("key") not in existing_keys and ec.get("fingerprint") not in existing_fps
+                    ]
+                    cands = cands + to_add
+                    if last_decimal_ground:
+                        new_scope["last_decimal_ground"] = last_decimal_ground
             else:
                 cands, new_scope = reference_index.build_targets_for_page(
                     text, seed_scope, has_next_page=page_num < total_pages,

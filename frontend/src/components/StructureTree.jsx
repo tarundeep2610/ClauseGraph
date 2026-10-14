@@ -297,8 +297,16 @@ function reasonsTooltip(reasons) {
 function formatRangeSuffix(nodeKey, rangeIndex) {
   const ranges = rangeIndex?.get(nodeKey);
   if (!ranges || ranges.length === 0) return '';
-  const spans = ranges.map((r) => (r.start_page === r.end_page ? `${r.start_page}` : `${r.start_page}–${r.end_page}`));
-  if (ranges.length === 1 && ranges[0].start_page === ranges[0].end_page) return '';
+  const seen = new Set();
+  const spans = [];
+  for (const r of ranges) {
+    const span = r.start_page === r.end_page ? `${r.start_page}` : `${r.start_page}–${r.end_page}`;
+    if (!seen.has(span)) {
+      seen.add(span);
+      spans.push(span);
+    }
+  }
+  if (spans.length === 1 && ranges[0].start_page === ranges[0].end_page) return '';
   return ` (pages ${spans.join(', ')})`;
 }
 
@@ -349,7 +357,7 @@ function DragHandle({ id, testId }) {
   );
 }
 
-function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, onJumpContainer, rangeIndex, activePathIds, currentNodeId, onEditItem, onDeleteItem, collapseSignal, dragExpandIds }) {
+function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, onJumpContainer, rangeIndex, activePathIds, currentNodeId, onEditItem, onDeleteItem, onAddChild, collapseSignal, dragExpandIds }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const isCurrent = node.id === currentNodeId;
   const headerRef = useRef(null);
@@ -467,7 +475,6 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
         <span className="structure-tree-node-label">
           {lowConfidence && <span className="structure-low-confidence-marker">≈ </span>}
           <span className="structure-tree-label-text" title={node.label}>{node.label}</span>
-          {!primaryLeaf && <span className="structure-tree-node-range">{formatRangeSuffix(node.key, rangeIndex)}</span>}
           {primaryLeaf?.detection_source === 'ai' && (
             <span className="structure-ai-badge" title={`Detected by AI${primaryLeaf.detection_model ? ` (${primaryLeaf.detection_model})` : ''}`}> AI</span>
           )}
@@ -475,9 +482,11 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
             <span className="structure-ai-badge structure-manual-badge" title="Added manually"> Manual</span>
           )}
           {primaryLeaf?.scope_provisional && <span className="structure-provisional-hint"> (provisional)</span>}
+          {!primaryLeaf && <span className="structure-tree-node-range">{formatRangeSuffix(node.key, rangeIndex)}</span>}
         </span>
         <span className="structure-tree-node-actions">
-          {(primaryLeaf ? onOpenReference : onSelectContainer) && (
+          {/* Temporarily disabled — see StructureTree.jsx task to re-enable. */}
+          {false && (primaryLeaf ? onOpenReference : onSelectContainer) && (
             <button
               className="structure-tree-node-jump"
               onClick={handleMagnifyClick}
@@ -487,6 +496,16 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
               data-testid={primaryLeaf ? `structure-view-leaf-${primaryLeaf.anchor_id}` : `structure-jump-${node.id}`}
             >
               <i className="fa-solid fa-magnifying-glass" />
+            </button>
+          )}
+          {itemDescriptor && onAddChild && (
+            <button
+              className="structure-tree-node-add"
+              onClick={(e) => { e.stopPropagation(); onAddChild(moveId, itemDescriptor); }}
+              title="Add a new entry as a child of this one"
+              data-testid={primaryLeaf ? `structure-add-child-leaf-${primaryLeaf.anchor_id}` : `structure-add-child-${node.id}`}
+            >
+              <i className="fa-solid fa-plus" />
             </button>
           )}
           {itemDescriptor && onEditItem && (
@@ -526,6 +545,7 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
                 onOpenReference={onOpenReference}
                 onEditItem={onEditItem}
                 onDeleteItem={onDeleteItem}
+                onAddChild={onAddChild}
                 leafDescriptor={leafDescriptor}
               />
             );
@@ -544,6 +564,7 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
               currentNodeId={currentNodeId}
               onEditItem={onEditItem}
               onDeleteItem={onDeleteItem}
+              onAddChild={onAddChild}
               collapseSignal={collapseSignal}
               dragExpandIds={dragExpandIds}
             />
@@ -554,7 +575,7 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
   );
 }
 
-function LeafRow({ leaf, depth, lowConfidence, onSelect, onOpenReference, onEditItem, onDeleteItem, leafDescriptor }) {
+function LeafRow({ leaf, depth, lowConfidence, onSelect, onOpenReference, onEditItem, onDeleteItem, onAddChild, leafDescriptor }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: leafMoveId(leaf) });
   return (
     <li
@@ -579,7 +600,8 @@ function LeafRow({ leaf, depth, lowConfidence, onSelect, onOpenReference, onEdit
       )}
       {leaf.scope_provisional && <span className="structure-provisional-hint"> (provisional)</span>}
       <span className="structure-tree-node-actions">
-        {onOpenReference && (
+        {/* Temporarily disabled — see StructureTree.jsx task to re-enable. */}
+        {false && onOpenReference && (
           <button
             className="structure-tree-node-jump"
             onClick={(e) => { e.stopPropagation(); onOpenReference(leaf); }}
@@ -587,6 +609,16 @@ function LeafRow({ leaf, depth, lowConfidence, onSelect, onOpenReference, onEdit
             data-testid={`structure-view-leaf-${leaf.anchor_id}`}
           >
             <i className="fa-solid fa-magnifying-glass" />
+          </button>
+        )}
+        {onAddChild && (
+          <button
+            className="structure-tree-node-add"
+            onClick={(e) => { e.stopPropagation(); onAddChild(leafMoveId(leaf), leafDescriptor); }}
+            title="Add a new entry as a child of this one"
+            data-testid={`structure-add-child-leaf-${leaf.anchor_id}`}
+          >
+            <i className="fa-solid fa-plus" />
           </button>
         )}
         {onEditItem && (
@@ -629,7 +661,7 @@ function RootDropZone() {
 
 export default function StructureTree({
   referenceStore, onSelect, onSelectContainer, onOpenReference, onJumpContainer, scopeRanges, activePage,
-  onEditItem, onDeleteItem, onMoveItem, parentOverrides, sortOverrides,
+  onEditItem, onDeleteItem, onMoveItem, onAddItem, parentOverrides, sortOverrides,
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -722,6 +754,27 @@ export default function StructureTree({
     }, 600);
   }
 
+  // A node's current children, in the same {item_key, item_page,
+  // item_occurrence_index} shape handleDragEnd already builds for
+  // ordered_siblings — reused as-is for "add as child," just appended to
+  // (by the caller, once the new item's own identity is known) instead of
+  // appending an already-existing dragged item. findNode only searches
+  // container nodes (node.children), never individual leaf occurrences
+  // (node.leaves) — a LeafRow's own moveId naturally resolves to `null`
+  // here, so it falls through to an empty list; the client's tree model
+  // doesn't track per-occurrence children separately from the node's own,
+  // and inserting under a specific occurrence is still a perfectly valid
+  // move target regardless.
+  function handleAddChildClick(targetMoveId, targetDescriptor) {
+    if (!onAddItem) return;
+    const targetNode = findNode(tree, targetMoveId);
+    const existingChildren = (targetNode ? targetNode.children : []).map((c) => {
+      const p = parseMoveId(nodeMoveId(c));
+      return { item_key: p.key, item_page: p.page, item_occurrence_index: p.occurrenceIndex };
+    });
+    onAddItem({ targetDescriptor, existingChildren });
+  }
+
   function showDropFeedback(message) {
     setDropFeedback(message);
     clearTimeout(dropFeedbackTimerRef.current);
@@ -806,6 +859,7 @@ export default function StructureTree({
               currentNodeId={currentNodeId}
               onEditItem={onEditItem}
               onDeleteItem={onDeleteItem}
+              onAddChild={onAddItem ? handleAddChildClick : undefined}
               collapseSignal={collapseSignal}
               dragExpandIds={dragExpandIds}
             />

@@ -131,3 +131,52 @@ def test_scorer_disambiguates_repeated_key_by_occurrence(seeded_job):
     # if (page, key) alone were used for matching, both "point:5" entries
     # would collide into one identity and this would incorrectly read 1.0.
     assert scores["target_recall"] < 1.0
+
+
+def test_scorer_zero_resolving_mentions_yields_perfect_score(seeded_job):
+    """When both gold and actual have 0 resolving mentions (e.g. only external
+    law mentions that correctly do not resolve internally), mention precision
+    and recall must be 1.0 (100% agreement), not 0.0."""
+    resolved = structure_overrides.resolve_structure_for_job(seeded_job)
+    gold = _gold_from_resolved(resolved)
+    gold["mentions"] = [
+        {"page": 1, "key": "section:148", "resolution": "unresolved"},  # external law, does not resolve
+    ]
+
+    scores = evaluate_run(seeded_job, gold)
+
+    assert scores["mention_precision"] == 1.0
+    assert scores["mention_recall"] == 1.0
+
+
+def test_scorer_mention_resolution_matching(seeded_job):
+    """When gold and actual both contain resolving mentions, precision and
+    recall accurately reflect their intersection."""
+    resolved = structure_overrides.resolve_structure_for_job(seeded_job)
+    gold = _gold_from_resolved(resolved)
+    gold["mentions"] = [
+        {"page": 2, "key": "annexure:a-1", "resolution": "exact"},
+        {"page": 3, "key": "clause:1", "resolution": "exact"},
+    ]
+
+    # Seed actual mentions in the database for seeded_job
+    database.upsert_reference_mentions_for_page(seeded_job, 2, [
+        {"key": "annexure:a-1", "occurrence_index": 0, "resolution": "exact", "raw_text": "Annexure A-1", "start_offset": 0, "end_offset": 12},
+    ], 1)
+    database.upsert_reference_mentions_for_page(seeded_job, 3, [
+        {"key": "clause:1", "occurrence_index": 0, "resolution": "exact", "raw_text": "Clause 1", "start_offset": 0, "end_offset": 8},
+        {"key": "clause:99", "occurrence_index": 1, "resolution": "exact", "raw_text": "Clause 99", "start_offset": 10, "end_offset": 19},
+    ], 1)
+
+    scores = evaluate_run(seeded_job, gold)
+
+    # Actual has 3 resolving mentions (annexure:a-1, clause:1, clause:99)
+    # Gold has 2 resolving mentions (annexure:a-1, clause:1)
+    # Matched = 2
+    # Precision = 2 / 3
+    # Recall = 2 / 2 = 1.0
+    assert scores["matched_mentions_count"] == 2
+    assert scores["total_gold_mentions"] == 2
+    assert scores["total_actual_mentions"] == 3
+    assert abs(scores["mention_precision"] - 2 / 3) < 1e-4
+    assert scores["mention_recall"] == 1.0

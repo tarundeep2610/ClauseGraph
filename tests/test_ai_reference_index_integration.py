@@ -688,8 +688,8 @@ async def test_pleading_points_own_decimal_ground_finding_propagates_to_the_next
     assert result["status"] == "done"
 
     delta = database.get_reference_targets_since(job_id, 0)
-    assert delta[1]["ground:10"][0]["scope_key"] == "subdoc:1"
-    assert delta[2]["ground:xi"][0]["scope_key"] == "subdoc:1/ground:10"
+    assert delta[1]["ground:10"][0]["scope_key"] == "subdoc:grounds-of-appeal"
+    assert delta[2]["ground:xi"][0]["scope_key"] == "subdoc:grounds-of-appeal/ground:10"
 
 
 @pytest.mark.asyncio
@@ -729,9 +729,9 @@ async def test_ai_reported_heading_preceded_by_a_reproduced_text_intro_never_bec
     delta = database.get_reference_targets_since(job_id, 0)
     quoted = delta[1]["numheading:9.0"][0]
     assert "possible_reproduced_text" in quoted["heading_confidence_reasons"]
-    assert quoted["scope_key"] == "subdoc:1"  # never anchored
+    assert quoted["scope_key"] == "subdoc:grounds-of-appeal"  # never anchored
     # The real next heading is a sibling of the quote, not its child.
-    assert delta[1]["numheading:3.0"][0]["scope_key"] == "subdoc:1"
+    assert delta[1]["numheading:3.0"][0]["scope_key"] == "subdoc:grounds-of-appeal"
 
 
 @pytest.mark.asyncio
@@ -775,9 +775,9 @@ async def test_ai_reported_reproduced_text_continuation_line_also_suppressed(mon
 
     delta = database.get_reference_targets_since(job_id, 0)
     assert "possible_reproduced_text" in delta[1]["numheading:9.1"][0]["heading_confidence_reasons"]
-    assert delta[1]["numheading:9.1"][0]["scope_key"] == "subdoc:1"  # never anchored either
-    assert delta[1]["ground:xi"][0]["scope_key"] == "subdoc:1/ground:10"
-    assert delta[1]["ground:xii"][0]["scope_key"] == "subdoc:1/ground:10"
+    assert delta[1]["numheading:9.1"][0]["scope_key"] == "subdoc:grounds-of-appeal"  # never anchored either
+    assert delta[1]["ground:xi"][0]["scope_key"] == "subdoc:grounds-of-appeal/ground:10"
+    assert delta[1]["ground:xii"][0]["scope_key"] == "subdoc:grounds-of-appeal/ground:10"
 
 
 @pytest.mark.asyncio
@@ -843,9 +843,9 @@ async def test_pleading_points_via_ai_flag_skips_the_regex_augmentation_and_uses
     assert delta[1]["ground:xi"][0]["detection_source"] == "ai"
     # Nesting still correct even though the AI (not the regex augmentation)
     # is the sole source of these events.
-    assert delta[1]["ground:10"][0]["scope_key"] == "subdoc:1"
-    assert delta[1]["ground:xi"][0]["scope_key"] == "subdoc:1/ground:10"
-    assert delta[1]["ground:xii"][0]["scope_key"] == "subdoc:1/ground:10"
+    assert delta[1]["ground:10"][0]["scope_key"] == "subdoc:grounds-of-appeal"
+    assert delta[1]["ground:xi"][0]["scope_key"] == "subdoc:grounds-of-appeal/ground:10"
+    assert delta[1]["ground:xii"][0]["scope_key"] == "subdoc:grounds-of-appeal/ground:10"
 
 
 @pytest.mark.asyncio
@@ -882,5 +882,5 @@ async def test_pleading_points_via_ai_is_the_default_when_engine_params_omits_it
     assert seen_prompts == [True]
 
     delta = database.get_reference_targets_since(job_id, 0)
-    assert delta[1]["ground:xi"][0]["scope_key"] == "subdoc:1/ground:10"
+    assert delta[1]["ground:xi"][0]["scope_key"] == "subdoc:grounds-of-appeal/ground:10"
 

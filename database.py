@@ -375,9 +375,32 @@ def init_db():
     _migrate_structure_hierarchy_override_identity(conn)
 
     _migrate_pages_data_to_ocr_pages(conn)
+    _migrate_formatted_text_backfill(conn)
 
     conn.commit()
     conn.close()
+
+
+def _migrate_formatted_text_backfill(conn: sqlite3.Connection):
+    """One-time / idempotent backfill of formatted_text for legacy pages that
+    have raw_ocr_text but predated the formatted_text column."""
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT job_id, page_num, raw_ocr_text, text FROM ocr_pages "
+        "WHERE raw_ocr_text IS NOT NULL AND formatted_text IS NULL"
+    )
+    rows = cursor.fetchall()
+    if not rows:
+        return
+    import layout_format
+    for job_id, page_num, raw_text, stored_text in rows:
+        fmt = layout_format.build_formatted_markdown(raw_text, stored_text=stored_text)
+        if fmt is not None:
+            cursor.execute(
+                "UPDATE ocr_pages SET formatted_text = ? WHERE job_id = ? AND page_num = ?",
+                (fmt, job_id, page_num),
+            )
+
 
 
 def _migrate_pages_data_to_ocr_pages(conn: sqlite3.Connection):
@@ -523,6 +546,139 @@ def _migrate_structure_hierarchy_override_identity(conn: sqlite3.Connection):
         """)
         cursor.execute("DROP TABLE ocr_structure_sort_overrides_old")
         conn.commit()
+
+
+def remap_subdoc_keys_for_job(job_id: str) -> None:
+    """One-time-per-reindex remap of content-addressed `subdoc` keys for a
+    job's structure overrides (ocr_structure_overrides,
+    ocr_structure_parent_overrides, ocr_structure_sort_overrides).
+
+    reference_index.py's `subdoc` fallback family used to mint keys from a
+    positional counter (`subdoc:7`); it now slugs the heading's own text
+    (`subdoc:grounds-of-appeal`), fixing the "ordinal drift" scoring problem
+    but meaning every job indexed under the old scheme has stale keys baked
+    into any override a user saved against it. ocr_reference_targets itself
+    needs no fix-up here — reindex_job deletes and regenerates it with the
+    new keys directly, right after this runs. The three override tables are
+    different: they are deliberately never touched by reindex (see
+    structure_overrides.py's module docstring — that's what lets "Rebuild
+    Cross-References" preserve user edits across a re-detect), so a changed
+    key would otherwise silently orphan the override on the very next
+    reindex. A global backfill isn't possible (these tables store only the
+    key string, never the heading text it came from) — this must run at
+    reindex time instead, while the *old* ocr_reference_targets rows still
+    carry that text.
+
+    Only called for a full reindex (start_page is None) — see
+    reference_index.reindex_job. A narrow single-page AI retry never
+    recomputes keys for pages outside itself, so there is nothing to remap
+    in that case; gating on it also avoids computing a job-wide key map from
+    a job that's only partially up to date.
+
+    Idempotent and cheap once a job is already on the new scheme: slugging
+    an already-correct label reproduces the same key, so the map ends up
+    empty and this is a no-op read."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT DISTINCT key, own_label, subdoc_label, snippet FROM ocr_reference_targets "
+        "WHERE job_id = ? AND key LIKE 'subdoc:%'",
+        (job_id,),
+    )
+    rows = cursor.fetchall()
+    if not rows:
+        conn.close()
+        return
+
+    # Local import: reference_index imports this module at module load time,
+    # so importing it back at module scope here would be circular.
+    import reference_index
+
+    key_map: Dict[str, str] = {}
+    for row in rows:
+        old_key = row["key"]
+        raw_label = row["own_label"] or row["subdoc_label"] or (row["snippet"] or "").split("\n")[0]
+        # Pass the stored label straight through, suffix and all —
+        # _slugify_subdoc_label extracts a trailing "(2)"/"(3)" itself and
+        # re-appends it after its own word/char cap, exactly mirroring how
+        # live minting now derives a key from the disambiguated label.
+        new_key = reference_index._slugify_subdoc_label(raw_label)
+        if new_key != old_key:
+            key_map[old_key] = new_key
+
+    if not key_map:
+        conn.close()
+        return
+
+    def _remap(value: Optional[str]) -> Optional[str]:
+        if not value:
+            return value
+        return key_map.get(value, value)
+
+    skipped = 0
+    for key, page, occ in cursor.execute(
+        "SELECT key, page, occurrence_index FROM ocr_structure_overrides WHERE job_id = ? AND key LIKE 'subdoc:%'",
+        (job_id,),
+    ).fetchall():
+        new_key = key_map.get(key)
+        if not new_key:
+            continue
+        try:
+            cursor.execute(
+                "UPDATE ocr_structure_overrides SET key = ? WHERE job_id = ? AND key = ? AND page = ? AND occurrence_index = ?",
+                (new_key, job_id, key, page, occ),
+            )
+        except sqlite3.IntegrityError:
+            skipped += 1
+            print(f"[DB] Warning: subdoc key remap skipped ocr_structure_overrides row "
+                  f"(job={job_id}, old_key={key!r}, new_key={new_key!r}) — target key already exists", file=sys.stderr)
+
+    for item_key, item_page, item_occ, new_parent_key in cursor.execute(
+        "SELECT item_key, item_page, item_occurrence_index, new_parent_key FROM ocr_structure_parent_overrides "
+        "WHERE job_id = ? AND (item_key LIKE 'subdoc:%' OR new_parent_key LIKE 'subdoc:%')",
+        (job_id,),
+    ).fetchall():
+        new_item_key = _remap(item_key)
+        new_new_parent_key = _remap(new_parent_key)
+        if new_item_key == item_key and new_new_parent_key == new_parent_key:
+            continue
+        try:
+            cursor.execute(
+                "UPDATE ocr_structure_parent_overrides SET item_key = ?, new_parent_key = ? "
+                "WHERE job_id = ? AND item_key = ? AND item_page = ? AND item_occurrence_index = ?",
+                (new_item_key, new_new_parent_key, job_id, item_key, item_page, item_occ),
+            )
+        except sqlite3.IntegrityError:
+            skipped += 1
+            print(f"[DB] Warning: subdoc key remap skipped ocr_structure_parent_overrides row "
+                  f"(job={job_id}, old_item_key={item_key!r}, new_item_key={new_item_key!r}) — target key already exists", file=sys.stderr)
+
+    for scope_key, scope_page, scope_occ, item_key, item_page, item_occ in cursor.execute(
+        "SELECT scope_key, scope_page, scope_occurrence_index, item_key, item_page, item_occurrence_index "
+        "FROM ocr_structure_sort_overrides WHERE job_id = ? AND (scope_key LIKE 'subdoc:%' OR item_key LIKE 'subdoc:%')",
+        (job_id,),
+    ).fetchall():
+        new_scope_key = _remap(scope_key)
+        new_item_key = _remap(item_key)
+        if new_scope_key == scope_key and new_item_key == item_key:
+            continue
+        try:
+            cursor.execute(
+                "UPDATE ocr_structure_sort_overrides SET scope_key = ?, item_key = ? "
+                "WHERE job_id = ? AND scope_key = ? AND scope_page = ? AND scope_occurrence_index = ? "
+                "AND item_key = ? AND item_page = ? AND item_occurrence_index = ?",
+                (new_scope_key, new_item_key, job_id, scope_key, scope_page, scope_occ, item_key, item_page, item_occ),
+            )
+        except sqlite3.IntegrityError:
+            skipped += 1
+            print(f"[DB] Warning: subdoc key remap skipped ocr_structure_sort_overrides row "
+                  f"(job={job_id}, old_item_key={item_key!r}, new_item_key={new_item_key!r}) — target key already exists", file=sys.stderr)
+
+    conn.commit()
+    conn.close()
+    if skipped:
+        print(f"[DB] Warning: subdoc key remap for job {job_id} skipped {skipped} override row(s) "
+              f"due to a key collision — see preceding warnings for details", file=sys.stderr)
 
 
 def get_db_connection():

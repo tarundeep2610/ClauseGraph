@@ -233,6 +233,25 @@ describe('StructureTree — tree built from the flat, materialized-path candidat
     expect(screen.getByText('Schedule 2').parentElement).toHaveTextContent('Schedule 2 (pages 1, 4)');
   });
 
+  it('deduplicates identical range entries and retains full heading tooltip', () => {
+    const store = storeFromRows({
+      1: {
+        'manual:abc': [candidate({ key: 'manual:abc', anchor_id: 'man-leaf', page: 1, own_label: 'Very Long Manual Index Heading Title', scope_chain: [] })],
+      },
+    });
+    const scopeRanges = [
+      { key: 'manual:abc', start_page: 1, end_page: 135, depth: 0 },
+      { key: 'manual:abc', start_page: 1, end_page: 135, depth: 0 },
+      { key: 'manual:abc', start_page: 1, end_page: 135, depth: 0 },
+      { key: 'manual:abc', start_page: 1, end_page: 135, depth: 0 },
+    ];
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} scopeRanges={scopeRanges} />);
+    const labelEl = screen.getByText('Very Long Manual Index Heading Title');
+    expect(labelEl).toHaveAttribute('title', 'Very Long Manual Index Heading Title');
+    expect(labelEl.parentElement).toHaveTextContent('Very Long Manual Index Heading Title (pages 1–135)');
+    expect(labelEl.parentElement.textContent).not.toContain('1–135, 1–135');
+  });
+
   it('renders normally with no range suffix when scopeRanges is not provided at all', () => {
     const store = storeFromRows({
       2: { 'article:9': [candidate({ key: 'article:9', anchor_id: 'article-leaf', page: 2, scope_chain: [] })] },
@@ -366,7 +385,8 @@ describe('StructureTree — tree built from the flat, materialized-path candidat
     }
   });
 
-  it('shows a chunk-jump button only for a node with a scope range, and calls onSelectContainer with its page span', () => {
+  // Magnifying-glass/jump button is temporarily disabled in StructureTree.jsx — re-enable alongside it.
+  it.skip('shows a chunk-jump button only for a node with a scope range, and calls onSelectContainer with its page span', () => {
     const store = storeFromRows({
       427: {
         'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'annexure-leaf', page: 427, scope_chain: [] })],
@@ -396,7 +416,8 @@ describe('StructureTree — tree built from the flat, materialized-path candidat
     expect(screen.queryByTestId('structure-jump-root/clause:4.1')).not.toBeInTheDocument();
   });
 
-  it('clicking the chunk-jump button does not also toggle the node\'s own expand/collapse state', () => {
+  // Magnifying-glass/jump button is temporarily disabled in StructureTree.jsx — re-enable alongside it.
+  it.skip('clicking the chunk-jump button does not also toggle the node\'s own expand/collapse state', () => {
     const store = storeFromRows({
       427: {
         'clause:4.1': [candidate({
@@ -480,7 +501,8 @@ describe('StructureTree — tree built from the flat, materialized-path candidat
     expect(screen.queryByText('Clause 4.1')).not.toBeInTheDocument();
   });
 
-  it('clicking a leaf\'s magnifying-glass button calls onOpenReference without also calling onSelect', () => {
+  // Magnifying-glass/jump button is temporarily disabled in StructureTree.jsx — re-enable alongside it.
+  it.skip('clicking a leaf\'s magnifying-glass button calls onOpenReference without also calling onSelect', () => {
     const onSelect = vi.fn();
     const onOpenReference = vi.fn();
     const store = storeFromRows({
@@ -612,6 +634,114 @@ describe('StructureTree — edit/delete affordances', () => {
   });
 });
 
+describe('StructureTree — add-child affordance', () => {
+  it('clicking add on a container with existing children passes the node\'s own descriptor and its current children as ordered_siblings material', () => {
+    const store = storeFromRows({
+      427: {
+        'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'annexure-leaf', page: 427, occurrence_index: 0, scope_chain: [] })],
+      },
+      430: {
+        'clause:4.1': [candidate({
+          key: 'clause:4.1', anchor_id: 'clause-leaf', page: 430, occurrence_index: 0,
+          scope_chain: [{ family: 'annexure', key: 'annexure:a-2', label: 'Annexure A-2' }],
+        })],
+      },
+    });
+    // A real scope range keeps this node in full container treatment
+    // (chevron + its own row) rather than folding its single own occurrence
+    // into a leaf header — same reasoning as the edit/delete tests above.
+    const scopeRanges = [{ key: 'annexure:a-2', start_page: 427, end_page: 446, depth: 0 }];
+    const onAddItem = vi.fn();
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} scopeRanges={scopeRanges} onAddItem={onAddItem} />);
+
+    fireEvent.click(screen.getByTestId('structure-add-child-root/annexure:a-2'));
+    expect(onAddItem).toHaveBeenCalledWith({
+      targetDescriptor: expect.objectContaining({ itemKey: 'annexure:a-2', page: 427, occurrenceIndex: 0 }),
+      existingChildren: [{ item_key: 'clause:4.1', item_page: 430, item_occurrence_index: 0 }],
+    });
+  });
+
+  it('clicking add on a container with no existing children passes an empty existingChildren list', () => {
+    const store = storeFromRows({
+      427: { 'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'annexure-leaf', page: 427, occurrence_index: 0, scope_chain: [] })] },
+    });
+    const scopeRanges = [{ key: 'annexure:a-2', start_page: 427, end_page: 446, depth: 0 }];
+    const onAddItem = vi.fn();
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} scopeRanges={scopeRanges} onAddItem={onAddItem} />);
+
+    fireEvent.click(screen.getByTestId('structure-add-child-root/annexure:a-2'));
+    expect(onAddItem).toHaveBeenCalledWith({
+      targetDescriptor: expect.objectContaining({ itemKey: 'annexure:a-2', page: 427 }),
+      existingChildren: [],
+    });
+  });
+
+  it('clicking add on an individual leaf occurrence row passes that leaf\'s own descriptor and no existing children', () => {
+    // Two occurrences of the same key, so each renders as its own LeafRow
+    // rather than folding into a single primaryLeaf header.
+    const store = storeFromRows({
+      2: {
+        'clause:4.1': [candidate({ key: 'clause:4.1', anchor_id: 'occ-0', page: 2, occurrence_index: 0, scope_chain: [] })],
+      },
+      5: {
+        'clause:4.1': [candidate({ key: 'clause:4.1', anchor_id: 'occ-1', page: 5, occurrence_index: 1, scope_chain: [] })],
+      },
+    });
+    const onAddItem = vi.fn();
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} onAddItem={onAddItem} />);
+
+    fireEvent.click(screen.getByTestId('structure-add-child-leaf-occ-1'));
+    expect(onAddItem).toHaveBeenCalledWith({
+      targetDescriptor: expect.objectContaining({ itemKey: 'clause:4.1', page: 5, occurrenceIndex: 1 }),
+      existingChildren: [],
+    });
+  });
+
+  it('hides the add button for a container node with no leaves of its own (a pure grouping artifact), same as edit/delete', () => {
+    const store = storeFromRows({
+      6: {
+        'clause:4.1': [candidate({
+          key: 'clause:4.1', anchor_id: 'clause-leaf', page: 6,
+          scope_chain: [{ family: 'article', key: 'article:2', label: 'Article 2' }],
+        })],
+      },
+    });
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} onAddItem={vi.fn()} />);
+    expect(screen.queryByTestId('structure-add-child-root/article:2')).not.toBeInTheDocument();
+  });
+
+  it('does not render the add button at all when onAddItem is not provided', () => {
+    const store = storeFromRows({
+      427: { 'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'annexure-leaf', page: 427, scope_chain: [] })] },
+    });
+    render(<StructureTree referenceStore={store} onSelect={vi.fn()} />);
+    expect(screen.queryByTestId('structure-add-child-leaf-annexure-leaf')).not.toBeInTheDocument();
+  });
+
+  it('magnifying-glass buttons are absent while add/edit/delete still render, for both a container row and a leaf row', () => {
+    const store = storeFromRows({
+      427: { 'annexure:a-2': [candidate({ key: 'annexure:a-2', anchor_id: 'annexure-leaf', page: 427, occurrence_index: 0, scope_chain: [] })] },
+    });
+    const scopeRanges = [{ key: 'annexure:a-2', start_page: 427, end_page: 446, depth: 0 }];
+    render(
+      <StructureTree
+        referenceStore={store}
+        onSelect={vi.fn()}
+        onSelectContainer={vi.fn()}
+        onOpenReference={vi.fn()}
+        onAddItem={vi.fn()}
+        onEditItem={vi.fn()}
+        onDeleteItem={vi.fn()}
+        scopeRanges={scopeRanges}
+      />
+    );
+    expect(screen.queryByTestId('structure-jump-root/annexure:a-2')).not.toBeInTheDocument();
+    expect(screen.getByTestId('structure-add-child-root/annexure:a-2')).toBeInTheDocument();
+    expect(screen.getByTestId('structure-edit-root/annexure:a-2')).toBeInTheDocument();
+    expect(screen.getByTestId('structure-delete-root/annexure:a-2')).toBeInTheDocument();
+  });
+});
+
 describe('StructureTree — universal magnifying-glass/jump target, with a fallback when there is no backend range', () => {
   it('a container-tier node with a real scope range keeps its full container treatment even with no detected children', () => {
     const store = storeFromRows({
@@ -631,13 +761,11 @@ describe('StructureTree — universal magnifying-glass/jump target, with a fallb
         scopeRanges={scopeRanges}
       />
     );
-    // Still a container row (not folded into a leaf) — chevron, range
-    // suffix, and the container-style jump/magnifying-glass testid all present.
+    // Still a container row (not folded into a leaf) — chevron and range
+    // suffix present (the container-style jump/magnifying-glass button is
+    // temporarily disabled — see StructureTree.jsx).
     expect(screen.getByTestId('structure-toggle-root/annexure:a-2')).toBeInTheDocument();
     expect(screen.getByText('Annexure A-2').parentElement).toHaveTextContent('(pages 427–446)');
-
-    fireEvent.click(screen.getByTestId('structure-jump-root/annexure:a-2'));
-    expect(onSelectContainer).toHaveBeenCalledWith({ startPage: 427, endPage: 446, label: 'Annexure A-2' });
 
     fireEvent.click(screen.getByText('Annexure A-2'));
     expect(onJumpContainer).toHaveBeenCalledWith({ startPage: 427, endPage: 446, label: 'Annexure A-2' });
@@ -680,8 +808,7 @@ describe('StructureTree — universal magnifying-glass/jump target, with a fallb
     fireEvent.click(screen.getByTestId('structure-leaf-annexure-leaf'));
     expect(onSelect.mock.calls[0][0]).toMatchObject({ anchor_id: 'annexure-leaf', page: 427 });
 
-    fireEvent.click(screen.getByTestId('structure-view-leaf-annexure-leaf'));
-    expect(onOpenReference.mock.calls[0][0]).toMatchObject({ anchor_id: 'annexure-leaf', page: 427 });
+    // (magnifying-glass/jump button temporarily disabled — see StructureTree.jsx)
 
     fireEvent.click(screen.getByTestId('structure-edit-leaf-annexure-leaf'));
     // "annexure" isn't in OWN_LABEL_FAMILIES, so a plain leafItemDescriptor
@@ -712,13 +839,11 @@ describe('StructureTree — universal magnifying-glass/jump target, with a fallb
     expect(screen.getByText('Point (a)')).toBeInTheDocument();
     expect(screen.queryByText('Page 6')).not.toBeInTheDocument();
 
-    // The row's own click/magnifying-glass still carry Clause 4.1's own
-    // occurrence (anchor-precise), not a generic container range.
+    // The row's own click still carries Clause 4.1's own occurrence
+    // (anchor-precise), not a generic container range. (magnifying-glass
+    // button temporarily disabled — see StructureTree.jsx)
     fireEvent.click(screen.getByTestId('structure-leaf-clause-leaf'));
     expect(onSelect.mock.calls[0][0]).toMatchObject({ anchor_id: 'clause-leaf', page: 6 });
-
-    fireEvent.click(screen.getByTestId('structure-view-leaf-clause-leaf'));
-    expect(onOpenReference.mock.calls[0][0]).toMatchObject({ anchor_id: 'clause-leaf', page: 6 });
   });
 
   it('a genuinely zero-occurrence grouping node still gets a working jump (via its own earliest known page) but no edit/delete', () => {

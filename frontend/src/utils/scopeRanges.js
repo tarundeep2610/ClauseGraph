@@ -9,10 +9,18 @@
 // array, never merged into one.
 export function buildRangeIndex(ranges) {
   const index = new Map();
+  const seenByKey = new Map();
   for (const r of ranges || []) {
-    const list = index.get(r.key) || [];
-    list.push(r);
-    index.set(r.key, list);
+    if (!index.has(r.key)) {
+      index.set(r.key, []);
+      seenByKey.set(r.key, new Set());
+    }
+    const spanKey = `${r.start_page}::${r.end_page}`;
+    const seen = seenByKey.get(r.key);
+    if (!seen.has(spanKey)) {
+      seen.add(spanKey);
+      index.get(r.key).push(r);
+    }
   }
   return index;
 }

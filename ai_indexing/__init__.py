@@ -60,6 +60,15 @@ from ai_indexing.prompt import (
 )
 from ai_indexing.client import ChunkOutcome, ChunkStructureResult, StructureIndexer
 from ai_indexing.credentials import ResolvedAIConfig, resolve_active_config, describe_active_config
+from ai_indexing.recording import (
+    RecordSession,
+    ReplaySession,
+    ReplayFidelityError,
+    get_active_record_session,
+    get_active_replay_session,
+    record_scope,
+    replay_scope,
+)
 
 __all__ = [
     "AIIndexError", "AIConfigError", "AIAuthError",
@@ -73,4 +82,5 @@ __all__ = [
     "PageInput", "ChunkPlan", "CarryContext", "plan_chunks", "build_structure_prompt",
     "ChunkOutcome", "ChunkStructureResult", "StructureIndexer",
     "ResolvedAIConfig", "resolve_active_config", "describe_active_config",
+    "RecordSession", "ReplaySession", "ReplayFidelityError", "record_scope", "replay_scope",
 ]

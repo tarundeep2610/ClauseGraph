@@ -17,6 +17,7 @@ history and rationale (nine rounds of review across four architecture phases).
 
 import asyncio
 import difflib
+import hashlib
 import html
 import json
 import re
@@ -347,6 +348,33 @@ def _resolve_ground_or_point_match(
 
 _GROUND_SCOPE_HEADINGS = re.compile(r"\b(GROUNDS?\s+OF\s+APPEAL|GROUNDS|PRAYER)\b", re.IGNORECASE)
 
+# Confirmed via live diagnostic (100-page gold fixture): numbered/lettered
+# rows inside a technical spares/price-schedule table ("11. Relays, power
+# contactors...", "A. 2000A", "4.10 Isolation valves") or a document INDEX
+# listing ("10. Letter of M/s Areva T&D India Ltd. dated 27.12...") were
+# being minted as real point/ground/numheading/letterheading targets —
+# table/list rows, not document headings. INDEX and PRICE SCHEDULE are
+# directly confirmed by that diagnostic; the rest are same-shape extensions
+# that cleared the mandatory negative test against both gold fixtures (see
+# _immediate_parent_is_listing_container's call sites).
+_LISTING_CONTAINER_RE = re.compile(
+    r"\b(?:INDEX|SCHEDULE|PRICE\s+SCHEDULE|SPARES?|SPARE\s+PARTS|"
+    r"LIST\s+OF\s+ANNEXURES?|BILL\s+OF\s+QUANTITIES|BOQ)\b", re.IGNORECASE)
+
+
+def _immediate_parent_is_listing_container(nested_stack: List[Dict[str, Any]]) -> bool:
+    """True when the nearest open container's own label marks it as a
+    listing/schedule/index, not narrative prose — the gate for suppressing
+    point/ground/numheading/letterheading rows that are really table/list
+    rows (see _LISTING_CONTAINER_RE above). Deliberately checks only the
+    single nearest container, not a full ancestor walk like
+    _ground_scope_active — a listing table's own immediate parent is what
+    matters, not whether some distant ancestor happens to also be named
+    "Schedule"."""
+    if not nested_stack:
+        return False
+    return bool(_LISTING_CONTAINER_RE.search(nested_stack[-1].get("label") or ""))
+
 EXTERNAL_LAW_A_RE = re.compile(
     r"\b[A-Za-z]+(?:\s+(?:and|of|for|[A-Za-z]+))*\s+(?:Act|Code|Rules|Regulations)(?:,\s*|\s+)(?:19|20)\d{2}\b",
     re.IGNORECASE,
@@ -666,6 +694,51 @@ def normalize_key(keyword: str, prefix: Optional[str], number_raw: str) -> str:
     return f"{family}:{prefix_part}{number}"
 
 
+_SLUG_NON_ALNUM_RE = re.compile(r"[^a-z0-9\s]+")
+_SLUG_MAX_WORDS = 6
+_SLUG_MAX_CHARS = 40
+_SLUG_DISAMBIG_SUFFIX_RE = re.compile(r"\s*\((\d+)\)\s*$")
+
+
+def _slugify_subdoc_label(text: str) -> str:
+    """Content-addressed key for the generic `subdoc` fallback family — every
+    other family already derives its key from parsed content (normalize_key
+    above); `subdoc` was the one family still minted from a positional
+    counter (boundary_ordinal), which drifts whenever one run detects a
+    different number of generic boundaries than another (see call sites).
+    Slugging the heading's own text instead makes the key depend only on
+    that heading, not on how many others were counted before it.
+
+    Should be called on the DISAMBIGUATED label (_disambiguate_label's
+    output), not the raw pre-disambiguation trigger text — two genuinely
+    distinct sub-documents sharing identical heading text (two separate
+    "AFFIDAVIT" headings) must still get distinct keys, or their children's
+    scope_key chains collide into the same string; the label's own "(2)"/
+    "(3)" suffix is exactly the per-text occurrence count needed to tell
+    them apart. That suffix is extracted and re-appended AFTER the
+    word/char cap below, never subject to it — otherwise a long base heading
+    ("I, the above named deponent do hereby solemnly affirm and st...")
+    would truncate the "(2)" away before it ever reached the slug, silently
+    colliding with the unsuffixed first occurrence (confirmed on the real
+    100-page gold fixture while regenerating its keys for this change).
+    Same-page collisions between two genuinely different headings that
+    happen to slug identically regardless are left to `occurrence_index` to
+    disambiguate, same as every other family."""
+    text = text or ""
+    suffix = ""
+    m = _SLUG_DISAMBIG_SUFFIX_RE.search(text)
+    if m:
+        suffix = f"-{m.group(1)}"
+        text = text[:m.start()]
+    cleaned = _SLUG_NON_ALNUM_RE.sub(" ", text.lower()).strip()
+    words = cleaned.split()[:_SLUG_MAX_WORDS]
+    slug = "-".join(words)[:_SLUG_MAX_CHARS].rstrip("-")
+    if not slug:
+        digest = hashlib.md5((text or "").encode("utf-8")).hexdigest()[:8]
+        slug = f"unlabeled-{digest}"
+    return f"subdoc:{slug}{suffix}"
+
+
 # ─── Fuzzy keyword recovery (OCR-garbled family keywords) ─────────────────
 # Tries before giving up on a text match entirely — e.g. "AmneXureA-1" (a
 # human reads "Annexure A-1," but the keyword is OCR-garbled and has no
@@ -975,7 +1048,33 @@ def is_subdoc_root_candidate(text: str, family: Optional[str] = None) -> bool:
         re.IGNORECASE,
     ):
         return True
+    if _STANDALONE_LEGAL_DOCS_RE.search(stripped):
+        return True
     return False
+
+
+_STANDALONE_LEGAL_DOCS_RE = re.compile(
+    r"^\s*(?:AFFIDAVIT|APPLICATION\s+UNDER|PETITION|MEMO\s+OF\s+PARTIES|VAKALATNAMA|POWER\s+OF\s+ATTORNEY)\b",
+    re.IGNORECASE,
+)
+
+
+_MAJOR_JUDICIAL_SECTIONS = re.compile(
+    r"^\s*(?:"
+    r"FACTS|"
+    r"PETITIONER'?S?\s+(?:VERSION|CASE|SUBMISSIONS?)|"
+    r"RESPONDENT'?S?\s+(?:VERSION|CASE|SUBMISSIONS?)|"
+    r"CHALLENGE\s+TO\s+.*|"
+    r"ISSUES?|"
+    r"FINDINGS?|"
+    r"ANALYSIS|"
+    r"SUBMISSIONS?\s+OF\s+.*|"
+    r"CONCLUSION|"
+    r"DISPOSAL|"
+    r"ORDER"
+    r")\s*[:\.\-]?\s*$",
+    re.IGNORECASE,
+)
 
 
 _GENERIC_HEADING_MAX_WORDS = 6
@@ -1219,14 +1318,34 @@ def _ground_scope_active(nested_stack: List[Dict[str, str]]) -> bool:
     """The narrow, curated exception allowing bare digit/roman-numeral targets —
     only within a recognized enumeration heading's scope, never reopened
     generally (would otherwise flood the index with ordinary numbered prose).
-    Checking only the outermost entry (index 0), not every stack entry, is
-    intentional: the "subdoc" family — which is what a "GROUNDS OF APPEAL"
-    trigger becomes — is hardcoded to rank 0, and the pop/push invariant
-    guarantees a rank-0 entry is always at index 0. No other index could ever
-    hold a Grounds-matching label under this rank table."""
-    if nested_stack and _GROUND_SCOPE_HEADINGS.search(nested_stack[0]["label"]):
-        return True
-    return any(s.get("family") == "ground" for s in nested_stack)
+
+    Walks inward-to-outward and stops at the NEAREST subdoc boundary — never
+    scans past it. Originally this checked ONLY nested_stack[0] against
+    _GROUND_SCOPE_HEADINGS (on the assumption a "GROUNDS OF APPEAL" trigger is
+    always the outermost entry) plus a separate, unbounded "any entry anywhere
+    has family=='ground'" scan. Both assumptions broke in practice: depth is
+    resolved from parent_ref/level, not family rank (see
+    apply_heading_events_to_scope's own docstring), so a `subdoc` entry is not
+    guaranteed to sit only at index 0 — and confirmed on real data, "GROUNDS OF
+    APPEAL" itself can legitimately BE nested_stack[0] (the AI's own top-level
+    read of the document), with many genuinely distinct sub-documents (e.g. a
+    separate "Respondent's case", a "CONTRACT AGREEMENT BETWEEN" annexure)
+    nested beneath it. The old unconditional index-0 check made every one of
+    those unrelated sub-documents' own numbered/lettered children inherit
+    ground-scope merely because the document's root happened to be titled
+    "Grounds of Appeal" — for as long as that root stayed open, i.e. most of
+    the document. The fix: treat the NEAREST enclosing subdoc boundary as the
+    one that matters, whether or not it happens to be the Grounds trigger
+    itself. A subdoc boundary whose own label does NOT match
+    _GROUND_SCOPE_HEADINGS is a neutral container (an unrelated sub-document)
+    and stops ground-scope inheritance from anything further out — it is NOT
+    itself evidence that ground-scope should apply."""
+    for s in reversed(nested_stack):
+        if s.get("family") == "ground":
+            return True
+        if s.get("family") == "subdoc":
+            return bool(_GROUND_SCOPE_HEADINGS.search(s.get("label") or ""))
+    return False
 
 
 def _pleading_scope_active(nested_stack: List[Dict[str, str]]) -> bool:
@@ -1247,9 +1366,21 @@ def _pleading_scope_active(nested_stack: List[Dict[str, str]]) -> bool:
 def _disambiguate_label(label: str, counts: Dict[str, int]) -> str:
     """First occurrence of a generic (unnumbered) sub-document label is left
     unchanged; the 2nd, 3rd, ... get a distinguishing suffix — a numbered
-    family (Annexure A-1 vs A-2) never needs this, it's already unique."""
-    n = counts.get(label, 0)
-    counts[label] = n + 1
+    family (Annexure A-1 vs A-2) never needs this, it's already unique.
+
+    Counts by a case/whitespace-normalized form of the label, not the raw
+    string: confirmed on the real gold fixture that the same heading can
+    recur with only a case difference ("RESPECTFULLY SHOWETH" vs
+    "Respectfully Showeth") — exact-string counting treated both as
+    unrelated "first occurrences" and suffixed neither, which used to be
+    harmless (boundary_ordinal kept their keys unique regardless) but, now
+    that _slugify_subdoc_label derives the key from this label, would
+    otherwise mint the identical key for two genuinely different
+    sub-documents. The returned label still preserves the caller's original
+    casing — only the counting key is normalized."""
+    norm = (label or "").strip().lower()
+    n = counts.get(norm, 0)
+    counts[norm] = n + 1
     return label if n == 0 else f"{label} ({n + 1})"
 
 
@@ -1408,12 +1539,14 @@ def build_targets_for_page(
                 # the confirmed real bug: this exact shape opened a
                 # container that stayed open for 20 subsequent pages).
                 boundary_ordinal += 1
-                weak_key = f"subdoc:{boundary_ordinal}"
+                weak_key = _slugify_subdoc_label(trigger_label)
+                weak_occ = occurrence_counts.get(weak_key, 0)
+                occurrence_counts[weak_key] = weak_occ + 1
                 scope_key = "/".join(s["key"] for s in nested_stack)
                 scope_label = " › ".join(s["label"] for s in nested_stack)
                 candidates.append({
                     "key": weak_key,
-                    "occurrence_index": 0,
+                    "occurrence_index": weak_occ,
                     "snippet": text[:400],
                     "truncated": False,
                     "continues_on_page": None,
@@ -1436,7 +1569,15 @@ def build_targets_for_page(
             # clause's snippet instead of ending it.
             finalize(closed_by_new_target=True)
             boundary_ordinal += 1
+            # Slug the DISAMBIGUATED label, not the raw trigger text: two
+            # genuinely distinct sub-documents sharing identical heading text
+            # (e.g. two separate "AFFIDAVIT" headings) must still get distinct
+            # keys, or their children's scope_key chains collide into the
+            # same string — label's own "(2)"/"(3)" suffix is exactly the
+            # per-text occurrence count needed to tell them apart, and slugs
+            # cleanly since digits survive _slugify_subdoc_label's cleanup.
             label = _disambiguate_label(trigger_label, label_occurrence_counts)
+            key = _slugify_subdoc_label(label)
             # A brand new sub-document boundary obviously starts fresh
             # numbering too — numbered-heading entries (pushed below) have
             # no independent identity to survive it.
@@ -1444,7 +1585,7 @@ def build_targets_for_page(
                 s for s in nested_stack
                 if "num_segments" not in s and _HIERARCHY_RANK.get(s["family"], 99) < 0  # rank 0 = pop everything
             ]
-            nested_stack.append({"family": "subdoc", "key": f"subdoc:{boundary_ordinal}", "label": label})
+            nested_stack.append({"family": "subdoc", "key": key, "label": label})
             last_bare_integer = None
             last_letter_ordinal = None
             last_ground_letter_ordinal = None
@@ -1522,6 +1663,15 @@ def build_targets_for_page(
             excluded = _is_backward_reference(text, match_end) or (
                 (not (is_ground or is_point or is_subpoint)) and _is_external_law(text)
             )
+
+            # A numbered/lettered row that's really a table/list row (a
+            # spares-list part, a price-schedule line item, a document-index
+            # entry), not a real ground/point — see _LISTING_CONTAINER_RE.
+            # point/ground never anchor anything (FAMILIES gives both
+            # rank=None), so skipping entirely here can't orphan any real
+            # nested content.
+            if (is_ground or is_point) and _immediate_parent_is_listing_container(nested_stack):
+                continue
 
             finalize(closed_by_new_target=True)
 
@@ -1769,6 +1919,18 @@ def build_targets_for_page(
                     else:
                         break
 
+            # A numbered row that's really a table/list row (a price-schedule
+            # line item, a spares-list part), not a real numbered clause —
+            # see _LISTING_CONTAINER_RE. Checked AFTER the pop-loop above, not
+            # before: confirmed real bug otherwise — a genuine sibling like
+            # "3.4 QUALITY PLANS" was wrongly suppressed because the STALE
+            # pre-pop top-of-stack ("3.3 TIME SCHEDULE") matched the gate,
+            # even though 3.4's true resolved parent ("3.0 CONDITIONS AND
+            # COVENANTS") does not. Must use the same post-resolution
+            # nested_stack state scope_key itself is about to be built from.
+            if _immediate_parent_is_listing_container(nested_stack):
+                continue
+
             scope_key = "/".join(s["key"] for s in nested_stack)
             scope_label = " › ".join(s["label"] for s in nested_stack)
 
@@ -1838,6 +2000,16 @@ def build_targets_for_page(
                 if can_anchor:
                     nested_stack = [s for s in nested_stack if "num_segments" not in s and s.get("family") != "letterheading"]
 
+                # A lettered row that's really a table/list row (e.g. "A.
+                # 2000A", "B. 220 KV SF-6 Circuit Breaker" in a price-schedule
+                # table), not a real lettered section — see
+                # _LISTING_CONTAINER_RE. Checked AFTER the prune above (same
+                # reasoning/bug as the numheading site: the stale pre-prune
+                # top-of-stack is not necessarily this heading's true
+                # resolved parent).
+                if _immediate_parent_is_listing_container(nested_stack):
+                    continue
+
                 scope_key = "/".join(s["key"] for s in nested_stack)
                 scope_label = " › ".join(s["label"] for s in nested_stack)
 
@@ -1868,14 +2040,21 @@ def build_targets_for_page(
             if ltype in ("title", "header") and _alpha_ratio_ok(text):
                 finalize(closed_by_new_target=True)
                 boundary_ordinal += 1
-                key = f"subdoc:{boundary_ordinal}"
+                # Disambiguate the label first (same reasoning as the real
+                # boundary trigger above): this site also pushes onto
+                # nested_stack as a real ancestor, so two identical-text
+                # layout-tagged headings must not collide into one key.
+                fallback_label = _disambiguate_label(text[:60], label_occurrence_counts)
+                key = _slugify_subdoc_label(fallback_label)
+                occ = occurrence_counts.get(key, 0)
+                occurrence_counts[key] = occ + 1
 
                 scope_key = "/".join(s["key"] for s in nested_stack)
                 scope_label = " › ".join(s["label"] for s in nested_stack)
 
                 open_acc = {
                     "key": key,
-                    "occurrence_index": 0,
+                    "occurrence_index": occ,
                     "blocks": [block],
                     "scope_key": scope_key,
                     "scope_label": scope_label,
@@ -1883,7 +2062,7 @@ def build_targets_for_page(
                     "fingerprint": text[:30],
                     "confidence_reasons": ["layout_only_no_text_match"],
                 }
-                nested_stack.append({"family": "subdoc", "key": key, "label": text[:60]})
+                nested_stack.append({"family": "subdoc", "key": key, "label": fallback_label})
                 continue
 
         # Residual fallback #2: a short, isolated, generic-shaped line
@@ -1905,12 +2084,14 @@ def build_targets_for_page(
         ):
             finalize(closed_by_new_target=True)
             boundary_ordinal += 1
-            key = f"subdoc:{boundary_ordinal}"
+            key = _slugify_subdoc_label(text)
+            occ = occurrence_counts.get(key, 0)
+            occurrence_counts[key] = occ + 1
             scope_key = "/".join(s["key"] for s in nested_stack)
             scope_label = " › ".join(s["label"] for s in nested_stack)
             candidates.append({
                 "key": key,
-                "occurrence_index": 0,
+                "occurrence_index": occ,
                 "snippet": text[:400],
                 "truncated": False,
                 "continues_on_page": None,
@@ -2881,6 +3062,14 @@ def build_mention_index_for_job(job_id: str) -> None:
             _active_reindex_jobs.discard(job_id)
 
 
+_PLEADING_AVERMENT_RE = re.compile(
+    r"^\s*(?:\(?\d+[\.\)]|\(?[a-z][\.\)]|\(?[ivxlcdm]+[\.\)])\s+"
+    r"(?:That\s+|(?:The\s+)?(?:petitioner|appellant|respondent|applicant|plaintiff|defendant|deponent)\b|"
+    r"Rejoinder\b|Arguments\s+have\s+been|It\s+has\s+been\s+argued)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
 def detect_pleading_points_for_page(
     page_text: str, scope: Dict[str, Any], existing_candidates: List[Dict[str, Any]],
 ) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, str]]]:
@@ -2914,9 +3103,16 @@ def detect_pleading_points_for_page(
     numbering rather than restarting at 0 and colliding with an existing
     row for the same key."""
     nested_stack = (scope or {}).get("stack") or []
+    if _immediate_parent_is_listing_container(nested_stack):
+        return [], (scope or {}).get("last_decimal_ground")
+
+    # Contract/outline containers never inherit pleading points
+    if nested_stack and nested_stack[0].get("family") in ("article", "section", "clause"):
+        return [], (scope or {}).get("last_decimal_ground")
+
     if _ground_scope_active(nested_stack):
         family = "ground"
-    elif _pleading_scope_active(nested_stack):
+    elif _pleading_scope_active(nested_stack) or _PLEADING_AVERMENT_RE.search(page_text):
         family = "point"
     else:
         return [], (scope or {}).get("last_decimal_ground")
@@ -3116,8 +3312,11 @@ def mint_key_for_heading(
     # heading's real Article/Section ancestor if this module's rank table
     # were consulted for it at all. It never is.
     boundary_ordinal += 1
-    key = f"subdoc:{boundary_ordinal}"
+    # Slug the disambiguated label (see build_targets_for_page's matching
+    # comment) so two distinct AI-reported headings sharing identical text
+    # don't collide into the same key.
     label = _disambiguate_label(stripped[:60], label_occurrence_counts)
+    key = _slugify_subdoc_label(label)
     return "subdoc", key, label, None, boundary_ordinal
 
 
@@ -3288,6 +3487,15 @@ def apply_heading_events_to_scope(
         elif _pleading_scope_active(nested_stack):
             forced_family = "point"
 
+        # Explicit container/family keyword matches always bypass forced_family
+        is_explicit_keyword = bool(
+            CORE_RE.match(stripped_text)
+            or _fuzzy_family_match(stripped_text)
+            or SUBDOC_TRIGGER_RE.search(stripped_text)
+        )
+        if is_explicit_keyword:
+            forced_family = None
+
         is_roman_ground_or_point = False
         is_seq_letter = False
         if forced_family:
@@ -3341,6 +3549,14 @@ def apply_heading_events_to_scope(
             depth = len(nested_stack)
         depth = max(0, min(depth, len(nested_stack)))
 
+        # Standalone legal document root reset:
+        # Standalone legal instruments (AFFIDAVIT, APPLICATION UNDER SECTION..., PETITION,
+        # MEMO OF PARTIES, VAKALATNAMA, POWER OF ATTORNEY) reset to root level (depth 0)
+        # unless enclosed inside an Annexure/Schedule/Appendix/Exhibit.
+        if _STANDALONE_LEGAL_DOCS_RE.search(text):
+            if len(nested_stack) == 0 or nested_stack[0].get("family") not in ("annexure", "schedule", "appendix", "exhibit"):
+                depth = 0
+
         # Rank-0 root container protection:
         # If an active root container is open (rank == 0, e.g. "subdoc", "annexure", "schedule", "appendix"),
         # an incoming event must NOT evict the root document by resolving to depth 0 unless the incoming
@@ -3350,6 +3566,13 @@ def apply_heading_events_to_scope(
             root_is_subdoc = root_family in ("subdoc", "annexure", "schedule", "appendix")
             if root_is_subdoc and not is_subdoc_root_candidate(text, family):
                 depth = 1
+
+        # Major judicial section boundary clamping:
+        # Major sections (e.g. FACTS, ISSUES, ANALYSIS, FINDINGS, CONCLUSION) in judicial /
+        # legal proceedings are primary top-level divisions directly under the active root
+        # container (depth 1), never nested deep inside previous submissions or sub-issues.
+        if _MAJOR_JUDICIAL_SECTIONS.match(text) and len(nested_stack) >= 1:
+            depth = 1
 
         # Leaf-family / low-confidence gate — the AI-path analogue of the
         # rule engine's "a leaf (rank is None) just reads whatever's
@@ -3488,6 +3711,18 @@ def apply_heading_events_to_scope(
                     effective_stack = [dict(s) for s in base_stack] + [
                         {"family": forced_family, "key": outer_decimal_ground["key"], "label": outer_decimal_ground["label"]}
                     ]
+
+        # A numbered/lettered row that's really a table/list row (a
+        # price-schedule line item, a spares-list part, a document-index
+        # entry), not a real heading — see _LISTING_CONTAINER_RE. Checked
+        # against effective_stack (not nested_stack) now that it's fully
+        # resolved — not earlier, right after family/key: confirmed via the
+        # equivalent rule-path bug that checking a stale, about-to-be-popped/
+        # truncated top-of-stack entry can gate on the WRONG parent (e.g. a
+        # sibling heading briefly sees a doomed ancestor's label before
+        # depth/truncation resolves the true one).
+        if family in ("point", "ground", "numheading", "letterheading") and _immediate_parent_is_listing_container(effective_stack):
+            continue
 
         scope_key = "/".join(s["key"] for s in effective_stack)
         scope_label = " › ".join(s["label"] for s in effective_stack)
@@ -3736,11 +3971,11 @@ def compute_scope_ranges(job_id: str, total_pages: int) -> List[Dict[str, Any]]:
     current_version = database.get_reference_index_version(job_id)
     cached = _scope_ranges_cache.get(job_id)
     if cached and cached[0] == current_version:
-        return cached[1]
+        return [dict(r) for r in cached[1]]
 
     ranges = _compute_scope_ranges_uncached(job_id, total_pages)
     _scope_ranges_cache[job_id] = (current_version, ranges)
-    return ranges
+    return [dict(r) for r in ranges]
 
 
 def _compute_scope_ranges_uncached(job_id: str, total_pages: int) -> List[Dict[str, Any]]:
@@ -3861,6 +4096,12 @@ async def reindex_job(
             return
         engine_params = job.get("engine_params") or {}
         mode = force_mode or ("ai" if engine_params.get("ai_indexing_enabled") else "rule")
+        # Full reindex only (never a narrow AI single-page retry, which only
+        # touches one page and leaves the rest of the job's keys/overrides
+        # alone — nothing to remap there). The rule path always rebuilds
+        # from page 1 regardless of start_page, so it's always "full" here.
+        if mode == "rule" or start_page is None:
+            database.remap_subdoc_keys_for_job(job_id)
         if mode == "ai":
             import ai_reference_index
             await ai_reference_index.reindex_job_with_ai(

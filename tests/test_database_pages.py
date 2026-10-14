@@ -184,3 +184,26 @@ def test_migration_backfills_legacy_pages_data_idempotently():
     database.init_db()  # second pass must not duplicate or raise
     pages_again = database.get_pages(job_id)
     assert len(pages_again) == 2
+
+
+def test_migration_backfills_formatted_text_idempotently():
+    job_id = _job_id()
+    raw = "<|det|>title [100, 10, 400, 40]<|/det|>3.3 TIME SCHEDULE"
+    database.upsert_page(
+        job_id, 1, status="success", text="3.3 TIME SCHEDULE",
+        confidence=95.0, needs_review=0, raw_ocr_text=raw, formatted_text="temp",
+    )
+    # Manually reset formatted_text to NULL via raw sqlite connection (bypassing get_db_connection/init_db)
+    raw_conn = sqlite3.connect(database.DB_PATH)
+    raw_conn.execute("UPDATE ocr_pages SET formatted_text = NULL WHERE job_id = ?", (job_id,))
+    raw_conn.commit()
+    row = raw_conn.execute("SELECT formatted_text FROM ocr_pages WHERE job_id = ?", (job_id,)).fetchone()
+    assert row[0] is None
+    raw_conn.close()
+
+    # Running init_db() must automatically backfill it from raw_ocr_text
+    database.init_db()
+    page_after = database.get_page(job_id, 1)
+    assert page_after["formatted_text"] == "## 3.3 TIME SCHEDULE"
+
+

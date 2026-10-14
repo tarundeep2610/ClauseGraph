@@ -58,6 +58,14 @@ def test_add_manual_item_appears_in_references_delta_and_scope_ranges(client, au
     assert matches[0]["family"] == "manual"
     assert not matches[0].get("synthetic")
 
+    # Consecutive calls to GET /scope-ranges must remain idempotent and not duplicate
+    # manual items into cached server-side lists.
+    for _ in range(3):
+        resp_again = client.get(f"/api/jobs/{job_id}/scope-ranges", headers=auth_headers)
+        assert resp_again.status_code == 200
+        matches_again = [r for r in resp_again.json()["ranges"] if r["key"] == manual_key]
+        assert len(matches_again) == 1
+
 
 # ─── 2. Manual item validation ────────────────────────────────────────────
 
