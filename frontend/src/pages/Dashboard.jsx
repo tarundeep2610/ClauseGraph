@@ -616,7 +616,16 @@ export default function Dashboard() {
   // reference_index_version — the existing version-watching effects above
   // (references, scope-ranges, structure-hierarchy) then refetch on their
   // own, same pattern handleReindexReferences already uses.
-  async function handleAddStructureItem({ heading, startPage, endPage }) {
+  // `targetContext` ({targetDescriptor, existingChildren}), when given (the
+  // per-node add button, see StructureTree.jsx's onAddItem / ViewerPanel's
+  // openAddChildModal), means the new entry must land as a child of
+  // targetDescriptor rather than at the tree root — chains this create with
+  // one handleMoveStructureItem call, reusing it exactly as drag-and-drop
+  // already does (including its own failure handling: a move that fails
+  // alerts rather than throwing, same as a rejected drag-and-drop today —
+  // the create has already succeeded by that point, so the new item is
+  // left at the root rather than lost, and can still be dragged manually).
+  async function handleAddStructureItem({ heading, startPage, endPage }, targetContext) {
     if (!activeJobId) return;
     const resp = await apiFetch(`/api/jobs/${activeJobId}/structure-items`, {
       method: 'POST',
@@ -626,6 +635,20 @@ export default function Dashboard() {
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       throw new Error(err.detail || 'Failed to add this entry.');
+    }
+    if (targetContext?.targetDescriptor) {
+      const created = await resp.json();
+      const { targetDescriptor, existingChildren } = targetContext;
+      await handleMoveStructureItem({
+        itemKey: created.manual_key, itemPage: created.start_page, itemOccurrenceIndex: 0,
+        newParentKey: targetDescriptor.itemKey, newParentPage: targetDescriptor.page,
+        newParentOccurrenceIndex: targetDescriptor.occurrenceIndex,
+        orderedSiblings: [
+          ...existingChildren,
+          { item_key: created.manual_key, item_page: created.start_page, item_occurrence_index: 0 },
+        ],
+      });
+      return; // handleMoveStructureItem already refetched job details on success
     }
     fetchJobDetails(activeJobId, currentPdfPageRef.current);
   }

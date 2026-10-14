@@ -26,6 +26,7 @@ from ai_indexing.errors import (
 from ai_indexing.parsing import parse_structure_response
 from ai_indexing.prompt import CarryContext, ChunkPlan, build_structure_prompt
 from ai_indexing.providers import get_provider
+from ai_indexing.recording import get_active_record_session, get_active_replay_session
 
 
 class ChunkOutcome(str, Enum):
@@ -76,6 +77,24 @@ class StructureIndexer:
         review_rule_prior: bool = False,
     ) -> ChunkStructureResult:
         page_nums = chunk.page_nums
+
+        replay_session = get_active_replay_session()
+        if replay_session is not None:
+            recorded = replay_session.get_chunk(page_nums)
+            ai_chunk, norm_report = parse_structure_response(recorded["raw_text"], page_nums)
+            has_content = bool(ai_chunk.headings or ai_chunk.confirmed_prior_ids or ai_chunk.rejected_priors)
+            outcome = ChunkOutcome.OK if has_content else ChunkOutcome.EMPTY
+            return ChunkStructureResult(
+                outcome=outcome, page_nums=page_nums, headings=list(ai_chunk.headings),
+                confirmed_prior_ids=list(ai_chunk.confirmed_prior_ids),
+                rejected_priors=list(ai_chunk.rejected_priors),
+                provider=replay_session.fingerprint.get("provider", "replay"),
+                model=replay_session.fingerprint.get("model", "replay"),
+                duration_ms=recorded.get("duration_ms", 0),
+                attempts=recorded.get("attempt", 1),
+                normalization=norm_report.to_dict(),
+            )
+
         if self._consecutive_failures >= self.failure_limit:
             raise AIIndexingDisabledError(
                 f"{self._consecutive_failures} consecutive AI chunk failures "
@@ -158,6 +177,15 @@ class StructureIndexer:
                     self._consecutive_failures = 0
                     has_content = bool(ai_chunk.headings or ai_chunk.confirmed_prior_ids or ai_chunk.rejected_priors)
                     outcome = ChunkOutcome.OK if has_content else ChunkOutcome.EMPTY
+                    record_session = get_active_record_session()
+                    if record_session is not None:
+                        record_session.record_chunk(
+                            page_nums=page_nums,
+                            raw_text=completion.text,
+                            duration_ms=completion.duration_ms,
+                            attempt=attempts,
+                            system_prompt=system_prompt,
+                        )
                     return ChunkStructureResult(
                         outcome=outcome, page_nums=page_nums, headings=list(ai_chunk.headings),
                         confirmed_prior_ids=list(ai_chunk.confirmed_prior_ids),
@@ -169,6 +197,12 @@ class StructureIndexer:
                     )
 
         self._consecutive_failures += 1
+        record_session = get_active_record_session()
+        if record_session is not None:
+            record_session.record_failure(
+                page_nums=page_nums,
+                error=str(last_error) if last_error else "unknown",
+            )
         return ChunkStructureResult(
             outcome=ChunkOutcome.FAILED, page_nums=page_nums,
             provider=self.resolved.provider_config.provider,

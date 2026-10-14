@@ -106,8 +106,13 @@ def duplicate_job(
     src_path = job["file_path"]
     ext = os.path.splitext(src_path)[1]
     new_filename = f"{job['filename']} [qwen-test]"
+    os.makedirs(database.UPLOADS_DIR, exist_ok=True)
     new_file_path = os.path.join(database.UPLOADS_DIR, f"{new_job_id}_{new_filename}{ext}")
-    shutil.copy2(src_path, new_file_path)
+    if src_path and os.path.exists(src_path):
+        shutil.copy2(src_path, new_file_path)
+    else:
+        with open(new_file_path, "wb") as f:
+            pass
 
     job["job_id"] = new_job_id
     job["filename"] = new_filename

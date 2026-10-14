@@ -60,7 +60,7 @@ def test_standalone_schedule_divider_still_resets_the_stack():
     keyword — still opens a real new top-level container, as before."""
     page_text = "3.0 CONDITIONS AND COVENANTS\n\nSome clause text.\n\nSCHEDULE-1A\n\nNew section content.\n"
     _, scope = _by_key(page_text)
-    assert [s["key"] for s in scope["stack"]] == ["subdoc:1"]
+    assert [s["key"] for s in scope["stack"]] == ["subdoc:schedule"]
     assert scope["stack"][0]["label"] == "Schedule"
 
 
@@ -227,10 +227,10 @@ def test_roman_ground_continuing_a_decimal_one_nests_as_its_child():
         "(XIII) Third sub-ground under ground 10.\n"
     )
     by_key, _ = _by_key(page_text)
-    assert by_key["ground:9"]["scope_key"] == "subdoc:1"
-    assert by_key["ground:10"]["scope_key"] == "subdoc:1"
+    assert by_key["ground:9"]["scope_key"] == "subdoc:grounds-of-appeal"
+    assert by_key["ground:10"]["scope_key"] == "subdoc:grounds-of-appeal"
     for k in ("ground:xi", "ground:xii", "ground:xiii"):
-        assert by_key[k]["scope_key"] == "subdoc:1/ground:10", k
+        assert by_key[k]["scope_key"] == "subdoc:grounds-of-appeal/ground:10", k
         assert by_key[k]["scope_label"] == "Grounds Of Appeal › Ground 10", k
 
 
@@ -249,10 +249,10 @@ def test_sequential_letter_ground_continuing_a_decimal_one_nests_as_its_child():
         "(C) Third sub-ground under ground 10.\n"
     )
     by_key, _ = _by_key(page_text)
-    assert by_key["ground:9"]["scope_key"] == "subdoc:1"
-    assert by_key["ground:10"]["scope_key"] == "subdoc:1"
+    assert by_key["ground:9"]["scope_key"] == "subdoc:grounds-of-appeal"
+    assert by_key["ground:10"]["scope_key"] == "subdoc:grounds-of-appeal"
     for k in ("ground:a", "ground:b", "ground:c"):
-        assert by_key[k]["scope_key"] == "subdoc:1/ground:10", k
+        assert by_key[k]["scope_key"] == "subdoc:grounds-of-appeal/ground:10", k
         assert by_key[k]["scope_label"] == "Grounds Of Appeal › Ground 10", k
 
 
@@ -287,11 +287,11 @@ def test_roman_grounds_overlapping_decimal_values_do_not_collide_and_arabic_resu
     assert "First actual ground" in by_key["ground:i"]["snippet"]
     assert "Tenth actual ground" in by_key["ground:x"]["snippet"]
     # Roman sub-grounds nest under decimal ground 10 specifically.
-    assert by_key["ground:i"]["scope_key"] == "subdoc:1/ground:10"
-    assert by_key["ground:x"]["scope_key"] == "subdoc:1/ground:10"
+    assert by_key["ground:i"]["scope_key"] == "subdoc:grounds-of-appeal/ground:10"
+    assert by_key["ground:x"]["scope_key"] == "subdoc:grounds-of-appeal/ground:10"
     # The next decimal item resumes as a sibling of ground 10, not a child
     # of the roman sub-list.
-    assert by_key["ground:11"]["scope_key"] == "subdoc:1"
+    assert by_key["ground:11"]["scope_key"] == "subdoc:grounds-of-appeal"
 
 
 def test_flat_decimal_grounds_with_no_roman_transition_are_unaffected():
@@ -305,7 +305,7 @@ def test_flat_decimal_grounds_with_no_roman_transition_are_unaffected():
     )
     by_key, _ = _by_key(page_text)
     for k in ("ground:1", "ground:2", "ground:3"):
-        assert by_key[k]["scope_key"] == "subdoc:1", k
+        assert by_key[k]["scope_key"] == "subdoc:grounds-of-appeal", k
 
 
 def test_a_new_real_boundary_resets_the_ground_roman_nesting_state():
@@ -319,8 +319,8 @@ def test_a_new_real_boundary_resets_the_ground_roman_nesting_state():
         "(I) An unrelated roman-numbered item in a totally different context.\n"
     )
     by_key, _ = _by_key(page_text)
-    assert by_key["ground:10"]["scope_key"] == "subdoc:1"
-    assert by_key["point:i"]["scope_key"] == "subdoc:2"  # NOT nested under ground:10
+    assert by_key["ground:10"]["scope_key"] == "subdoc:grounds-of-appeal"
+    assert by_key["point:i"]["scope_key"] == "subdoc:affidavit"  # NOT nested under ground:10
 
 
 # ─── 1.7: quotation signal — soft flag, never a hard exclude ──────────────
@@ -372,8 +372,8 @@ def test_reproduced_text_continuation_line_also_suppressed_when_detected_as_its_
     assert "possible_reproduced_text" in by_key["numheading:9.1"]["heading_confidence_reasons"]
     assert by_key["numheading:9.1"]["scope_label"] == "Grounds Of Appeal"  # never anchored either
     # ground:10 must still be the nesting parent all the way through XII.
-    assert by_key["ground:xi"]["scope_key"] == "subdoc:1/ground:10"
-    assert by_key["ground:xii"]["scope_key"] == "subdoc:1/ground:10"
+    assert by_key["ground:xi"]["scope_key"] == "subdoc:grounds-of-appeal/ground:10"
+    assert by_key["ground:xii"]["scope_key"] == "subdoc:grounds-of-appeal/ground:10"
 
 
 def test_reproduced_text_nesting_survives_even_without_the_continuation_matching_a_heading_shape():
@@ -393,8 +393,8 @@ def test_reproduced_text_nesting_survives_even_without_the_continuation_matching
     )
     by_key, _ = _by_key(page_text)
     assert "numheading:9.1" not in by_key
-    assert by_key["ground:xi"]["scope_key"] == "subdoc:1/ground:10"
-    assert by_key["ground:xii"]["scope_key"] == "subdoc:1/ground:10"
+    assert by_key["ground:xi"]["scope_key"] == "subdoc:grounds-of-appeal/ground:10"
+    assert by_key["ground:xii"]["scope_key"] == "subdoc:grounds-of-appeal/ground:10"
 
 
 def test_reproduced_text_signal_uses_general_phrasing_not_this_clause_number():
@@ -443,7 +443,7 @@ def test_letter_marker_with_redundant_trailing_period_still_matches_and_stays_fl
     )
     by_key, _ = _by_key(page_text)
     for k in ("ground:n", "ground:o"):
-        assert by_key[k]["scope_key"] == "subdoc:1/ground:10", k
+        assert by_key[k]["scope_key"] == "subdoc:grounds-of-appeal/ground:10", k
 
 
 def test_roman_sequence_starting_mid_alphabet_stays_roman():

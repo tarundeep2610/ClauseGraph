@@ -14,6 +14,18 @@ describe('buildRangeIndex', () => {
     expect(index.get('missing')).toBeUndefined();
   });
 
+  it('deduplicates identical range entries for the same key', () => {
+    const ranges = [
+      { key: 'manual:1', start_page: 1, end_page: 4, depth: 0 },
+      { key: 'manual:1', start_page: 1, end_page: 4, depth: 0 },
+      { key: 'manual:1', start_page: 1, end_page: 4, depth: 0 },
+    ];
+    const index = buildRangeIndex(ranges);
+    expect(index.get('manual:1')).toHaveLength(1);
+    expect(index.get('manual:1')[0].start_page).toBe(1);
+    expect(index.get('manual:1')[0].end_page).toBe(4);
+  });
+
   it('returns an empty map for no ranges', () => {
     expect(buildRangeIndex([]).size).toBe(0);
     expect(buildRangeIndex(undefined).size).toBe(0);

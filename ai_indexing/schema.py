@@ -44,8 +44,40 @@ _GENERIC_LEGAL_NOISE_RE = re.compile(
     r"(?:F\.?A\.?O\.?|Civil\s+Misc\.?|C\.?M\.?|W\.?P\.?|Arbitration\s+Case|Commercial\s+Appeal)(?:[\s\(\.\-].*|$)|"
     r".*Appeal\s+No\.?\s*\d+.*|"
     r"Stereo\s+H\.?C\.?J\.?D\.?.*|.*Govt\.?\s*Press.*|^[A-Za-z]\d{1,4}$|"
-    r"INDIA\s+COURT\s+FEE|COURT\s+FEE|Rs\.\s*\d+|\bRUPEES\b|Price\s*:\s*\d+.*|.*Paise\b|\([A-Z]{2,}\s+[A-Z\s]{2,}\)"
-    r")\s*$",
+    r"INDIA\s+COURT\s+FEE|COURT\s+FEE|Rs\.\s*\d+|\bRUPEES\b|Price\s*:\s*\d+.*|.*Paise\b|\([A-Z]{2,}\s+[A-Z\s]{2,}\)|"
+    r"Endst\.?\s*No\.?[\s\.\:\/\-].*|"
+    r"Memo\s+No\.?[\s\.\:\/\-].*|D\.?\s*NO\.?[\s\.\:\/\-].*|"
+    r"Copy\s+(?:of\s+the\s+above\s+)?(?:is\s+)?forwarded\s+to\b.*|"
+    r"Copy\s+to\s*:?|"
+    r"(?:\(?\d+[\.\)]?\s+)?(?:The\s+)?(?:Sr\.?\s*PS|Superin[tl][a-z]+ing\s*Engineer|Executive\s*Engineer|Chief\s*Engineer|Chief\s*Auditor|Director/|FA\s*&\s*CAO|Dy\.?\s*Secy|Supdt\.?\s*(?:\([^\)]*\))?|Accounts\s*Officer|Personal\s*Assistant|Under\s*Secretary)\b.*|"
+    r"(?:AND|OR|WITH|FOR|IN|ON|OF|AT|BY|TO)|"
+    r"To\s*,?|From|Dear\s+(?:Sirs?|Madam)\s*,?|"
+    r"Yours\s+faithfully|Thanking\s+you|"
+    r"(?:Tel|Ph|Fax)\.?:?\s*[\d\s\-\/\(\)]+|"
+    r"\d+[\.\)]?\s+(?:Our|Your)\s+.*(?:No\.?|Letter|Bid|Ref).*(?:Dtd|DTD|Dated)\.?\s*:.*|"
+    r"Our\s+Ref\.?\s*[A-Z0-9\/\-]+\s*$|"
+    r"Authorized\s+Signator(?:y|ies)\b.*|"
+    r"For\s+[A-Z0-9\s,\.\/&\-]+\b(?:LTD|LIMITED|BANK|CORP|INC|NA|N\.A\.|CHENNAI)\b.*|"
+    r"(?:\\?[\$\\]\s*)?(?:\\therefore|\\Delta|\\frac|\\sum|\\times|\\le|\\ge|\{S\}|S_\\Delta)\b.*|"
+    r"(?:CNR|CIS|Case|Diary|Registration)\s*No\.?[\s\.\:\/\-][A-Z0-9\/\-]+.*|"
+    r"(?:\(?\d+[\.\)]?\s+)?(?:Mr\.?|Ms\.?|Sh\.?|Justice\s+)?.*?\b(?:Presiding\s*Arbitrator|Sole\s*Arbitrator|Co-Arbitrator|\bArbitrator,\b).*|"
+    r"OPENING\s+SHEET\s+FOR\s+CIVIL\s+APPEALS.*|"
+    r"Claim\s+in\s+appeal.*|"
+    r"Enactment\s+and\s+section\s+under\s+which.*|"
+    r"\(ORDER\s+\d+[\s,]+RULE\s+\d+.*?\)|"
+    r"(?:CONSTRUCTION\s+OF\s+.*SUB-STATION|SUPPLY\s+OF\s+EQUIPMENT\s+FOR|KIRORI\b(?:\s*\(HISAR\))?).*|"
+    r"(?:\([A-Za-z\s\.]+\)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*,\s*(?:Presiding\s*Judge|(?:Addl\.?|Additional)\s*District\s*Judge|District\s*Judge|Commercial\s*Court|Tribunal\s*Member|Arbitrator|Sole\s*Arbitrator)\b.*|"
+    r"(?:AIJ|ADJ|DJ|CJ)-cum-Presiding\s*Judge\b.*|"
+    r"Date\s*[:\s]\s*.*|"
+    r"Bank\s+Guarantee\s+No\.?\s*\d+.*|"
+    r"CONTRACT\s+No\.?\s*[-A-Z0-9\/\(\)\s]+|"
+    r"In\s+(?:F\.?A\.?O\.?|C\.?M\.?|W\.?P\.?|Civil|Arbitration)\b.*|"
+    r".*,\s*Panchkula\s*-\s*\d{6}\s*$|"
+    r".*\(As\s+per\s+(?:Technical\s+)?Specifications?\)\s*$|"
+    r"[A-Z]{1,3}\s*[-–—]?\s*\d+[a-zA-Z]?|"
+    r"[A-Z]{2}|\d+[a-z]|"
+    r"\(?(?:[a-zA-Z]|\d{1,2}|[ivxlcdmIVXLCDM]{1,4})\)"
+    r")[.,;:]?\s*$",
     re.IGNORECASE
 )
 
@@ -249,10 +281,24 @@ def normalize_chunk(
             report.dropped_empty += 1
             continue
 
+        # Outline context for bare numbers and single-character enumeration markers:
+        # A bare number (e.g. "1.", "2.", "5") is ONLY an outline item if it has true outline
+        # semantics (point/ground/clause family, or level > 1 with a genuine non-carry parent_ref).
+        # A phantom carry-in reference (e.g. "c1", "c2") or level <= 1 must NEVER protect a bare
+        # integer from being dropped as a standalone page stamp.
+        parent_ref_clean = (h.parent_ref or "").strip()
+        is_real_parent_ref = bool(parent_ref_clean) and not re.match(r"^c\d+$", parent_ref_clean)
+        has_outline_context = (
+            h.family_hint in ("point", "ground", "clause", "section", "subpoint")
+            or (h.level > 1 and is_real_parent_ref)
+        )
+
         # 1. Standalone stamps, bare page numbers, or titleless number strings (e.g. "1.2", "20", "079789")
-        if _BARE_PAGE_OR_STAMP_RE.match(stripped_text) or re.match(r"^\s*\(?\d+(?:\.\d+)*[\.\)]?\s*$", stripped_text):
-            report.dropped_empty += 1
-            continue
+        is_bare_number = bool(re.match(r"^\s*\(?\d+(?:\.\d+)*[\.\)]?\s*$", stripped_text))
+        if _BARE_PAGE_OR_STAMP_RE.match(stripped_text) or is_bare_number:
+            if not (is_bare_number and has_outline_context):
+                report.dropped_empty += 1
+                continue
 
         # 2. Devanagari text on Indian court stamp papers
         if any("\u0900" <= ch <= "\u097F" for ch in stripped_text):
@@ -261,13 +307,20 @@ def normalize_chunk(
 
         # 3. Universal legal administrative noise
         if _GENERIC_LEGAL_NOISE_RE.match(stripped_text):
+            is_enum_token = bool(re.match(r"^\s*\(?(?:[a-zA-Z]|\d{1,2}|[ivxlcdmIVXLCDM]{1,4})\)[.,;:]?\s*$", stripped_text))
+            if not (is_enum_token and has_outline_context):
+                report.dropped_invalid += 1
+                continue
+
+        # 3a. Bare LaTeX math expressions or symbols
+        if re.match(r"^\s*(?:\\\(.*\\\)|\\\$|\\\$.*\\\$)\s*$", stripped_text):
             report.dropped_invalid += 1
             continue
 
         # 3b. Cause title entity / party lines and mid-sentence continuation fragments
         has_leading_num = bool(re.match(r"^\s*\(?(?:\d+|[a-zA-Z]|[ivxlcdmIVXLCDM]+)[\.\)]\s+", stripped_text))
         if not has_leading_num:
-            if re.match(r"^\s*(?:M/s\b.*|.*(?:\bLtd\.?|\bLimited|\band\s+others?)\s*$)", stripped_text, re.IGNORECASE):
+            if re.match(r"^\s*(?:M/s\b.*|.*(?:\bLtd\.?|\bLimited|\band\s+others?)[.,;:]?\s*$)", stripped_text, re.IGNORECASE):
                 report.dropped_invalid += 1
                 continue
             if re.match(r"^[a-z]", stripped_text) and not re.match(r"^[a-z]+\)", stripped_text):

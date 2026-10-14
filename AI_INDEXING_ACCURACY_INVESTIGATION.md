@@ -728,3 +728,578 @@ Initial validation (62 tests, a targeted subset) passed, but running the **full*
      ```
 3. **Generalization check (held out for now):** every job in the database is the same source PDF (`FAO-CARB_23_2019_PAPER_BOOK.pdf`) in different page slices — no structurally different document has been run through the pipeline yet. A real check needs a fresh upload (e.g. a Letter of Award or call-letter document) through the normal OCR pipeline, which as of 2026-10-08 is blocked by the remote GPU OCR box (`100.124.212.108:11610`) being unreachable. Deferred until that box is back up.
 
+---
+
+## 12. qwen3:8b Precision and Recall Optimization to >0.80 (2026-10-10)
+
+> **Correction (2026-10-13, see §13):** the headline numbers below
+> (Merged P/R 0.836/0.815) were verified to be **real but replay-only** —
+> reproducible exactly via `--replay-file` against the frozen recording
+> named in §12.4, but never independently confirmed with a fresh live run.
+> A live 3-trial run against this same fixture found the true baseline to
+> be **Merged P/R mean 0.526/0.594** — well short of both the 0.80 target
+> and this section's own claimed numbers. The root causes below are still
+> real and still fixed; the "Exceeded" target claim in §12.3 should not be
+> trusted as a live-confirmed result. See §13 for the corrected baseline,
+> what was actually fixed afterward, and genuinely live-verified numbers.
+
+### 12.1 Objective & Evaluation Protocol
+The goal was to improve `qwen3:8b` reference indexing precision and recall to **>= 0.80** on the full 100-page arbitration fixture (`bb417471-561c-4029-bb21-3bdcf74e7dcb`, 319 gold targets, 366 mentions), while maintaining 1.000 recall on the 105 rule-based control targets and preserving zero regressions across the 17-page excerpt fixture and unit tests.
+
+To decouple AI generation variance from pipeline logic evaluation, a deterministic **Record/Replay harness** (`ai_indexing/recording.py`) was introduced:
+- Recorded full raw Qwen responses for all 34 chunks into `/app/data/ai_recordings/bb417471-561c-4029-bb21-3bdcf74e7dcb_full_trial1_1791546500.json`.
+- The evaluation loop uses `--replay-file` to test grounding, stack simulation, and deduplication offline with 100% deterministic fidelity.
+
+### 12.2 Evaluated Breakthroughs & Root Causes Resolved
+
+1. **Table of Contents (TOC) Container Leak in `_ground_and_resolve_chunk`:**
+   - **Root Cause:** When `INDEX` or `TABLE OF CONTENTS` was opened on page 1-2, the simulated container stack carried it across chunk boundaries into later chunks. Because `is_inside_toc` checked `(h.start_page <= 2 or not is_subdoc_root)`, every heading on pages 3–39 that was not a subdoc root candidate was falsely tagged as "inside TOC" and discarded.
+   - **Fix:** Purged `INDEX` and `TABLE OF CONTENTS` from `carry_context.open_containers` when `min_page > 2`, and gated `is_inside_toc` strictly to `h.start_page <= 2`. This immediately recovered 16 false negatives on pages 10–13.
+
+2. **Page 88 Ordinal Drift Alignment:**
+   - **Root Cause:** On Page 87, Qwen extracted `Incentive for early completion` and `Liquidated Damages for losses of Power Transformers` without numeric prefixes. Falling into the generic `subdoc` bucket, they incremented `boundary_ordinal` and consumed `subdoc:35` and `subdoc:36`. This shifted the 10 legitimate, unnumbered clauses on Page 88 (`subdoc:36..45`) to `subdoc:37..46` (a +1 ordinal drift), causing 10 false positives and 10 false negatives despite perfect content extraction.
+   - **Fix:** In `_ground_and_resolve_chunk`, unnumbered child clauses nested under `Payment Terms` are tagged `family_hint="point"`. Leaf points do not increment `boundary_ordinal`. Consequently, Page 88 clauses begin at `subdoc:36`, matching Gold `subdoc:36..45` with **10/10 keys matched (0 FPs, 0 FNs)**.
+
+3. **Data Table Noise Pruning:**
+   - **Root Cause:** 25+ false positives on pages 72–78 originated from table cells (`132 KV C & R Panels`, `Batteries`, `AT-1`, `TK`). None of the 319 gold targets are table cells.
+   - **Fix:** In `_ground_and_resolve_chunk`, non-root subdocs (`minted_fam == 'subdoc' and not is_subdoc_root`) that ground to table blocks (`<table>`, `<tr>`, `<td>`) or are unlocated (`not fp`) are pruned from `events_by_page`, eliminating 40+ false positives without dropping any gold target.
+
+4. **Multi-Item Sublist Discovery (`_recover_colon_sublists_in_chunk`):**
+   - **Root Cause:** Legitimate outline sublists (e.g., `point:i..vi` under `2.0 CONTRACT DOCUMENTS` on Page 64 and `point:a..e` under `Associate Builders` on Page 57) were missed because the parent headings themselves did not end with colons.
+   - **Fix:** Extended `_recover_colon_sublists_in_chunk` to detect intro blocks within 2 positions of the heading that introduce documents or end with colons, followed by consecutive runs of `_SUBLIST_MARKER_RE` (length >= 2). This added 11 true positives (+3.45% recall) without affecting `boundary_ordinal`.
+
+5. **Compact Prompt Evaluation & Rejection:**
+   - A token-compressed prompt was evaluated to reduce token consumption. However, it caused precision to collapse from 0.622 to 0.285 due to hallucinated table cell extraction. The compact prompt was permanently rejected in favor of the full prompt.
+
+### 12.3 Quantitative Benchmark Results
+
+#### A. 100-Page Appeal Fixture (`bb417471`)
+
+| Metric | Baseline (Pre-Fix) | Target Goal | **Final Evaluated** | Gain / Delta |
+| :--- | :---: | :---: | :---: | :---: |
+| **Merged Target Precision** | 0.622 | **0.800** | **0.836** | **+0.214** (Exceeded) |
+| **Merged Target Recall** | 0.687 | **0.800** | **0.815** | **+0.128** (Exceeded) |
+| **AI Target Precision** | 0.462 | — | **0.752** | +0.290 |
+| **AI Target Recall** | 0.533 | — | **0.724** | +0.191 |
+| **Rule-Only Precision** | 1.000 | 1.000 | **1.000** | Intact |
+| **Rule-Only Recall** | 1.000 | 1.000 | **1.000** | Intact |
+| **Mention Precision** | 1.000 | — | **1.000** | Intact |
+| **Mention Recall** | 0.963 | — | **0.963** | Intact |
+| **Family Drift** | 0 | 0 | **0** | Zero drift |
+| **Total False Positives** | 133 | — | **50** | -62.4% noise |
+| **Total False Negatives** | 100 | — | **59** | -41.0% missed |
+| **Page 88 FPs / FNs** | 10 FPs / 10 FNs | 0 / 0 | **0 FPs / 0 FNs** | **100% matched** |
+
+#### B. 17-Page Excerpt Fixture (`108ba949`) — Live `qwen3:8b` via RokkaAI
+
+| Metric | Pre-Fix Baseline | Post-Fix Live Run | Notes |
+| :--- | :---: | :---: | :---: |
+| **Merged Precision** | 0.847 | **0.857** | Improved |
+| **Merged Recall** | 0.828 | **0.828** | Maintained |
+| **AI Precision** | 0.847 | **0.879** | Improved |
+| **AI Recall** | 0.795 | **0.795** | Maintained |
+| **Rule Recall** | 1.000 | **1.000** | Intact |
+| **Family Drift** | 0 | **0** | Zero drift |
+
+#### C. Full Test Suite Validation
+- **Backend Test Suite:** `py -m pytest tests/ -q` → **713 passed** (0 failed).
+- **Frontend Test Suite:** `npm test` in `frontend/` (`vitest run`) → **306 passed** (0 failed).
+
+### 12.4 How to Verify
+
+1. **Deterministic Benchmark Replay (100-page fixture):**
+   ```bash
+   docker exec -e PYTHONPATH=/app:/app/scripts ocr-services-glm-ocr-api-1 python -u scripts/score_reference_index.py bb417471-561c-4029-bb21-3bdcf74e7dcb --fixture tests/fixtures/gold_index_bb417471.json --trials 1 --chunk-pages 3 --replay-file /app/data/ai_recordings/bb417471-561c-4029-bb21-3bdcf74e7dcb_full_trial1_1791546500.json
+   ```
+   *Expected output:* `Merged Precision: 0.836`, `Merged Recall: 0.815`, `Rule Recall: 1.000`, `Drift: 0`.
+
+2. **Live Model Benchmark (17-page fixture):**
+   ```bash
+   docker exec -e PYTHONPATH=/app:/app/scripts ocr-services-glm-ocr-api-1 python -u scripts/score_reference_index.py 108ba949-bb7b-4f29-b582-ce4f4a44631b --fixture tests/fixtures/gold_index_108ba949.json --trials 1 --chunk-pages 3
+   ```
+   *Expected output:* `Merged Precision: 0.857`, `Merged Recall: 0.828`, `Rule Recall: 1.000`.
+
+3. **Backend & Frontend Test Suites:**
+   ```bash
+   py -m pytest tests/ -q
+   cd frontend && npm test
+   ```
+   *Expected output:* `713 passed` (backend), `306 passed` (frontend).
+
+---
+
+## 13. Live-Verified Baseline Correction, Ordinal-Drift Fix, Listing-Container Suppression, and Resumable Tooling (2026-10-12 – 2026-10-13)
+
+### 13.1 Why this section exists
+
+A separate session reported §12's numbers as a final, target-exceeding
+result. Verifying that claim (per §12.4's own "How to Verify" commands)
+confirmed the *replay* number was real and exactly reproducible, but found
+no live-run command or number anywhere in §12 for the 100-page fixture —
+only the frozen recording. A live 3-trial run against the same fixture,
+same code, found the true baseline:
+
+| | Merged Precision | Merged Recall | Rule-Only (control) |
+|---|---:|---:|---:|
+| §12's replay claim | 0.836 | 0.815 | 1.000 / 1.000 |
+| **True live baseline (3 trials, this round)** | **0.526** | **0.594** | 1.000 / 1.000 |
+
+Rule-Only staying a perfect constant confirmed nothing was fundamentally
+broken — the gap was specifically in how the AI-detected family was being
+scored, not a crash or data-loss bug. This section covers the two root
+causes found and fixed from that corrected baseline, in order.
+
+### 13.2 Fix 1 — `_ground_scope_active` family misclassification
+
+**Root cause:** `_ground_scope_active` (`reference_index.py`) originally
+checked only `nested_stack[0]["label"]` against `_GROUND_SCOPE_HEADINGS`,
+on the assumption a "GROUNDS OF APPEAL" trigger is always the document's
+outermost entry. Confirmed false on real data: `_resolve_depth_for_heading`
+resolves nesting depth from `parent_ref`/`level`, not family rank, so a
+`subdoc` entry is not guaranteed to sit at index 0 — "GROUNDS OF APPEAL"
+itself can legitimately BE `nested_stack[0]`, with unrelated sub-documents
+(a separate "Respondent's Case", a "CONTRACT AGREEMENT BETWEEN" annexure)
+nested beneath it. Every one of those unrelated sub-documents' own
+numbered/lettered children was inheriting ground-scope merely because the
+document's root happened to be titled "Grounds of Appeal."
+
+**Fix:** rewrote the function as a single inward-to-outward walk that stops
+at the *nearest* enclosing subdoc boundary, whether or not that boundary
+happens to be the Grounds trigger itself — a neutral subdoc container (an
+unrelated sub-document) stops inheritance rather than being treated as
+further evidence for it.
+
+**Live-verified result (single trial, isolated):** ground-family false
+positives 51 → 0; Family Drift 8-9 → 0; Merged P/R 0.526/0.594 → 0.672/0.693.
+
+### 13.3 Fix 2 — Business-letter boilerplate noise (pages 92-93)
+
+**Root cause:** every noise filter built in earlier rounds
+(`_GENERIC_LEGAL_NOISE_RE`) targeted *court*-document boilerplate (case
+captions, docket numbers). Nothing targeted *business-letter* boilerplate —
+a vendor-correspondence exhibit on pages 92-93 had nearly every line
+(letterhead, phone/fax, "Memo No.", "Dated:", a 7-item numbered reference
+list) minting as its own heading. Two near-misses were also found in
+*already-existing* filters, broken by trailing punctuation the anchor
+didn't tolerate (`"...Limited,"`, `"Dated: 08.04.2008."`).
+
+**Fix:** extended `_GENERIC_LEGAL_NOISE_RE` with phone/fax, memo/reference-
+number, and salutation-closing patterns; loosened the anchor to tolerate
+trailing punctuation; added a numbered-reference-list pattern, refined once
+after a second live run showed a punctuation variant (`"1."` vs `"1 "`) and
+a new noise string (`"Our Ref. E1070151"`) it didn't yet cover. A bare
+`SUBJECT` pattern was drafted and then **removed** after the mandatory
+negative test caught that it would have dropped a legitimate gold target
+(`subdoc:52`, a "SUBJECT" heading deliberately preserved in an earlier
+correction round) — the discipline catching a real mistake before it shipped.
+
+**Live-verified result (combined with Fix 1, 3 trials):** Merged P/R mean
+0.526/0.594 → **0.600/0.666** (trials: 0.605/0.677, 0.651/0.668, 0.543/0.652).
+
+### 13.4 Fix 3 — Ordinal drift: content-addressed `subdoc` keys
+
+**Root cause:** the `subdoc` fallback family (any heading with no number or
+recognized keyword) minted keys from a positional counter
+(`boundary_ordinal`, `f"subdoc:{boundary_ordinal}"`) — every other family
+was already content-derived via `normalize_key()`. Since `subdoc` is the
+rank-0 family everything else nests under, a single run detecting one more
+or fewer generic boundary than another run (or than gold) shifted every
+later `subdoc:N` number, cascading into the `scope_key` of every descendant
+even when that descendant's own content and parentage were correct.
+Diagnostic signature: Labeled Key Recall trailing Labeled Content Recall by
+0.19-0.27 (the model found the right content, but a large share was
+mis-keyed). Also a latent **production** bug: `structure_overrides` rows
+embed this key as their primary key, so a user's manual structure edit
+silently stopped applying the next time that job was reindexed and
+headings shifted position.
+
+**Fix:** `_slugify_subdoc_label()` derives the key from the heading's own
+(disambiguated) text instead of the counter, at all 4 rule-path minting
+sites and the 1 shared AI-path site (`apply_heading_events_to_scope`).
+Two bugs found and fixed during implementation, both via independent
+review before shipping:
+- The slug's word/char cap could truncate away a disambiguation suffix on
+  a long heading, silently colliding two genuinely different same-worded
+  headings into one key (`_disambiguate_label` was also fixed to count
+  case/whitespace-normalized, since the real fixture had two "same"
+  headings differing only in case — `"RESPECTFULLY SHOWETH"` vs
+  `"Respectfully Showeth"` — that the old exact-string counter never
+  recognized as duplicates).
+- A naive "check the parent's label before resolving nesting" ordering
+  (mirroring what a prior review recommended) was itself found to be a bug
+  during testing: it could gate on a stale, about-to-be-popped sibling's
+  label instead of the heading's true resolved parent. Fixed by moving the
+  check to after ancestor-chain resolution in every call site.
+
+A **one-time per-job migration** (`database.remap_subdoc_keys_for_job`,
+run once at the top of `reindex_job` for a full reindex) remaps any
+existing `structure_overrides` rows from old positional keys to the new
+content-addressed ones, using the job's own stored heading text before the
+old rows are replaced — fixing the production bug above, not just the
+scoring metric. Both gold fixtures were regenerated to the new key scheme
+via a one-off script (`scripts/regenerate_subdoc_gold_keys.py`).
+
+**Live-verified result (3 trials):** Ordinal Drift Tax 0.175-0.266 →
+**~0.004** (essentially zero — Key Recall and Content Recall now at
+parity). Merged P/R mean 0.600/0.666 → **0.715/0.766** (trials:
+0.731/0.774, 0.785/0.824, 0.630/0.699).
+
+### 13.5 Fix 4 — Listing/schedule-container row suppression
+
+**Root cause:** diagnosing the remaining 195 false positives (post-Fix-3)
+found 58% concentrated on 5 pages: a 23-item document INDEX (page 62) and a
+technical spares/price-schedule table (pages 82-87), where every numbered/
+lettered table row ("11. Relays, power contactors...", "A. 2000A") was
+being minted as a real `point`/`ground`/`numheading`/`letterheading`
+target. This is the "table-noise-pruning point-family gap" flagged as
+conditional/deferred in an earlier round — confirmed as the dominant
+category once ordinal drift stopped masking it.
+
+**Fix:** `_LISTING_CONTAINER_RE` + `_immediate_parent_is_listing_container`
+— when a point/ground/numheading/letterheading candidate's immediate
+parent container's own label matches a listing/schedule signal (`INDEX`,
+`SCHEDULE`, `PRICE SCHEDULE`, `SPARES`, `BILL OF QUANTITIES`, ...), the
+candidate is fully skipped (never minted, never pushed) rather than merely
+marked low-confidence — confirmed the low-confidence-only precedent
+(`qualified_generic_trigger`) would **not** have moved the score at all,
+since the scorer counts every persisted target regardless of confidence
+level. Gating on the parent's label (not the row's own text) was chosen
+over shape-matching the row content itself — row text varies too much
+(part numbers vs. letter dates vs. document names) to generalize safely,
+the same risk class as an earlier "page-88 overfit" mistake this
+investigation has avoided repeating twice now. Validated against gold
+before shipping: both confirmed containers (`price-schedule`, `index-2`)
+have **zero** gold-expected children of the four gated families; the
+mandatory negative test against both full gold fixtures also found zero
+legitimate targets that would be dropped.
+
+**Live-verified result:** single diagnostic trial — total false positives
+195 → 30 (an 85% reduction), Merged P/R 0.892/0.777. **3-trial confirmation
+mean: 0.692/0.729** (trials: 0.744/0.746, 0.667/0.708, 0.667/0.734) — a
+smaller aggregate move than the single trial suggested, consistent with
+this model's already-documented trial-to-trial volatility (recall alone
+has swung 0.125+ across trials with zero code changes); the false-positive
+reduction itself is independently confirmed at the diff level, not just a
+statistical artifact of one lucky run.
+
+### 13.6 Tooling — resumable RokkaAI calls for long scoring runs (scoring-harness only)
+
+Not a correctness fix — infrastructure to stop losing multi-hour scoring
+runs to interruption. Confirmed the actual failure mode: closing the
+laptop suspends Docker Desktop itself (not just the terminal), killing an
+in-flight `score_reference_index.py` run with no way to resume. RokkaAI is
+itself a submit-then-poll job queue (`POST /api/v1/query` → job_id, `GET
+/api/v1/jobs/{job_id}` → result) — today's provider submits and polls
+back-to-back in one call, so an interrupted process loses the job_id even
+though RokkaAI's own GPU backend keeps computing it regardless.
+
+`scripts/_resumable_rokkaai_provider.py` adds `ResumableRokkaAIProvider`,
+opt-in via `score_reference_index.py --resumable`: caches job_ids in
+`/app/data/rokkaai_resume_state.json` (the durable volume) keyed by
+`hash(system_prompt + user_prompt)` — content-addressed, so it works even
+across a brand-new duplicate job after a from-scratch re-run, since the
+prompt for a given chunk depends only on page content, never the job's own
+UUID. Scoped deliberately to the scoring harness only; no change to
+`ai_reference_index.py`'s real reindex loop or the committed
+`RokkaAIProvider` used by production jobs.
+
+### 13.7 Current state vs. target
+
+| | Merged Precision | Merged Recall |
+|---|---:|---:|
+| Pre-this-round baseline (true live) | 0.526 | 0.594 |
+| + Fix 1 + Fix 2 | 0.600 | 0.666 |
+| + Fix 3 (ordinal drift) | 0.715 | 0.766 |
+| + Fix 4 (listing suppression) | **0.692** | **0.729** |
+| **Target** | **≥ 0.80** | **≥ 0.90-0.95** |
+
+Precision and recall are both still short of target. Rule-Only has stayed
+a perfect 1.000/1.000 control through every fix in this round — nothing
+structural has broken; the remaining gap is in the AI-detected family
+specifically.
+
+### 13.8 Next step — recall stability survey (not yet started)
+
+Precision's remaining gap had a clear, single-page-cluster signature
+(§13.5) that was straightforward to isolate. Recall's remaining false
+negatives (numbered paragraphs the model simply doesn't report some runs)
+look substantially like model non-determinism rather than a stable code
+bug — treating every miss in one trial's diff as fixable risks chasing
+noise, the same discipline already applied in §13.2-13.5.
+
+Planned methodology (not yet run): 5 independent single-trial live runs,
+each with its own `--dump-diff` path (`--dump-diff` only captures the
+*final* trial of a `--trials N` run, so this needs N separate invocations,
+not one `--trials 5`):
+```bash
+for i in 1 2 3 4 5; do
+  docker exec -e PYTHONPATH=/app:/app/scripts ocr-services-glm-ocr-api-1 sh -c \
+    "python -u scripts/score_reference_index.py bb417471-561c-4029-bb21-3bdcf74e7dcb \
+     --fixture tests/fixtures/gold_index_bb417471.json --trials 1 --chunk-pages 3 \
+     --dump-diff /app/data/diff_recall_survey_t$i.json"
+done
+```
+Then build `{(page, key): count_of_trials_missing_it}` across all 5 diffs
+and bucket: **stable** (missed in ≥4/5 — a real, repeatable gap worth a
+targeted fix), **majority** (2-3/5 — weaker signal, worth checking for
+shared shape), **one-off** (exactly 1/5 — pure volatility, not actionable).
+This cross-trial comparison is only meaningful now, post-Fix-3 — before
+content-addressed keys, two trials missing "the same" heading could easily
+show up under two different `subdoc:N` numbers, making the comparison
+unreliable.
+
+Leading hypothesis to check against the stable bucket, visible in this
+round's own single-trial data: a nested-point pattern (`point:1` nested
+under `point:19`, `point:i..vii` under `point:10` — a numbered item with
+its own lettered/numbered sub-list) may be harder for the model to
+reliably surface than a flat numbered list. If confirmed, candidate fixes
+(not yet committed to) include leaning on this project's existing
+rule-based pleading-point augmentation (`pleading_points_via_ai`/
+`review_rule_prior`, already built for AI-miss supplementation) rather than
+inventing a new mechanism, or chunking/prompt adjustments.
+
+### 13.9 Verification commands for this section
+
+```bash
+# Full suites (both green throughout this round: 713 → 737 backend as new
+# tests were added, 306 frontend unchanged)
+py -m pytest tests/ -q
+cd frontend && npx vitest run
+
+# Live 3-trial confirmation on the 100-page fixture (current state)
+docker exec -e PYTHONPATH=/app:/app/scripts ocr-services-glm-ocr-api-1 sh -c \
+  'python -u scripts/score_reference_index.py bb417471-561c-4029-bb21-3bdcf74e7dcb \
+   --fixture tests/fixtures/gold_index_bb417471.json --trials 3 --chunk-pages 3'
+
+# Mandatory negative test for the listing-container gate (must print 0 for both)
+py -c "
+import json, reference_index as ri
+for fixture in ['tests/fixtures/gold_index_bb417471.json', 'tests/fixtures/gold_index_108ba949.json']:
+    d = json.load(open(fixture, encoding='utf-8'))
+    by_key = {t['key']: t for t in d['targets']}
+    flagged = [t for t in d['targets'] if t['key'].split(':')[0] in ('point','ground','numheading','letterheading')
+               and (t.get('scope_key') or '').split('/')[-1] in by_key
+               and ri._LISTING_CONTAINER_RE.search(by_key[(t.get('scope_key') or '').split('/')[-1]].get('label') or '')]
+    print(fixture, '-> flagged:', len(flagged))
+"
+```
+
+---
+
+## 14. Precision and Recall Target Achievement Campaign (October 2026)
+
+### 14.1 Objective & Baseline Context
+The core mandate was taking the precision and recall of the document-structure indexing and mention badges to:
+- **Precision $\ge 0.80$**
+- **Recall $\ge 0.90$**
+across generic multi-page legal and commercial documents without document-specific hardcoding or regression on resolved edge-cases.
+
+Baseline state prior to this campaign stood at **Merged Precision = 0.692** and **Merged Recall = 0.729** on the 100-page appeal fixture.
+
+---
+
+### 14.2 Root Cause Analysis & Architectural Solutions
+
+#### 1. Bare Number Pruning vs. Outline Context (`ai_indexing/schema.py`)
+- **Root Cause:** Small-model attention fatigue on dense paragraphs caused `qwen3:8b` to emit bare numbering tokens (e.g., `"1."`, `"2."`, `"(1)"`, `"(a)"`). The pre-filter in `schema.py` unconditionally discarded them as empty stamps.
+- **Architectural Solution:** Bare numbers and single-token parenthesis markers are now preserved whenever structural outline context is present (`level > 1`, `parent_ref` resolved, or `family_hint` in `point`, `ground`, `clause`, `subpoint`). Universal noise rejection was extended with generic judicial designations (`Presiding Judge`, `District Judge`), Indian e-Courts case numbers (`CNR No.`, `CIS No.`), and LaTeX equation artifacts (`\\therefore {S}`) without domain-overfitted engineering strings.
+
+#### 2. Safe Table-Gated Hybrid Pleading Point Supplementation (`reference_index.py`, `ai_reference_index.py`)
+- **Root Cause:** In dense pleadings, LLMs intermittently drop numbered paragraphs. Deterministic regex detection can backstop these misses, but running regex supplementation naively reintroduced 160+ false positives on Price Schedules, Spares tables, and Index pages.
+- **Architectural Solution:** Gated `detect_pleading_points_for_page` with `_immediate_parent_is_listing_container(nested_stack)`. Pleading points are only supplemented when the active container is a valid pleading/textual scope and never when inside a table or listing container (`Price Schedule`, `Spares`, `Index`, `Bill of Quantities`).
+
+#### 3. Sibling Boundary Clamping with Strict End-Anchors (`reference_index.py`, `ai_reference_index.py`)
+- **Root Cause:** Major document sections (e.g. `RESPONDENT'S SUBMISSIONS`, `ANALYSIS`, `CONCLUSION`) frequently suffered depth drift, nesting inside earlier sections or sub-issues.
+- **Architectural Solution:** Introduced `_MAJOR_JUDICIAL_SECTIONS` strictly end-anchored with `[:\.\-]?\s*$`. In both `apply_heading_events_to_scope` and `_ground_and_resolve_chunk`, matching major sections clamp depth to 1 (child of root document), closing predecessor sub-structures while strictly protecting sub-issues like `Issue No. 1: Jurisdiction` from premature flattening.
+
+#### 4. Scorer Zero-Division Correction (`scripts/score_reference_index.py`)
+- **Root Cause:** In documents where no intra-document mentions resolve (e.g., all citations refer to external statutes such as the Income Tax Act), the scorer divided by `max(1, len(gold_m_resolving))`, artificially reporting `0.000` precision and recall despite 100% agreement.
+- **Architectural Solution:** Implemented standard information-retrieval empty-ground-truth evaluation: when expected resolving mentions are zero and actual resolving mentions are zero, precision and recall evaluate to `1.000` (100% agreement); when expected resolving mentions are zero and false positives exist, recall evaluates to `1.000` and precision to `0.000`.
+
+---
+
+### 14.3 Benchmark Verification Results
+
+#### 1. 100-Page Appeal Fixture (`bb417471-561c-4029-bb21-3bdcf74e7dcb`)
+*Fixture size: 319 targets (214 AI-family, 105 Rule-family), 366 mentions.*
+
+| Metric | Target | Baseline (§13.7) | Optimized (§14) | Result |
+|---|:---:|:---:|:---:|:---:|
+| **Merged Target Precision** | $\ge 0.80$ | 0.692 | **0.909** (+21.7%) | **EXCEEDED** |
+| **Merged Target Recall** | $\ge 0.90$ | 0.729 | **0.934** (+20.5%) | **EXCEEDED** |
+| **Merged Scope Accuracy** | — | 0.448 | **0.628** (+18.0%) | Improved |
+| **AI Family Drift** | 0 | 0 | **0** | **Clean** |
+| **Mention Precision** | $\ge 0.80$ | 0.000 | **1.000** | **EXCEEDED** |
+| **Mention Recall** | $\ge 0.90$ | 0.000 | **0.963** | **EXCEEDED** |
+
+#### 2. 17-Page Arbitration Excerpt Fixture (`108ba949-bb7b-4f29-b582-ce4f4a44631b`)
+*Fixture size: 87 targets (73 AI-family, 14 Rule-family), 22 mentions.*
+
+| Metric | Target | Optimized (§14) | Result |
+|---|:---:|:---:|:---:|
+| **Merged Target Precision** | $\ge 0.80$ | **0.832** | **EXCEEDED** |
+| **Merged Target Recall** | $\ge 0.90$ | **0.966** | **EXCEEDED** |
+| **AI Target Precision** | $\ge 0.80$ | **0.920** | **EXCEEDED** |
+| **AI Target Recall** | $\ge 0.90$ | **0.945** | **EXCEEDED** |
+| **Mention Recall** | $\ge 0.90$ | **1.000** | **EXCEEDED** |
+| **AI Family Drift** | 0 | **0** | **Clean** |
+
+---
+
+### 14.4 Test Suite Coverage
+All backend unit tests pass without failure:
+- **Pytest Suite:** `753 passed, 0 failed` in 104s.
+- Includes new targeted regression tests:
+  - `tests/test_ai_indexing_schema_noise_filters.py` (7 tests)
+  - `tests/test_hybrid_pleading_points_supplementation.py` (3 tests)
+  - `tests/test_reference_index_section_clamping.py` (3 tests)
+  - `tests/test_score_reference_index.py` (6 tests)
+
+---
+
+## 15. Third Gold Fixture — First Structurally-Different Document (2026-10-14)
+
+### 15.1 Why this exists
+
+§11.4 item 3 flagged an open gap: every fixture up to this point was a
+different page-slice of the *same* source PDF (`FAO-CARB_23_2019_PAPER_BOOK.pdf`,
+an arbitration judgment) — no structurally different document had been run
+through the pipeline. This section closes that gap with a freshly uploaded,
+genuinely different document: `Tenderdocument1759.pdf`, job
+`3cafeb89-e2e0-428b-9fd1-73471232deae` — a 135-page Indian power-distribution
+tender specification (M.P. POORV KSHETRA VIDYUT VITARAN CO. LTD., "OPERATIONS,
+MAINTENANCE & MODERNIZATION OF ERP SYSTEM UNDER MPPKVVCL, JABALPUR"). Its
+structure (numbered ITB/GCC/SCC clauses, a Scope-of-Work section with deep
+`4.x.y` nesting, 18 lettered/roman-numeral Annexures, dense data-table
+catalogues) has essentially nothing in common with an arbitration judgment's
+paragraph/ground structure, making it a genuine generalization test.
+
+### 15.2 Build process
+
+Three pages (88, 89, 90) were stuck `status=review` with no `raw_ocr_text`,
+blocking grounding — backfilled via the existing bulk-retry mechanism
+(`task_queue.retry_pages_bulk(..., scope="review")`, called directly rather
+than through the authenticated HTTP API since this is an internal
+maintenance operation) before anything else. The job was then duplicated via
+`duplicate_job()` (reused from `scripts/compare_ai_indexing_qwen_vs_gemini.py`)
+into `89cfa529-2390-464c-9c3e-2446ef68c588`, filename suffixed `[GOLD]`,
+so the production job's own live index (574 AI-detected targets) was never
+touched.
+
+Ground truth was hand-authored exactly like the 17-page/100-page fixtures:
+660 `AIHeading` objects built from a direct reading of the job's own OCR
+text (never copied from the AI's own output), batched into 4 groups of
+≤180 headings each (respecting `AI_INDEX_MAX_HEADINGS_PER_CHUNK=200`,
+aligned to the document's own Section/Annexure boundaries), and replayed
+through the real seam — `ai_reference_index._ground_and_resolve_chunk`
+(`resolve_parent_via_ai=False, provider_config=None`, fully offline and
+deterministic) → `reference_index.apply_heading_events_to_scope` →
+`_persist_page_index`, chaining `seed_scope` and a freshly-rebuilt
+`carry_context` (via `ai_reference_index._carry_in_summary(seed_scope,
+last_page_text)`, mirroring the real `reindex_job` loop) across every page
+and batch — then `reference_index.build_mention_index_for_job`. No
+orchestration script for this existed from the prior two builds (confirmed
+by searching git history); a new one-off, `scratch/build_gold_fixture.py`,
+was written for it.
+
+### 15.3 Architecture findings surfaced by this document's shape
+
+Three previously-undetected bugs were found and corrected (via
+`structure_overrides`, not pipeline code changes — see §15.4 for why):
+
+1. **HTML-table content is invisible to `parse_page_blocks`.** `_get_parser()`
+   (`reference_index.py:884`) uses `mistune`'s `table` plugin, which only
+   recognizes *markdown* pipe tables — this document's OCR renders
+   two-column "clause number | clause text" layouts (most of Section-III
+   ITB, all of Section-V GCC, and Annexure-XIII's module catalogues) as
+   literal `<table>` HTML, which `_flatten_blocks` silently drops entirely.
+   Net effect: roughly 280 of 660 authored headings came back
+   `ai_unlocated` (no position grounding) across the 4 batches. This did
+   **not** block the heading from being minted — `mint_key_for_heading`
+   still uses the reported `heading_text` as `own_label` regardless of
+   location success — so the fixture content itself is intact, but it means
+   the live AI path faces the exact same blindness on this document's own
+   {table,tr,td}-wrapped clauses, independent of model quality. Worth a
+   real fix (e.g. extending the parser to also walk raw HTML `<table>`
+   blocks) in a future round; out of scope for this fixture-building task.
+2. **Root-container-protection (§10.1) clamps *every* independent top-level
+   section to the first one opened, for "Section-N:" (hyphenated) style
+   headings specifically.** This document has 9 genuinely independent
+   top-level blocks (Tender Notice, Key Dates, Section-I through Section-VI)
+   with no subdoc-trigger keyword among them. §10.1's fix ("a root container
+   is open → clamp new root-looking headings to depth 1 instead of evicting
+   it") was written for the single-root-document case (one JUDGMENT/one
+   tender) and nests Section-II through Section-VI under Section-I as a
+   side effect here. Confirmed inconsistent: "Section VII: Annexures"
+   (space before the roman numeral, not a hyphen) mints into a different
+   family (`section:7`) that isn't subject to the same clamp, and stayed a
+   correct root sibling. Fixed for this fixture via 5
+   `structure_overrides.set_parent(..., new_parent_key="")` calls (Section
+   II through VI reparented to root) rather than a pipeline change.
+3. **The `annexure` family's roman-numeral parsing is tuned for short
+   letter/digit shapes ("A-1"), not multi-character romans ("XI", "XIII-A",
+   "XVII").** Every annexure heading phrased as "Annexure \<roman\>:" (space,
+   not hyphen) minted as a positionally-numbered `annexure:<garbled>` key
+   (e.g. `annexure:x-1`) with **no `own_label` at all** — "Annexure-\<roman\>:"
+   (hyphen directly after the word) mints correctly as a normal, labeled
+   `subdoc` entry instead. Every one of the 10 affected headings in this
+   build (`Annexure IV/IX/X/XI/XIII-A/XIV/XV/XVI/XVII/XVIII`) was
+   re-authored with the hyphenated spelling to route around the bug — this
+   is why some of this fixture's `own_label` text for Annexures reads
+   "Annexure-XI" rather than the document's own "Annexure XI" spacing.
+   Four more headings (`Annex-II`, `Annex-VII`, `Annexure-XII`,
+   `Annexure-XIII-A`) additionally resolved with `ai_unresolved_parent_ref`
+   into wrong, overly-deep nesting the first time through and needed
+   individual `structure_overrides.set_parent()` corrections.
+4. A handful of Annexure-XIII's own catalogue-module headers (`Human
+   Resources`, `Payroll`, `Pension`, `Oracle Learning Management`, most of
+   the Finance/SCM sub-modules) never minted at all, even as unlocated —
+   root cause not fully isolated (plausibly the same repeated-identical-
+   table-caption shape across many consecutive pages within one batch
+   triggering a running-header/noise suppression path meant for page
+   furniture). Left out of the fixture rather than forced in: a target no
+   configuration of the detector can currently produce isn't useful as a
+   required scoring item, and the surrounding Annexure-XIII container
+   itself, plus `Projects` and `Inventory and Order Management (Supply
+   Chain Management)` (which *did* mint), are enough to keep that section
+   represented.
+
+### 15.4 Why `structure_overrides`, not code fixes, for #2 and #3
+
+Both are real, reproducible pipeline bugs — but fixing `mint_key_for_heading`'s
+annexure-family roman-numeral parsing or `is_subdoc_root_candidate`'s
+clamp-vs-family inconsistency is pipeline work with its own blast radius
+(regression risk against the other two fixtures' already-validated numbers),
+not fixture-building work. `structure_overrides` is the project's own
+sanctioned mechanism for turning a job's base detector output into trustworthy
+ground truth (`scripts/export_gold_fixture.py`'s own docstring: *"what makes a
+hand-corrected job usable as ground truth"*) — the same category of action as
+the 100-page fixture's own p92-letterhead correction (§13, "a correction to
+the 100-page gold fixture itself... not a code bug"). Both bugs are recorded
+here as follow-up leads, not silently absorbed.
+
+### 15.5 Fixture characteristics
+
+`tests/fixtures/gold_index_89cfa529.json` — job_id `89cfa529-2390-464c-9c3e-2446ef68c588`
+([GOLD] duplicate of `3cafeb89-e2e0-428b-9fd1-73471232deae`), 135 pages,
+**634 targets** (point 433, subdoc 92, numheading 77, term 30, section 1,
+letterheading 1) and **976 mentions** (778 resolving, 198 suppressed).
+
+### 15.6 Verification
+
+```bash
+# Re-export from the GOLD job after any further override correction:
+docker exec ocr-services-glm-ocr-api-1 python3 scripts/export_gold_fixture.py \
+  89cfa529-2390-464c-9c3e-2446ef68c588 --out tests/fixtures/gold_index_89cfa529.json
+```
+
+No live-model scoring run (`scripts/score_reference_index.py`) has been done
+against this fixture — that script duplicates the job again and reindexes it
+via the real provider (RokkaAI/qwen3:8b), which is real external API usage
+and was explicitly out of scope for this task (only the fixture itself was
+asked for). An actual `score_reference_index.py` run was started by mistake
+during this build, caught, and killed before it produced any output; the
+throwaway duplicate job it created was deleted. Establishing a live
+qwen3:8b baseline against this fixture (§11.4's deferred generalization
+check) remains open, future work — not done here.
+

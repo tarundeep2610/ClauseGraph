@@ -538,7 +538,8 @@ describe('ViewerPanel — Structure sidebar leaf click jumps the main panel', ()
     }
   });
 
-  it('clicking a leaf\'s magnifying-glass button opens the reading modal for that page without moving the main PDF pane', () => {
+  // Magnifying-glass/jump button is temporarily disabled in StructureTree.jsx — re-enable alongside it.
+  it.skip('clicking a leaf\'s magnifying-glass button opens the reading modal for that page without moving the main PDF pane', () => {
     const store = storeWithDelta({
       800: {
         'clause:9.1': [{ anchor_id: 'far-leaf', collapsed_key: 'clause:9.1', key: 'clause:9.1', page: 800, scope_chain: [] }],
@@ -600,7 +601,10 @@ describe('ViewerPanel — Structure container jump opens the reading modal', () 
     expect(screen.getByTestId('mock-pdf-page')).toHaveTextContent('1');
   });
 
-  it('clicking a Structure container jump button calls onRequestStructureContent with the container\'s page span and opens the modal, without moving the main PDF pane', () => {
+  // Magnifying-glass/jump button is temporarily disabled in StructureTree.jsx — re-enable alongside it
+  // (this is currently the only way the Structure tab opens the reading modal, so every test below
+  // that depends on it is skipped too, not just this one).
+  it.skip('clicking a Structure container jump button calls onRequestStructureContent with the container\'s page span and opens the modal, without moving the main PDF pane', () => {
     const store = storeWithDelta({
       427: {
         'annexure:a-2': [{ anchor_id: 'a-leaf', collapsed_key: 'annexure:a-2', key: 'annexure:a-2', page: 427, scope_chain: [] }],
@@ -626,7 +630,8 @@ describe('ViewerPanel — Structure container jump opens the reading modal', () 
     expect(screen.getByTestId('mock-pdf-page')).toHaveTextContent('1');
   });
 
-  it('shows a loading state until structureContent resolves to "ready", then renders the PDF+text content', () => {
+  // Depends on the temporarily-disabled magnifying-glass/jump button (see above) to open the modal.
+  it.skip('shows a loading state until structureContent resolves to "ready", then renders the PDF+text content', () => {
     const store = storeWithDelta({
       427: { 'annexure:a-2': [{ anchor_id: 'a-leaf', collapsed_key: 'annexure:a-2', key: 'annexure:a-2', page: 427, scope_chain: [] }] },
     });
@@ -657,7 +662,8 @@ describe('ViewerPanel — Structure container jump opens the reading modal', () 
     expect(screen.getByText('Chunk page text')).toBeInTheDocument();
   });
 
-  it('an error status shows the error message and a working Retry that re-requests the same target', () => {
+  // Depends on the temporarily-disabled magnifying-glass/jump button (see above) to open the modal.
+  it.skip('an error status shows the error message and a working Retry that re-requests the same target', () => {
     const store = storeWithDelta({
       427: { 'annexure:a-2': [{ anchor_id: 'a-leaf', collapsed_key: 'annexure:a-2', key: 'annexure:a-2', page: 427, scope_chain: [] }] },
     });
@@ -682,7 +688,8 @@ describe('ViewerPanel — Structure container jump opens the reading modal', () 
     expect(onRequestStructureContent).toHaveBeenLastCalledWith({ startPage: 427, endPage: 429, label: 'Annexure A-2' });
   });
 
-  it('closing the modal (Escape) leaves the main viewer untouched', () => {
+  // Depends on the temporarily-disabled magnifying-glass/jump button (see above) to open the modal.
+  it.skip('closing the modal (Escape) leaves the main viewer untouched', () => {
     const store = storeWithDelta({
       427: { 'annexure:a-2': [{ anchor_id: 'a-leaf', collapsed_key: 'annexure:a-2', key: 'annexure:a-2', page: 427, scope_chain: [] }] },
     });
@@ -736,7 +743,9 @@ describe('ViewerPanel — Structure add/edit/delete modals', () => {
     fireEvent.change(screen.getByTestId('structure-item-heading-input'), { target: { value: 'New Section' } });
     fireEvent.click(screen.getByTestId('structure-item-modal-submit'));
 
-    await waitFor(() => expect(onAddStructureItem).toHaveBeenCalledWith({ heading: 'New Section', startPage: 1, endPage: 1 }));
+    // Root add has no target context (that's only set for the per-node add
+    // button, via StructureTree's onAddItem) — the second arg is undefined.
+    await waitFor(() => expect(onAddStructureItem).toHaveBeenCalledWith({ heading: 'New Section', startPage: 1, endPage: 1 }, undefined));
     await waitFor(() => expect(screen.queryByTestId('structure-item-modal')).not.toBeInTheDocument());
   });
 
@@ -820,7 +829,8 @@ describe('ViewerPanel — Structure add/edit/delete modals', () => {
     expect(screen.getByTestId('structure-tree-root-dropzone')).toBeInTheDocument();
   });
 
-  it('clicking the modal backdrop closes it, but clicking inside the panel does not', () => {
+  // Depends on the temporarily-disabled magnifying-glass/jump button (see above) to open the modal.
+  it.skip('clicking the modal backdrop closes it, but clicking inside the panel does not', () => {
     const store = storeWithDelta({
       427: { 'annexure:a-2': [{ anchor_id: 'a-leaf', collapsed_key: 'annexure:a-2', key: 'annexure:a-2', page: 427, scope_chain: [] }] },
     });

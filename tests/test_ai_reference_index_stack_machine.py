@@ -59,7 +59,7 @@ def test_ai_keyword_less_heading_can_still_truncate_to_an_explicit_parent():
     events = [_event("SCOPE NOTE", depth=1)]  # depth=1 -> keep only Article 2
     candidates, new_scope = ri.apply_heading_events_to_scope(events, seed_scope, page_num=5, has_next_page=True)
     stack = new_scope["stack"]
-    assert [s["key"] for s in stack] == ["article:2", "subdoc:1"]
+    assert [s["key"] for s in stack] == ["article:2", "subdoc:scope-note"]
     assert candidates[0]["scope_chain"] == [{"family": "article", "key": "article:2", "label": "Article 2"}]
 
 
@@ -134,7 +134,7 @@ def test_ai_minted_subdoc_heading_gets_a_real_own_label():
     instead of the real heading text."""
     events = [_event("INDEX")]
     candidates, _ = ri.apply_heading_events_to_scope(events, None, page_num=2, has_next_page=True)
-    assert candidates[0]["key"] == "subdoc:1"
+    assert candidates[0]["key"] == "subdoc:index"
     assert candidates[0]["own_label"] == "INDEX"
 
 
@@ -189,9 +189,9 @@ def test_same_page_multiple_siblings_are_tracked_in_closed_this_page():
               _event("(C) third ground", depth=1)]
     _, new_scope = ri.apply_heading_events_to_scope(events, seed, page_num=42, has_next_page=True)
 
-    assert [s["key"] for s in new_scope["stack"]] == ["subdoc:2", "subdoc:5"]  # only (C) survives
+    assert [s["key"] for s in new_scope["stack"]] == ["subdoc:2", "subdoc:c-third-ground"]  # only (C) survives
     closed_keys = [rec["key"] for rec in new_scope["closed_this_page"]]
-    assert closed_keys == ["subdoc:3", "subdoc:4"]  # (A) then (B), in the order they were superseded
+    assert closed_keys == ["subdoc:a-first-ground", "subdoc:b-second-ground"]  # (A) then (B), in the order they were superseded
     for rec in new_scope["closed_this_page"]:
         assert rec["depth"] == 1
         assert rec["scope_key"] == "subdoc:2"
@@ -206,10 +206,10 @@ def test_same_page_self_closing_entry_appears_in_closed_this_page_not_stack():
     events = [_event("(XVI) a ground", depth=1, end_page=32)]
     _, new_scope = ri.apply_heading_events_to_scope(events, seed, page_num=32, has_next_page=True)
 
-    assert not any(s["key"] == "subdoc:3" for s in new_scope["stack"])
+    assert not any(s["key"] == "subdoc:xvi-a-ground" for s in new_scope["stack"])
     assert len(new_scope["closed_this_page"]) == 1
     rec = new_scope["closed_this_page"][0]
-    assert rec["key"] == "subdoc:3"
+    assert rec["key"] == "subdoc:xvi-a-ground"
     assert rec["depth"] == 1
     assert rec["scope_key"] == "subdoc:2"
     assert rec["start_page"] == rec["end_page"] == 32
@@ -321,7 +321,7 @@ def test_mint_key_for_heading_reuses_existing_key_shapes():
     assert (family, key) == ("letterheading", "letterheading:A")
 
     family, key, label, segs, bo = ri.mint_key_for_heading("SCOPE OF WORK", 0, {})
-    assert family == "subdoc" and bo == 1 and key == "subdoc:1"
+    assert family == "subdoc" and bo == 1 and key == "subdoc:scope-of-work"
 
 
 def test_validate_scope_shape_rejects_missing_fields():

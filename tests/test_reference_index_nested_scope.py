@@ -140,7 +140,7 @@ def test_generic_trigger_closes_the_open_accumulator_instead_of_swallowing_it():
     )
     by_key, _ = _by_key(page_text)
     assert "AFFIDAVIT" not in by_key["clause:1"]["snippet"].upper()
-    assert by_key["clause:2"]["scope_chain"] == [{"family": "subdoc", "key": "subdoc:1", "label": "Affidavit"}]
+    assert by_key["clause:2"]["scope_chain"] == [{"family": "subdoc", "key": "subdoc:affidavit", "label": "Affidavit"}]
 
 
 def test_repeated_generic_trigger_gets_a_disambiguating_label():

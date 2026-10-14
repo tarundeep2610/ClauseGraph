@@ -469,6 +469,7 @@ def apply_to_scope_ranges(job_id: str, ranges: List[Dict[str, Any]]) -> List[Dic
     every override mutation already bumps reference_index_version (which
     invalidates that cache too), so this function only ever runs over an
     already-fresh `ranges` list."""
+    ranges = [dict(r) for r in ranges]
     edits = get_edit_overrides(job_id)
 
     heading_by_key: Dict[str, str] = {}
@@ -514,7 +515,10 @@ def apply_to_scope_ranges(job_id: str, ranges: List[Dict[str, Any]]) -> List[Dic
             if override["end_page_override"] is not None:
                 r["end_page"] = override["end_page_override"]
 
+    existing_manual_keys = {r["key"] for r in ranges if r.get("family") == "manual"}
     for item in list_manual_items(job_id):
+        if item["manual_key"] in existing_manual_keys:
+            continue
         ranges.append({
             "family": "manual",
             "key": item["manual_key"],
@@ -745,6 +749,7 @@ def apply_parent_overrides_to_scope_ranges(job_id: str, ranges: List[Dict[str, A
 
     walk(root, [])
 
+    ranges = [dict(r) for r in ranges]
     for r in ranges:
         corrected = corrected_scope_key_by_identity.get((r["key"], r.get("start_page")))
         if corrected is not None:

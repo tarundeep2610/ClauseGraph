@@ -164,3 +164,16 @@ OUTPUT:
 ("3.3.1 The contractor shall complete..." is a verb-bearing sentence —
 excluded even though it looks like a numbered sub-heading of 3.3.)
 """
+
+
+def apply_compact_prompt() -> None:
+    """Monkeypatches ai_indexing.prompt's two module-level prompt constants
+    IN THIS PROCESS ONLY. build_structure_prompt() (ai_indexing/prompt.py)
+    reads these as globals on every call, so this affects every chunk call
+    this script makes from here on — without editing prompt.py on disk and
+    without any effect on the live app (a separate, already-running process
+    with its own already-imported copy of the module)."""
+    import ai_indexing.prompt as prompt_mod
+
+    prompt_mod.STRUCTURE_SYSTEM_PROMPT = COMPACT_SYSTEM_PROMPT
+    prompt_mod.STRUCTURE_OUTPUT_CONTRACT = COMPACT_OUTPUT_CONTRACT
