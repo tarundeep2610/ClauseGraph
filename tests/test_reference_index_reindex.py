@@ -120,6 +120,23 @@ def test_reindex_endpoint_starts_a_background_task_for_a_completed_job(client, a
     assert resp.json()["status"] == "reindexing"
 
 
+def test_reindex_endpoint_stamps_index_built_at(client, auth_headers, monkeypatch):
+    """Studio redesign 'Zero Indexing Overhead by Default': index_built_at is
+    the frontend's signal to show citation badges/outline — it must be set by
+    this explicit action, and ONLY this action (never by ordinary OCR
+    processing's always-on per-page rule detector)."""
+    job_id = _job_with_pages(["Clause 1 text."])
+    assert database.get_job(job_id, include_pages=False)["index_built_at"] is None
+
+    async def _fake_reindex(*a, **k):
+        pass
+
+    monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references", headers=auth_headers)
+    assert resp.status_code == 200
+    assert database.get_job(job_id, include_pages=False)["index_built_at"] is not None
+
+
 def test_manual_rebuild_with_no_mode_uses_current_setting_not_the_jobs_frozen_one(
     client, auth_headers, monkeypatch,
 ):
@@ -367,4 +384,89 @@ async def test_term_coverage_cap_not_enforced_below_min_job_size():
     targets = database.get_reference_targets_for_job(job_id)
     keys = {t["key"] for t in targets}
     assert "term:equipment" in keys, "cap must not apply below TERM_MAX_PAGE_COVERAGE_MIN_JOB_SIZE"
+
+
+@pytest.mark.asyncio
+async def test_term_toc_suppression_relocates_definition_to_real_occurrence():
+    # Page 1 is a front-matter INDEX naming a later section by its full name
+    # + abbreviation, exactly like a real tender document's own table of
+    # contents ("Section-V: General Conditions of Contract (GCC)"). The term
+    # must not define from the INDEX row -- it must relocate to its genuine
+    # first use, further in the document.
+    pages_text = [
+        "INDEX\n\nSection-V: General Conditions of Contract (GCC)",
+        "Filler page with no abbreviations at all.",
+        "Section-V: General Conditions of Contract (GCC) governs this clause.",
+    ]
+    job_id = _job_with_pages(pages_text)
+    await reference_index.reindex_job(job_id)
+
+    targets = database.get_reference_targets_for_job(job_id)
+    gcc = next((t for t in targets if t["key"] == "term:gcc"), None)
+    assert gcc is not None, "a genuine later occurrence must still define the term"
+    assert gcc["page"] == 3, "definition must anchor to the real occurrence, not the page-1 INDEX"
+
+    all_mentions = database.get_reference_mentions_since(job_id, -1)
+    page1_mentions = all_mentions.get(1, [])
+    assert not any(m["key"] == "term:gcc" for m in page1_mentions), \
+        "no bare mention should be emitted on the INDEX page either"
+
+
+@pytest.mark.asyncio
+async def test_term_toc_suppression_drops_term_with_no_real_occurrence():
+    # "(ITB)" only ever appears in the INDEX row itself, nowhere else in the
+    # document -- confirmed real case (Instructions To Bidders (ITB) in a
+    # tender document's own page-2 INDEX). Must produce no term at all.
+    pages_text = [
+        "INDEX\n\nSection-III: Instructions To Bidders (ITB)",
+        "Section-III: Instructions To Bidders governs the bid process.",
+    ]
+    job_id = _job_with_pages(pages_text)
+    await reference_index.reindex_job(job_id)
+
+    targets = database.get_reference_targets_for_job(job_id)
+    keys = {t["key"] for t in targets}
+    assert "term:itb" not in keys, "a term defined only inside the INDEX must not survive"
+
+
+@pytest.mark.asyncio
+async def test_term_non_toc_page_one_definition_still_captured():
+    # Negative test: a genuine definition on page 1 that is NOT inside an
+    # INDEX/TOC-marked page must still be captured normally -- the guard is
+    # keyed on the literal word INDEX/TABLE OF CONTENTS appearing on an
+    # early page, not on "page <= 2" alone.
+    pages_text = [
+        'The Supplier is herein after referred to as the "Equipment" which '
+        "expression shall include all plant and material.",
+        "The Equipment shall be inspected on site.",
+    ]
+    job_id = _job_with_pages(pages_text)
+    await reference_index.reindex_job(job_id)
+
+    targets = database.get_reference_targets_for_job(job_id)
+    equipment = next((t for t in targets if t["key"] == "term:equipment"), None)
+    assert equipment is not None
+    assert equipment["page"] == 1
+
+
+@pytest.mark.asyncio
+async def test_docref_toc_suppression_relocates_to_real_occurrence():
+    # Same leak, independent pass: build_docref_index_for_job shares
+    # _walk_blocks_from_tokens's table/HTML visibility, so a doc-ref-shaped
+    # code cited in a page-1 INDEX row ("Tender No. XYZ-9") must not anchor
+    # its baseline target to the INDEX page when the code genuinely repeats
+    # later in the document.
+    pages_text = [
+        "INDEX\n\nTender No. XYZ-9 Operations and Maintenance",
+        "Filler page with no document reference codes.",
+        "As per Tender No. XYZ-9, the scope includes operations.",
+        "Tender No. XYZ-9 shall remain valid for the contract period.",
+    ]
+    job_id = _job_with_pages(pages_text)
+    await reference_index.reindex_job(job_id)
+
+    targets = database.get_reference_targets_for_job(job_id)
+    docref = next((t for t in targets if t["key"].startswith("docref:") and "xyz9" in t["key"]), None)
+    assert docref is not None, "a code repeating on 2+ real pages must still become a target"
+    assert docref["page"] == 3, "baseline must anchor to the real occurrence, not the page-1 INDEX"
 

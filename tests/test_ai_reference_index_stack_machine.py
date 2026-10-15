@@ -613,10 +613,20 @@ def test_ai_enum_chain_single_lone_item_is_untouched():
 
 
 def test_ai_enum_chain_a_genuinely_different_style_nests_one_level_deeper_undisturbed():
-    """A real deeper heading following an enumerated run — one that does
-    NOT match _enumeration_marker_style at all (plain text, no leading
-    marker) — is unaffected by the safety net and nests exactly where the
-    AI reported it."""
+    """A roman-numeral pair directly under a bare "article" family with no
+    numbering context of its own — neither item qualifies for ground/point
+    treatment from pure keyword/number matching alone, so (i) degrades to a
+    generic subdoc leaf. This exact scenario doesn't occur in any of this
+    project's real gold fixtures (a real "article" container always carries
+    its own numbering convention); it's a synthetic edge case exercising
+    _pleading_scope_active's nearest-subdoc-boundary walk (the same fix
+    applied to the confirmed real bug of pleading-point detection leaking
+    across 90+ pages into an unrelated embedded annexure — see
+    reference_index._NON_PLEADING_SUBDOC_LABELS_RE). A side effect here:
+    once (i) becomes a subdoc, (ii) now sees it as a legitimate (not
+    excluded) nearby boundary and resolves as point:ii nested one level
+    under it, rather than staying a flat subdoc sibling — understood and
+    accepted, not a regression in any real document."""
     seed = _seeded_scope([{"family": "article", "key": "article:1", "label": "Article 1"}])
     events = [
         _event("(i) The Tribunal shall pay damages.", depth=1),
@@ -626,8 +636,98 @@ def test_ai_enum_chain_a_genuinely_different_style_nests_one_level_deeper_undist
     candidates, _ = ri.apply_heading_events_to_scope(events, seed, page_num=17, has_next_page=True)
     by_key_last = candidates[-1]
     second_item = candidates[1]
-    # (ii) was flattened to a sibling of (i) under "Article 1" ...
-    assert second_item["scope_key"] == "article:1"
-    # ... but "PENALTY CLAUSE" genuinely nests one level under (ii), since it
-    # doesn't match the marker-style safety net at all.
-    assert by_key_last["scope_key"] == f"article:1/{second_item['key']}"
+    # (ii) is now recognized as a pleading-point leaf nested under (i)'s subdoc ...
+    assert second_item["key"] == "point:ii"
+    assert second_item["scope_key"] == "article:1/subdoc:i-the-tribunal-shall-pay-damages"
+    # ... and "PENALTY CLAUSE" (no marker at all, so the enumeration safety
+    # net doesn't apply to it) lands as its sibling under that same subdoc,
+    # not nested a further level under point:ii.
+    assert by_key_last["scope_key"] == second_item["scope_key"]
+
+
+def test_decimal_section_container_nests_hierarchically_not_as_pleading_points():
+    """Confirmed real bug: a tender document's own "Section-III: Instructions
+    to Bidders" container had every decimal-numbered heading under it
+    (1, 1.1, 1.2, ...) force-classified as pleading-point leaves by
+    _pleading_scope_active's default-active assumption, since the label
+    didn't match _NON_PLEADING_SUBDOC_LABELS_RE's (at the time) FAO-CARB-only
+    exclusion list. Net effect: "1 Definition(s)" minted as point:1, and its
+    decimal children "1.1"/"1.2" landed at point:1's OWN scope_key (flat
+    siblings) instead of nesting one level under it. Fixed by extending the
+    exclusion list to recognize generic "Section N" container labels."""
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:3", "label": "Section-III: Instructions to Bidders"}])
+    events = [
+        _event("1 Definition(s)", depth=1),
+        _event("1.1. \u201cAddendum\u201d", depth=2),
+        _event("1.2. \u201cAgency\u201d", depth=2),
+    ]
+    candidates, _ = ri.apply_heading_events_to_scope(events, seed, page_num=11, has_next_page=True)
+
+    definitions, addendum, agency = candidates
+    assert definitions["key"] == "numheading:1", "must mint as a real decimal container, not a pleading-point leaf"
+    assert addendum["key"] == "numheading:1.1"
+    assert agency["key"] == "numheading:1.2"
+    assert addendum["scope_key"] == f"subdoc:3/{definitions['key']}", "1.1 must nest one level under 1, not beside it"
+    assert agency["scope_key"] == addendum["scope_key"], "1.2 must be 1.1's sibling (both under 1), not 1's sibling"
+
+
+def test_pleading_scope_under_non_section_subdoc_is_unaffected():
+    """Negative/no-regression case: a genuine arbitration-document pleading
+    paragraph under a plain "JUDGMENT" container (no "Section N" or any
+    other excluded label) must still force-classify as a point leaf, exactly
+    as before this fix -- the new exclusion is scoped to "Section N"-style
+    labels only, never a blanket change to pleading-point detection."""
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:1", "label": "JUDGMENT"}])
+    events = [
+        _event("3. The Arbitral Award has been challenged by the petitioner.", depth=1),
+        _event("4. The Respondent opposes the challenge.", depth=1),
+    ]
+    candidates, _ = ri.apply_heading_events_to_scope(events, seed, page_num=4, has_next_page=True)
+
+    first, second = candidates
+    assert first["key"] == "point:3"
+    assert second["key"] == "point:4"
+    assert first["scope_key"] == second["scope_key"] == "subdoc:1", "pleading points stay flat leaves under JUDGMENT"
+
+
+def test_enum_chain_safety_net_does_not_flatten_genuine_decimal_children():
+    """Confirmed real bug: the sibling-chaining safety net (meant to catch an
+    AI mis-nesting "(ii)" one level under "(i)" when they're really flat
+    siblings) also fired on a genuine decimal parent/child pair whenever both
+    happened to end with a trailing period before the label -- "4.1."
+    followed immediately by "4.1.1." both bucket as the coarse "decimal"
+    enum style and are exactly one level apart, the same shape the safety
+    net exists to flatten, so a real sub-clause got flattened back to its
+    parent's own depth. Fixed by additionally checking num_segments: a
+    genuine decimal child's segments extend the parent's by exactly one
+    (["4","1","1"] extends ["4","1"]), which a mis-nested same-level sibling
+    never does."""
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:4", "label": "Section-IV: Scope of Work"}])
+    events = [
+        _event("4.1. Introduction", depth=1),
+        _event("4.1.1. Existing Oracle License.", depth=2),
+        _event("4.1.2. Something else.", depth=2),
+    ]
+    candidates, _ = ri.apply_heading_events_to_scope(events, seed, page_num=23, has_next_page=True)
+
+    intro, child1, child2 = candidates
+    assert intro["key"] == "numheading:4.1"
+    assert child1["key"] == "numheading:4.1.1"
+    assert child2["key"] == "numheading:4.1.2"
+    assert child1["scope_key"] == f"subdoc:4/{intro['key']}", "4.1.1 must nest under 4.1, not flatten beside it"
+    assert child2["scope_key"] == child1["scope_key"], "4.1.2 must be 4.1.1's sibling (both under 4.1)"
+
+
+def test_enum_chain_safety_net_still_flattens_genuine_mis_nested_siblings():
+    """No-regression case: two roman-numeral items that are NOT a decimal
+    extension of each other (the original bug this safety net was built for)
+    must still be flattened back to the same depth when the AI over-nests
+    the second one under the first."""
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:5", "label": "Conclusion"}])
+    events = [
+        _event("(i) The Tribunal shall pay damages.", depth=1),
+        _event("(ii) The Tribunal shall further pay costs.", depth=2),
+    ]
+    candidates, _ = ri.apply_heading_events_to_scope(events, seed, page_num=30, has_next_page=True)
+    first, second = candidates
+    assert second["scope_key"] == first["scope_key"], "(ii) must stay a flat sibling of (i), not nest under it"

@@ -30,6 +30,15 @@ _OCR_JOBS_NEW_COLUMNS = [
     ("reference_index_version", "INTEGER DEFAULT 0"),
     ("reference_index_frontier", "INTEGER DEFAULT 0"),
     ("ai_index_report", "TEXT DEFAULT '{}'"),  # JSON: per-chunk status/progress/audit — see ai_reference_index.py
+    ("owner_id", "TEXT"),  # principal.subject of the uploader; NULL for jobs predating this column (admin-only visible)
+    # Set ONLY by the explicit POST .../reindex-references action (never by
+    # the always-on per-page rule-based detector, which keeps running
+    # unconditionally in the background regardless of this flag — it's cheap,
+    # local regex work, not the thing "Zero Indexing Overhead by Default"
+    # cares about). The frontend uses this, not reference_index_version (which
+    # the per-page detector bumps on every page regardless), to decide whether
+    # to surface citation badges/the outline by default for a document.
+    ("index_built_at", "TIMESTAMP"),
 ]
 
 
@@ -729,6 +738,7 @@ def create_job(
     batch_size: int = 5,
     enable_overlap: bool = True,
     escalate_before_flagging: bool = True,
+    owner_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -739,13 +749,13 @@ def create_job(
             prompt_mode, custom_prompt, status, total_pages, processed_pages,
             pages_data, error_message, page_range, created_at, updated_at,
             chunk_size, concurrency, engine_params, processing_mode, batch_size,
-            enable_overlap, escalate_before_flagging
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, '[]', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            enable_overlap, escalate_before_flagging, owner_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, '[]', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         job_id, filename, file_path, file_type, engine, scale, int(tiling),
         prompt_mode, custom_prompt or '', total_pages, page_range or '', now, now,
         chunk_size, concurrency, json.dumps(engine_params or {}), processing_mode, batch_size,
-        int(enable_overlap), int(escalate_before_flagging),
+        int(enable_overlap), int(escalate_before_flagging), owner_id,
     ))
     conn.commit()
     conn.close()
@@ -795,10 +805,17 @@ def get_job(job_id: str, include_pages: bool = True) -> Optional[Dict[str, Any]]
     return _row_to_job(row, include_pages=include_pages)
 
 
-def list_jobs(limit: int = 50, include_pages: bool = False) -> List[Dict[str, Any]]:
+def list_jobs(limit: int = 50, include_pages: bool = False, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """`owner_id=None` returns every job (admin view). A non-None `owner_id`
+    restricts to that owner's jobs only — a legacy job with a NULL owner_id
+    never matches a real owner_id, so it's correctly excluded from a
+    non-admin's list."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM ocr_jobs ORDER BY created_at DESC LIMIT ?", (limit,))
+    if owner_id is not None:
+        cursor.execute("SELECT * FROM ocr_jobs WHERE owner_id = ? ORDER BY created_at DESC LIMIT ?", (owner_id, limit))
+    else:
+        cursor.execute("SELECT * FROM ocr_jobs ORDER BY created_at DESC LIMIT ?", (limit,))
     rows = cursor.fetchall()
     conn.close()
     return [_row_to_job(r, include_pages=include_pages) for r in rows]
@@ -1072,7 +1089,15 @@ def count_pages_by_status(job_id: str) -> Dict[str, int]:
     return result
 
 
-def list_review_pages(job_id: Optional[str] = None, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+def list_review_pages(
+    job_id: Optional[str] = None, limit: int = 50, offset: int = 0, owner_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """`owner_id=None` means admin (no ownership restriction). A non-None
+    `owner_id` restricts the cross-job queue (job_id=None) to pages whose job
+    is owned by that user — otherwise a `user` could see other users' flagged
+    pages through the cross-job endpoint even though per-job routes are
+    ownership-checked. Ignored when `job_id` is given, since the caller is
+    expected to have already checked access to that specific job."""
     conn = get_db_connection()
     cursor = conn.cursor()
     if job_id:
@@ -1080,6 +1105,13 @@ def list_review_pages(job_id: Optional[str] = None, limit: int = 50, offset: int
             SELECT * FROM ocr_pages WHERE job_id = ? AND needs_review = 1
             ORDER BY confidence ASC, page_num ASC LIMIT ? OFFSET ?
         """, (job_id, limit, offset))
+    elif owner_id is not None:
+        cursor.execute("""
+            SELECT p.* FROM ocr_pages p
+            JOIN ocr_jobs j ON j.job_id = p.job_id
+            WHERE p.needs_review = 1 AND j.owner_id = ?
+            ORDER BY p.confidence ASC, p.page_num ASC LIMIT ? OFFSET ?
+        """, (owner_id, limit, offset))
     else:
         cursor.execute("""
             SELECT * FROM ocr_pages WHERE needs_review = 1
@@ -1280,6 +1312,20 @@ def bump_reference_index_version(job_id: str) -> int:
     conn.commit()
     conn.close()
     return version
+
+
+def mark_index_built(job_id: str) -> None:
+    """Stamps index_built_at — called only from the explicit
+    POST .../reindex-references action (see main.py). This is the single
+    write site; nothing else ever touches this column."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE ocr_jobs SET index_built_at = ? WHERE job_id = ?",
+        (datetime.utcnow().isoformat(), job_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def get_reference_index_frontier(job_id: str) -> int:

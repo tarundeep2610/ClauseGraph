@@ -23,6 +23,7 @@ Core design decisions (see the approved plan for the full reasoning):
 import asyncio
 import difflib
 import json
+import time
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -95,6 +96,63 @@ def _dedupe_same_page_headings(headings: List[Any]) -> List[Any]:
         page_seen.append(norm)
         result.append(h)
     return result
+
+
+# A decimal-numbered heading's text repeating verbatim (same normalized
+# heading_text) on a RUN of 3+ CONSECUTIVE pages within one chunk is never
+# real document structure — confirmed real case (job bb417471, pages
+# 66-70): qwen3:8b got "stuck" re-emitting "4.0 SETTLEMENT OF DISPUTES" /
+# "4.1 NOTICE OF DEFAULT" for 5 pages running instead of reading each
+# page's real Bank Guarantee content (done_reason=stop, not truncation —
+# a genuine generation failure). Scoped to decimal-numbered headings only
+# (via _leading_reference_number) — deliberately NEVER applied to bare/
+# keyword-shaped headings (case captions, "ANNEXURE A-3" banners, "INDEX"):
+# those legitimately recur as running headers across many consecutive
+# pages and are already governed by apply_heading_events_to_scope's own
+# same-key/same-depth repeat guard and the same-page numbered-subdoc-
+# family signal in reference_index.py — this function must never
+# re-litigate those, only the "substantive numbered clause repeats
+# page-after-page" shape those mechanisms don't see. A 2-page run (a
+# reprint at a page break) is left alone — not enough evidence either way;
+# a non-consecutive repeat (e.g. the same clause number restarting far
+# later for a second annexed agreement) is also left alone, since only a
+# maximal consecutive stretch counts as one run.
+_CROSS_PAGE_REPEAT_RUN_MIN = 3
+
+
+def _drop_cross_page_hallucinated_repeats(headings: List[Any]) -> Tuple[List[Any], int]:
+    """Drops every occurrence but the FIRST in a run of
+    _CROSS_PAGE_REPEAT_RUN_MIN+ CONSECUTIVE start_pages reporting the same
+    normalized, decimal-numbered heading_text. Returns (kept_headings,
+    dropped_count) — the count is surfaced by the caller into
+    warning_counts, never silently swallowed, given how high-stakes a
+    cross-page drop is for recall relative to _dedupe_same_page_headings's
+    same-page echo case."""
+    by_norm: Dict[str, List[Any]] = {}
+    for h in headings:
+        if _leading_reference_number(h.heading_text) is None:
+            continue
+        by_norm.setdefault(_norm_for_match(h.heading_text), []).append(h)
+
+    drop_ids = set()
+    for group in by_norm.values():
+        if len(group) < _CROSS_PAGE_REPEAT_RUN_MIN:
+            continue
+        ordered = sorted(group, key=lambda h: h.start_page)
+        run = [ordered[0]]
+        for h in ordered[1:]:
+            if h.start_page == run[-1].start_page + 1:
+                run.append(h)
+                continue
+            if len(run) >= _CROSS_PAGE_REPEAT_RUN_MIN:
+                drop_ids.update(id(x) for x in run[1:])
+            run = [h]
+        if len(run) >= _CROSS_PAGE_REPEAT_RUN_MIN:
+            drop_ids.update(id(x) for x in run[1:])
+
+    if not drop_ids:
+        return headings, 0
+    return [h for h in headings if id(h) not in drop_ids], len(drop_ids)
 
 
 _PAGE_NUMBER_ORNAMENT_RE = re.compile(
@@ -560,6 +618,7 @@ async def _ground_and_resolve_chunk(
         )
 
     headings = _dedupe_same_page_headings(headings)
+    headings, cross_page_dupe_count = _drop_cross_page_hallucinated_repeats(headings)
 
     for h in headings:
         if h.parent_ref and "payment terms" in h.parent_ref.lower():
@@ -603,6 +662,8 @@ async def _ground_and_resolve_chunk(
     # First pass: resolve depth + locate a block index per heading.
     located: List[Dict[str, Any]] = []
     warning_counts: Dict[str, int] = {}
+    if cross_page_dupe_count:
+        warning_counts["ai_cross_page_repeat_dropped"] = cross_page_dupe_count
 
     for h in headings:
         is_subdoc_root = reference_index.is_subdoc_root_candidate(h.heading_text, h.family_hint)
@@ -1227,24 +1288,27 @@ async def review_docrefs_for_job(job_id: str, engine_params: Optional[Dict[str, 
 async def reindex_job_with_ai(
     job_id: str, start_page: Optional[int] = None, chunk_pages_override: Optional[int] = None,
     review_rule_prior_override: Optional[bool] = None, overlap_pages_override: Optional[int] = None,
+    chunk_chars_max_override: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Full-job AI reindex, chunked, with per-chunk fallback to the
     rule-based detector. `start_page`, when given, is a targeted re-run
     (triggered after a single page's manual retry) rather than a full
     rebuild — see the bounded/early-stop logic below.
 
-    `chunk_pages_override`, `review_rule_prior_override`, and
-    `overlap_pages_override`, when given, each win over both the job's own
-    frozen `engine_params` and the config default — used by a manual
+    `chunk_pages_override`, `review_rule_prior_override`,
+    `overlap_pages_override`, and `chunk_chars_max_override`, when given,
+    each win over both the job's own frozen `engine_params` and the config
+    default — used by a manual
     "Rebuild Cross-References" call (main.py), which always wants the
     CURRENT settings, not whatever was frozen at this job's original
     creation time (the same reasoning already applied to
     `enable_ai_indexing` there). The always-rule-based auto-trigger right
     after OCR never passes any of these, so it stays pinned to frozen
-    values. `review_rule_prior_override`/`overlap_pages_override` are
-    resolved with explicit `is not None` checks, never `or`-chaining —
-    `False` and `0` are both meaningful values an `or`-chain would silently
-    discard in favor of the engine_params/config fallback.
+    values. `review_rule_prior_override`/`overlap_pages_override`/
+    `chunk_chars_max_override` are resolved with explicit `is not None`
+    checks, never `or`-chaining — `False` and `0` are both meaningful values
+    an `or`-chain would silently discard in favor of the engine_params/config
+    fallback.
 
     Every page's indexing input is picked automatically, once, by
     `_page_text`/`reference_index.build_layout_annotated_text` — there is
@@ -1298,6 +1362,10 @@ async def reindex_job_with_ai(
         overlap_pages_override if overlap_pages_override is not None
         else engine_params.get("ai_index_chunk_overlap_pages", config.AI_INDEX_CHUNK_OVERLAP_PAGES)
     )
+    chunk_chars_max = (
+        chunk_chars_max_override if chunk_chars_max_override is not None
+        else engine_params.get("ai_index_chunk_chars_max", config.AI_INDEX_CHUNK_CHARS_MAX)
+    )
     review_mentions = bool(engine_params.get("ai_index_review_mentions", False))
 
     try:
@@ -1338,6 +1406,7 @@ async def reindex_job_with_ai(
     chunks = ai_indexing.plan_chunks(
         page_inputs,
         max_pages=chunk_pages_size,
+        max_chars=chunk_chars_max,
         overlap_pages=overlap_pages,
     )
     total_chunks = len(chunks)
@@ -1387,6 +1456,7 @@ async def reindex_job_with_ai(
             else:
                 seed_scope, last_page_text = None, ""
 
+        chunk_start_time = time.perf_counter()
         carry_context = _carry_in_summary(seed_scope, last_page_text)
         # Layout-annotated text is built fresh per chunk, for the MODEL
         # PROMPT ONLY — `chunk` itself (plain clean text) is untouched and
@@ -1612,6 +1682,7 @@ async def reindex_job_with_ai(
         overlap_count_ai = config.AI_INDEX_CHUNK_OVERLAP_PAGES if (chunk_idx > 0 and source == "ai") else 0
         new_in_chunk = max(pages_processed_this_chunk - overlap_count_ai, 0)
         pages_done_total += new_in_chunk
+        duration_seconds = time.perf_counter() - chunk_start_time
         rep = database.get_ai_index_report(job_id)
         chunks_log = rep.get("chunks") or []
         chunks_log.append({
@@ -1620,6 +1691,12 @@ async def reindex_job_with_ai(
             "error_kind": result.error_kind, "error": result.error_message,
             "heading_count": len(result.headings) if source == "ai" else None,
             "warnings": warning_counts,
+            "duration_seconds": round(duration_seconds, 2),
+            # Provider-call-only timing, for comparison against the total
+            # duration_seconds above — left at 0 by ChunkStructureResult on
+            # the failure/timeout path (client.py), so duration_seconds is
+            # the one to trust whenever this reads 0 but status != "ok".
+            "provider_duration_ms": result.duration_ms,
         })
         database.update_ai_index_report(
             job_id, current_chunk=chunk_idx + 1, total_chunks=total_chunks,

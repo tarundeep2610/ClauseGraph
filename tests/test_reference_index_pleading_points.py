@@ -48,6 +48,52 @@ def test_point_not_detected_inside_annexure_or_schedule_scope():
     assert "point:1" not in _keys(page_text)
 
 
+def test_pleading_points_do_not_leak_into_an_unrelated_embedded_contract_annexure():
+    """Confirmed real bug: _pleading_scope_active used to check only
+    nested_stack[0] (the document's TRUE root), which is "subdoc" family
+    for nearly any document (e.g. "JUDGMENT") — so it returned True
+    basically everywhere, 90+ pages deep into an unrelated embedded
+    Contract Agreement annexure included. Live confirmed: a 22-item
+    numbered distribution/CC list on such an annexure page minted as
+    point:1..point:22 even though none of them are pleading paragraphs.
+    The fix walks to the NEAREST subdoc boundary instead of the root —
+    here, "CONTRACT AGREEMENT BETWEEN..." (not "JUDGMENT") is nearest, so
+    pleading-point supplementation must not fire at all."""
+    from reference_index import detect_pleading_points_for_page
+
+    scope = {
+        "stack": [
+            {"family": "subdoc", "key": "subdoc:judgment", "label": "JUDGMENT"},
+            {"family": "subdoc", "key": "subdoc:contract-agreement", "label": "CONTRACT AGREEMENT BETWEEN HVPNL AND M/S AREVA"},
+        ],
+    }
+    page_text = (
+        "Copy of the above is forwarded to the following for information and necessary action please:\n\n"
+        "1. Sr. PS to Chairman, HVPNL, Panchkula.\n\n"
+        "2. Chief Engineer/MM, HVPNL, Panchkula.\n"
+    )
+    results, _ = detect_pleading_points_for_page(page_text, scope, [])
+    assert results == []
+
+
+def test_pleading_points_still_detected_when_nearest_boundary_is_a_real_pleading_document():
+    """Control for the test above: pleading-point supplementation must
+    still fire normally when the NEAREST subdoc boundary genuinely is a
+    generic pleading-type document (not excluded), confirming the fix
+    didn't just make this function stop working entirely."""
+    from reference_index import detect_pleading_points_for_page
+
+    scope = {
+        "stack": [
+            {"family": "subdoc", "key": "subdoc:judgment", "label": "JUDGMENT"},
+            {"family": "subdoc", "key": "subdoc:respectfully-showeth", "label": "RESPECTFULLY SHOWETH"},
+        ],
+    }
+    page_text = "1. That the appellant is filing the accompanying appeal.\n"
+    results, _ = detect_pleading_points_for_page(page_text, scope, [])
+    assert [r["key"] for r in results] == ["point:1"]
+
+
 def test_detect_pleading_points_roman_grounds_nest_under_the_scopes_last_decimal_ground():
     """Direct test of detect_pleading_points_for_page (the AI-path's own
     additive augmentation) — confirmed real bug: even after the roman/

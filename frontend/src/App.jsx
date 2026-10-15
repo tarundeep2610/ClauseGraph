@@ -3,7 +3,9 @@ import { AuthProvider, useAuth } from './utils/AuthContext';
 import { ThemeProvider } from './utils/ThemeContext';
 import Login from './pages/Login';
 import Callback from './pages/Callback';
-import Dashboard from './pages/Dashboard';
+import AppShell from './pages/AppShell';
+import LibraryHome from './pages/LibraryHome';
+import StudioView from './pages/StudioView';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -30,10 +32,14 @@ export default function App() {
               path="/"
               element={
                 <ProtectedRoute>
-                  <Dashboard />
+                  <AppShell />
                 </ProtectedRoute>
               }
-            />
+            >
+              <Route index element={<LibraryHome />} />
+              <Route path="studio/:docId" element={<StudioView />} />
+              <Route path="studio/:docId/review" element={<StudioView />} />
+            </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AuthProvider>

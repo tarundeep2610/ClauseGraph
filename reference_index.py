@@ -25,7 +25,6 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import mistune
 
-import config
 import database
 import layout_format
 
@@ -72,6 +71,27 @@ HEREINAFTER_RE = re.compile(
 )
 
 _TERM_STOP_WORDS = {"of", "the", "and", "for", "to", "in"}
+
+# Front-matter INDEX/TOC pages describe later sections by their full name
+# plus abbreviation ("Section-V: General Conditions of Contract (GCC)") or
+# cite doc-ref-shaped numbers ("TENDER SPECIFICATION No. ..."). Unlike the
+# AI heading path's own TOC suppression (is_inside_toc in
+# ai_reference_index.py, scoped the same way: page <= 2), build_docref_index_for_job
+# and build_term_index_for_job have no such awareness -- they walk raw text
+# via _walk_blocks_from_tokens, which (unlike _flatten_blocks, used for
+# heading grounding) DOES see inside a <table> block_html blob, so an
+# INDEX's own row text mints a spurious baseline term/docref target right
+# there instead of at the term's real, later first-use. Confirmed real:
+# "Section-V: General Conditions of Contract (GCC)" in a tender-document's
+# own page-2 INDEX table minted term:gcc from the INDEX row itself. Checked
+# once per page (not per block) since a document could split an "INDEX"/
+# "TABLE OF CONTENTS" heading and its row table across separate blocks.
+_TOC_BLOCK_RE = re.compile(r"\b(?:INDEX|TABLE OF CONTENTS)\b", re.IGNORECASE)
+_TOC_PAGE_MAX = 2
+
+
+def _page_is_toc_like(page_num: int, page_text: str) -> bool:
+    return page_num <= _TOC_PAGE_MAX and bool(_TOC_BLOCK_RE.search(page_text))
 
 
 def normalize_docref_code(code: str) -> str:
@@ -347,6 +367,41 @@ def _resolve_ground_or_point_match(
     return None
 
 _GROUND_SCOPE_HEADINGS = re.compile(r"\b(GROUNDS?\s+OF\s+APPEAL|GROUNDS|PRAYER)\b", re.IGNORECASE)
+
+# _pleading_scope_active's nearest-subdoc check needs the OPPOSITE shape
+# from _GROUND_SCOPE_HEADINGS: pleading-type subdoc boundaries are
+# open-vocabulary (an affidavit, "RESPECTFULLY SHOWETH", "FACTS", a
+# judgment, a bare case caption — confirmed by this project's own test
+# suite, which uses exactly these as canonical examples), so a fixed
+# allow-list keyword match can't enumerate them and was tried first, then
+# rejected (broke 13 existing tests whose generic subdoc labels, by
+# design, match none of a small keyword set). Instead, default to active
+# (preserving all existing behavior) and exclude only the specific,
+# identifiable non-pleading document types actually responsible for a
+# confirmed bug: an embedded commercial contract/correspondence annexure,
+# where numbered paragraphs are contract clauses or distribution-list
+# entries, never pleading points.
+#
+# Second confirmed case, same root cause, different document family: a
+# tender/commercial specification's own top-level "Section-III: Instructions
+# to Bidders" / "Section-IV: Scope of Work" style parts. Without this,
+# EVERY numbered heading under such a part defaults to pleading-point
+# treatment (a flat point/ground leaf, never pushed as a real container —
+# see FAMILIES' rank=None comment), which silently breaks decimal
+# sub-numbering (a document's own "1" -> "1.1"/"1.2" ends up flattened to
+# three siblings instead of "1.1"/"1.2" nesting under "1") for any document
+# whose numbered clauses sit directly under a "Section N" part instead of
+# a recognized non-pleading label. Confirmed safe against both existing
+# arbitration-judgment gold fixtures: neither has a subdoc CONTAINER (as
+# opposed to plain body-text mentioning a law section, e.g. "under section
+# 34 of Arbitration Act", always already inside a leaf point target) whose
+# own label starts with "Section".
+_NON_PLEADING_SUBDOC_LABELS_RE = re.compile(
+    r"\b(CONTRACT\s+AGREEMENT|BANK\s+GUARANTEE|PURCHASE\s+ORDER|WORK\s+ORDER|"
+    r"LETTER\s+OF\s+(?:AWARD|INTENT)|TENDER\s+(?:DOCUMENT|SPECIFICATION)|"
+    r"SECTION[\s-]+[IVXLCDM0-9]+)\b",
+    re.IGNORECASE,
+)
 
 # Confirmed via live diagnostic (100-page gold fixture): numbered/lettered
 # rows inside a technical spares/price-schedule table ("11. Relays, power
@@ -1085,6 +1140,18 @@ _GENERIC_HEADING_CONNECTORS = {"of", "for", "and", "the", "in", "to", "on", "at"
 # exactly the bug the trigger-list exclusion was meant to fix.
 _GENERIC_HEADING_EXCLUDED_WORDS = {"versus", "vs", "vs."}
 
+# A line introducing a mailing/circulation distribution list ("Copy of the
+# above is forwarded to the following for information...", bare "Copy to:")
+# — the numbered addressee lines that follow (office designation + place
+# name, e.g. "Chief Engineer/MM, HVPNL, Panchkula.") satisfy
+# _looks_like_generic_heading_shape's shape test exactly, with nothing in
+# that detector able to tell a real open-vocabulary heading apart from a
+# CC-list entry. See build_targets_for_page's in_distribution_list usage.
+_DISTRIBUTION_LIST_INTRO_RE = re.compile(
+    r"\bcopy\b.{0,60}\bforwarded\b.{0,30}\bfollowing\b|\bcopy\s+to\s*:?\s*$",
+    re.IGNORECASE,
+)
+
 
 def _looks_like_generic_heading_shape(text: str) -> bool:
     """General, document-agnostic SHAPE signal for an open-vocabulary
@@ -1356,11 +1423,28 @@ def _pleading_scope_active(nested_stack: List[Dict[str, str]]) -> bool:
     Ground 10's own roman-numeral sub-grounds take over via
     _ground_scope_active, checked first by every caller) — never inside a
     numbered contract container (Annexure/Article/Section), where a "2.1"
-    is a real numbered clause, not a pleading point. Same rank-0-is-always-
-    index-0 reasoning as _ground_scope_active."""
-    if nested_stack and nested_stack[0].get("family") == "subdoc":
-        return True
-    return any(s.get("family") == "point" for s in nested_stack)
+    is a real numbered clause, not a pleading point.
+
+    Walks inward-to-outward and stops at the NEAREST subdoc boundary — same
+    fix already applied to _ground_scope_active for the identical bug: the
+    original unconditionally checked nested_stack[0] (the document's root),
+    which is "subdoc" family for nearly every document (e.g. "JUDGMENT"),
+    so this returned True almost everywhere, 90+ pages deep into an
+    unrelated embedded annexure included (confirmed live: a 22-item
+    distribution/CC list on an unrelated Contract Agreement annexure page
+    minted as point:1..point:22, because the TRUE root was "JUDGMENT" and
+    nothing stopped inheritance at the nearer, unrelated subdoc boundaries
+    in between). A nearest subdoc boundary matching
+    _NON_PLEADING_SUBDOC_LABELS_RE is a neutral/excluded container and
+    stops inheritance from anything further out, same mechanism as
+    _ground_scope_active, inverted (exclusion list, not allow-list — see
+    that constant's docstring for why)."""
+    for s in reversed(nested_stack):
+        if s.get("family") == "point":
+            return True
+        if s.get("family") == "subdoc":
+            return not bool(_NON_PLEADING_SUBDOC_LABELS_RE.search(s.get("label") or ""))
+    return False
 
 
 def _disambiguate_label(label: str, counts: Dict[str, int]) -> str:
@@ -1474,6 +1558,24 @@ def build_targets_for_page(
     candidates: List[Dict[str, Any]] = []
     occurrence_counts: Dict[str, int] = {}
     open_acc: Optional[Dict[str, Any]] = None
+    # Page-local only (not carried in scope) — a "Copy ... forwarded to the
+    # following"/"Copy to:" distribution-list intro line, followed by a run
+    # of numbered addressee lines ("Chief Engineer/MM, HVPNL, Panchkula."),
+    # is structurally indistinguishable from genuine open-vocabulary
+    # headings to _looks_like_generic_heading_shape (title-cased office
+    # names + place names satisfy its shape test exactly) — confirmed on
+    # the 100-page fixture's page 91 (19 of 22 CC-list lines minted as
+    # spurious subdoc: candidates). Suppresses only residual-fallback #2
+    # below; every other, more-evidenced detection path is untouched.
+    # Deliberately never cleared once set (stays True for the rest of the
+    # page): mistune flattens each "N. addressee" list item into TWO blocks
+    # (a list_item carrying the leading number, then a nested paragraph
+    # with it stripped) — a per-block "has this line exited the list"
+    # check kept false-triggering on that stripped-number paragraph after
+    # just the first item. A real heading appearing on the same page after
+    # a distribution-list intro is rare enough that this is an acceptable
+    # trade.
+    in_distribution_list = False
     # Same-page-repeat detection (Signal #4) — scoped to the SAME numbered
     # subdoc family repeating (e.g. two "annexure" triggers), not any rank-0
     # trigger in general: a real document can legitimately bind in an
@@ -1520,6 +1622,9 @@ def build_targets_for_page(
         text = _block_own_text(block)
         if not text:
             continue
+
+        if _DISTRIBUTION_LIST_INTRO_RE.search(text):
+            in_distribution_list = True
 
         lookahead_texts = tuple(
             _block_own_text(b) for b in blocks[block_idx + 1:block_idx + 1 + _CASE_CAPTION_LOOKAHEAD_BLOCKS]
@@ -2081,6 +2186,7 @@ def build_targets_for_page(
             _looks_like_generic_heading_shape(text)
             and not _is_external_law(text)
             and not _is_backward_reference(text, 0)
+            and not in_distribution_list
         ):
             finalize(closed_by_new_target=True)
             boundary_ordinal += 1
@@ -2265,16 +2371,7 @@ def build_layout_annotated_text(clean_text: str, raw_text: Optional[str]) -> str
         if layout_format.is_indented(b, median_x1):
             ltype = f"{ltype}, INDENTED"
         parts.append(f"[OCR-LAYOUT: {ltype}]\n{b.text}")
-    out = "\n\n".join(parts)
-    # Truncation guard — load-bearing, not a precaution. plan_chunks()
-    # (ai_indexing/prompt.py) already clips clean_text to
-    # AI_INDEX_PAGE_CHARS_MAX and appends this same marker so the model
-    # knows it saw a partial page; raw_text runs up to ~3x the length of
-    # clean_text, so rebuilding from it without this guard would silently
-    # bypass both the clip and the model's own awareness of truncation.
-    if len(out) > config.AI_INDEX_PAGE_CHARS_MAX:
-        out = out[:config.AI_INDEX_PAGE_CHARS_MAX] + "\n\n[... page truncated for length ...]"
-    return out
+    return "\n\n".join(parts)
 
 
 # ─── Mention detection & resolution (server-side badge index) ─────────────────
@@ -2615,6 +2712,8 @@ def build_docref_index_for_job(
     for page in pages:
         page_num = page["page_num"]
         page_text = page.get("text") or ""
+        if _page_is_toc_like(page_num, page_text):
+            continue
         tokens, _ = _get_parser().parse(page_text)
         block_idx = 0
         for b_type, b_text in _walk_blocks_from_tokens(tokens):
@@ -2730,6 +2829,8 @@ def build_term_index_for_job(
     for page in pages:
         page_num = page["page_num"]
         page_text = page.get("text") or ""
+        if _page_is_toc_like(page_num, page_text):
+            continue
         tokens, _ = _get_parser().parse(page_text)
         block_idx = 0
         for b_type, b_text in _walk_blocks_from_tokens(tokens):
@@ -2810,6 +2911,8 @@ def build_term_index_for_job(
     for page in pages:
         page_num = page["page_num"]
         page_text = page.get("text") or ""
+        if _page_is_toc_like(page_num, page_text):
+            continue
         tokens, _ = _get_parser().parse(page_text)
         block_idx = 0
         for b_type, b_text in _walk_blocks_from_tokens(tokens):
@@ -3451,6 +3554,7 @@ def apply_heading_events_to_scope(
     # the reproduced-text-continuation fix.
     prev_enum_style: Optional[str] = None
     prev_enum_depth: Optional[int] = None
+    prev_enum_num_segments: Optional[List[str]] = None
 
     for ev in events:
         text = ev["heading_text"]
@@ -3599,20 +3703,46 @@ def apply_heading_events_to_scope(
         # AI resolved it as exactly one level DEEPER than that item, flatten
         # it back to that item's own depth instead — a same-style run is
         # almost always a flat list, never a self-nesting chain.
+        #
+        # Confirmed real bug this safety net must NOT fire on: a genuine
+        # decimal parent/child pair ("4.1" then "4.1.1") where both happen to
+        # end with a trailing period before the label ("4.1. Introduction",
+        # "4.1.1. Existing..."). _enumeration_marker_style buckets both as
+        # the coarse "decimal" style (it only distinguishes decimal/roman/
+        # letter, not depth), so a textbook one-level-deeper decimal child
+        # was being misread as the exact same "(i) mis-nested one level
+        # under (ii)" shape this net exists to catch, and flattened back to
+        # its parent's own depth — breaking "1" -> "1.1"/"1.2" and
+        # "4.1" -> "4.1.1" nesting for any document using period-terminated
+        # decimal numbering (confirmed on a real tender-spec gold fixture).
+        # A decimal child is distinguished from a mis-nested decimal sibling
+        # by `num_segments`: a genuine child's segments extend the previous
+        # item's by exactly one (["4","1","1"] extends ["4","1"]); two
+        # siblings at the same conceptual level never do (["1"] vs ["2"],
+        # ["4","1"] vs ["4","2"]).
         if not forced_family:
             enum_style = _enumeration_marker_style(stripped_text)
+            is_decimal_child = (
+                enum_style == "decimal"
+                and num_segments and prev_enum_num_segments
+                and len(num_segments) == len(prev_enum_num_segments) + 1
+                and num_segments[:-1] == prev_enum_num_segments
+            )
             if (
                 enum_style is not None
                 and enum_style == prev_enum_style
                 and prev_enum_depth is not None
                 and depth == prev_enum_depth + 1
+                and not is_decimal_child
             ):
                 depth = prev_enum_depth
             prev_enum_style = enum_style
             prev_enum_depth = depth if enum_style is not None else None
+            prev_enum_num_segments = num_segments if enum_style is not None else None
         else:
             prev_enum_style = None
             prev_enum_depth = None
+            prev_enum_num_segments = None
 
         # Integer sequence resumption:
         # If an incoming numbered heading is a single integer N (e.g. "20"), check if any open ancestor

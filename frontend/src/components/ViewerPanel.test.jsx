@@ -1,8 +1,21 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ViewerPanel from './ViewerPanel';
 import { createReferenceStore, mergeDelta } from '../utils/referenceStore';
 import { getPageMentions } from '../utils/markdown';
+
+// Defaults to admin so every existing test below (which predates role-gating
+// and asserts on retry wiring, not on who can see it) keeps working
+// unchanged. The dedicated "Retry controls are admin-gated" suite further
+// down overrides this per-test to isAdmin: false.
+let mockAuth = { isAdmin: true };
+vi.mock('../utils/AuthContext', () => ({
+  useAuth: () => mockAuth,
+}));
+
+beforeEach(() => {
+  mockAuth = { isAdmin: true };
+});
 
 // PdfCanvasViewer itself (pdf.js rendering) is tested in its own file — here
 // it's stubbed so ViewerPanel's own wiring (which page is passed down, the
@@ -39,13 +52,22 @@ const baseProps = {
   onPause: vi.fn(),
   onResume: vi.fn(),
   onDownloadPdf: vi.fn(),
-  onDownloadResult: vi.fn(),
+  onSavePageText: vi.fn(),
+  onExport: vi.fn(),
   sidebarCollapsed: false,
   onToggleSidebar: vi.fn(),
 };
 
 function jobWithPages(pages) {
-  return { status: 'completed', total_pages: pages.length, processed_pages: pages.length, pages_data: pages };
+  // index_built_at defaults to "already built" so every existing test below
+  // (written before citation badges became gated on it) keeps exercising
+  // PageReferenceBadges unchanged — the dedicated "on-demand indexing"
+  // describe block further down explicitly sets it to null/undefined to
+  // test the gated-off default state.
+  return {
+    status: 'completed', total_pages: pages.length, processed_pages: pages.length, pages_data: pages,
+    index_built_at: '2026-01-01T00:00:00Z',
+  };
 }
 
 describe('ViewerPanel — per-page confidence badges', () => {
@@ -128,13 +150,29 @@ describe('ViewerPanel — formatted_text (layout-aware rendering) fallback', () 
     expect(screen.getByText('Page with no formatted_text key at all')).toBeInTheDocument();
   });
 
-  it('linkifies docref and term mentions when rendering layout-aware formatted_text', () => {
-    const store = storeWithDelta({
-      2: {
-        'term:contractor': [{ anchor_id: 't-contractor', collapsed_key: 'term:contractor', page: 2 }],
-        'docref:rec064': [{ anchor_id: 't-rec064', collapsed_key: 'docref:rec064', page: 2 }],
+  // REWRITTEN (premise obsolete): the Result pane is now the editable
+  // WysiwygEditor, which parses formatted_text fresh from Markdown via
+  // TipTap rather than through renderPageMarkdown's annotated HTML — so the
+  // `data-xref-key` inline mention-links renderPageMarkdown used to inject
+  // no longer appear in this pane. PageReferenceBadges (top-of-pane citation
+  // pills, see the "on-page reference badges" describe block) is the
+  // surviving mechanism for reference discovery, per the Studio redesign.
+  it('no longer linkifies docref/term mentions inline — the editor shows the real text plainly, and PageReferenceBadges surfaces the same mentions instead', () => {
+    const store = storeWithDelta(
+      {
+        1: {
+          'term:contractor': [{ anchor_id: 't-contractor', collapsed_key: 'term:contractor', page: 1 }],
+          'docref:rec064': [{ anchor_id: 't-rec064', collapsed_key: 'docref:rec064', page: 1 }],
+        },
       },
-    });
+      1,
+      {
+        1: [
+          { key: 'docref:rec064', raw_text: 'Technical Specification No. REC-064', resolution: 'exact' },
+          { key: 'term:contractor', raw_text: 'Contractor', resolution: 'exact' },
+        ],
+      }
+    );
     const job = jobWithPages([
       {
         page: 1,
@@ -142,14 +180,16 @@ describe('ViewerPanel — formatted_text (layout-aware rendering) fallback', () 
         formatted_text: '## Technical Specification No. REC-064\n\n**Contractor** obligations.',
       },
     ]);
-    render(<ViewerPanel {...baseProps} jobDetails={job} referenceStore={store} />);
-    const docrefLink = document.querySelector('a[data-xref-key="docref:rec064"]');
-    expect(docrefLink).toBeInTheDocument();
-    expect(docrefLink).toHaveTextContent('Technical Specification No. REC-064');
+    render(<ViewerPanel {...baseProps} viewMode="split" pdfSrc="blob:fake-url" jobDetails={job} referenceStore={store} scopeRanges={[]} />);
 
-    const termLink = document.querySelector('a[data-xref-key="term:contractor"]');
-    expect(termLink).toBeInTheDocument();
-    expect(termLink).toHaveTextContent('Contractor');
+    // The editor still shows formatted_text's real content...
+    expect(screen.getByRole('heading', { name: 'Technical Specification No. REC-064' })).toBeInTheDocument();
+    // ...but with no inline xref-link anchors any more.
+    expect(document.querySelector('a[data-xref-key]')).not.toBeInTheDocument();
+
+    // PageReferenceBadges (not an inline link) is what surfaces these mentions now.
+    expect(screen.getByTestId('page-reference-badge-docref:rec064')).toBeInTheDocument();
+    expect(screen.getByTestId('page-reference-badge-term:contractor')).toBeInTheDocument();
   });
 });
 
@@ -230,6 +270,36 @@ describe('ViewerPanel — bulk "Retry Pages" toolbar button + modal', () => {
   });
 });
 
+describe('ViewerPanel — Retry controls are admin-gated', () => {
+  it('hides the per-page Retry button for a non-admin user even on a failed/review page', () => {
+    mockAuth = { isAdmin: false };
+    const job = jobWithPages([{ page: 1, text: 'x', status: 'failed', confidence_pct: 0, confidence_tier: 'failed' }]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} onRetryPage={vi.fn()} retryingPage={null} />);
+    expect(screen.queryByTestId('retry-page-1')).not.toBeInTheDocument();
+  });
+
+  it('shows the per-page Retry button for an admin on a failed/review page', () => {
+    mockAuth = { isAdmin: true };
+    const job = jobWithPages([{ page: 1, text: 'x', status: 'failed', confidence_pct: 0, confidence_tier: 'failed' }]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} onRetryPage={vi.fn()} retryingPage={null} />);
+    expect(screen.getByTestId('retry-page-1')).toBeInTheDocument();
+  });
+
+  it('hides the bulk "Retry Pages" toolbar button for a non-admin user', () => {
+    mockAuth = { isAdmin: false };
+    const job = jobWithPages([{ page: 1, text: 'x', status: 'success' }]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} onRetryPages={vi.fn()} />);
+    expect(screen.queryByTestId('retry-pages-btn')).not.toBeInTheDocument();
+  });
+
+  it('shows the bulk "Retry Pages" toolbar button for an admin', () => {
+    mockAuth = { isAdmin: true };
+    const job = jobWithPages([{ page: 1, text: 'x', status: 'success' }]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} onRetryPages={vi.fn()} />);
+    expect(screen.getByTestId('retry-pages-btn')).toBeInTheDocument();
+  });
+});
+
 describe('ViewerPanel — loading placeholder while switching jobs', () => {
   it('shows "Loading document..." when jobDetails is null but a job is selected', () => {
     render(<ViewerPanel {...baseProps} jobDetails={null} hasSelection={true} />);
@@ -306,6 +376,23 @@ describe('ViewerPanel — Rebuild Cross-References button', () => {
   });
 });
 
+describe('ViewerPanel — Export Document (ExportDropdown replaces the old "Result (.md)" button)', () => {
+  it('renders the ExportDropdown toggle instead of the old single-format button, and forwards onExport with the chosen options', () => {
+    const onExport = vi.fn();
+    const job = jobWithPages([{ page: 1, text: 'x' }]);
+    job.total_pages = 12;
+    render(<ViewerPanel {...baseProps} jobDetails={job} onExport={onExport} />);
+
+    expect(screen.queryByText('Result (.md)')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('export-dropdown-toggle'));
+    fireEvent.click(screen.getByTestId('export-format-pdf'));
+    fireEvent.click(screen.getByLabelText(/Current Page Only/));
+    fireEvent.click(screen.getByTestId('export-confirm-btn'));
+
+    expect(onExport).toHaveBeenCalledWith({ format: 'pdf', scope: 'page', includeMetadata: true, pageNum: 1, pageRange: undefined });
+  });
+});
+
 describe('ViewerPanel — sidebar collapse toggle', () => {
   it('renders the toggle even when there is no selection (it is a layout control, not a document action)', () => {
     render(<ViewerPanel {...baseProps} hasSelection={false} />);
@@ -333,21 +420,97 @@ describe('ViewerPanel — sidebar collapse toggle', () => {
   });
 });
 
-describe('ViewerPanel — Result pane is display-only', () => {
-  it('clicking a rendered .xref-link in the Result pane is inert (no navigation, no popover)', () => {
-    // The PDF pane's reference badge/popover (the only thing that ever
-    // turned a mention click into a jump or a disambiguation popover) was
-    // removed as part of the pdf.js migration — the Structure sidebar is
-    // now the primary way to reach a reference. This just confirms a
-    // Result-pane link click doesn't do anything surprising (e.g. navigate
-    // via its href="#"), not that it opens anything.
-    const store = storeWithDelta({ 1: { 'clause:8': [{ anchor_id: 'a1', collapsed_key: 'clause:8' }] } });
+// REWRITTEN (premise obsolete): the Result pane is no longer display-only —
+// the Studio redesign (plan §2) replaces it with the editable WysiwygEditor
+// as the general user's primary review action. These tests replace the old
+// "display-only" suite with coverage of the pane actually being editable,
+// plus confirmation that reference discovery is PageReferenceBadges' job now
+// (not an inline link inside the editor).
+describe('ViewerPanel — Result pane is editable (WysiwygEditor)', () => {
+  it('renders the page text in an editable rich-text editor, not a read-only block', () => {
     const job = jobWithPages([{ page: 1, text: 'See Clause 8 for details.' }]);
-    render(<ViewerPanel {...baseProps} viewMode="result" jobDetails={job} referenceStore={store} />);
-    const link = screen.getByText('Clause 8');
-    expect(link.tagName).toBe('A');
-    fireEvent.click(link);
-    expect(screen.queryByTestId('xref-popover')).not.toBeInTheDocument();
+    render(<ViewerPanel {...baseProps} viewMode="result" jobDetails={job} />);
+    const editable = document.querySelector('[contenteditable]');
+    expect(editable).toBeInTheDocument();
+    expect(editable).toHaveAttribute('contenteditable', 'true');
+    expect(screen.getByText('See Clause 8 for details.')).toBeInTheDocument();
+  });
+
+  it('calls onSavePageText with the current page number and the edited Markdown, debounced ~800ms after the user stops typing', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const onSavePageText = vi.fn();
+      const job = jobWithPages([{ page: 1, text: 'Original text' }]);
+      render(<ViewerPanel {...baseProps} viewMode="result" jobDetails={job} onSavePageText={onSavePageText} />);
+
+      // Edit via the Source toggle (a raw-Markdown textarea) — the same
+      // edit path WysiwygEditor's own test suite uses, since jsdom has no
+      // real caret/selection model to type into the rich-text view directly.
+      fireEvent.click(screen.getByTestId('editor-source-toggle-btn'));
+      fireEvent.change(screen.getByTestId('editor-source-textarea'), { target: { value: 'Edited text' } });
+      fireEvent.click(screen.getByTestId('editor-source-toggle-btn'));
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(900); });
+      expect(onSavePageText).toHaveBeenCalledWith(1, 'Edited text');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('mention discovery is PageReferenceBadges\' job now, not an inline .xref-link inside the editor', () => {
+    const store = storeWithDelta(
+      { 1: { 'clause:8': [{ anchor_id: 'a1', collapsed_key: 'clause:8', page: 1 }] } },
+      1,
+      { 1: [{ key: 'clause:8', raw_text: 'Clause 8', resolution: 'exact' }] }
+    );
+    const job = jobWithPages([{ page: 1, text: 'See Clause 8 for details.' }]);
+    render(<ViewerPanel {...baseProps} viewMode="split" pdfSrc="blob:fake-url" jobDetails={job} referenceStore={store} scopeRanges={[]} />);
+
+    expect(screen.getByText('See Clause 8 for details.')).toBeInTheDocument();
+    expect(document.querySelector('a.xref-link')).not.toBeInTheDocument();
+    expect(screen.getByTestId('page-reference-badge-clause:8')).toBeInTheDocument();
+  });
+});
+
+describe('ViewerPanel — on-demand indexing (Zero Indexing Overhead by Default)', () => {
+  it('hides PageReferenceBadges and labels the action "Build Index & Citations" before the index has ever been built', () => {
+    const store = storeWithDelta(
+      { 1: { 'clause:8': [{ anchor_id: 'a1', collapsed_key: 'clause:8', page: 1 }] } },
+      1,
+      { 1: [{ key: 'clause:8', raw_text: 'Clause 8', resolution: 'exact' }] }
+    );
+    const job = jobWithPages([{ page: 1, text: 'See Clause 8 for details.' }]);
+    job.index_built_at = null;
+    render(
+      <ViewerPanel {...baseProps} viewMode="split" pdfSrc="blob:fake-url" jobDetails={job} referenceStore={store} scopeRanges={[]} onReindexReferences={vi.fn()} />
+    );
+
+    // The underlying mention data already exists (the always-on rule-based
+    // detector runs regardless) but must not surface as a badge until the
+    // user explicitly opts in — that data existing is not the same as the
+    // user having asked for citations.
+    expect(screen.queryByTestId('page-reference-badge-clause:8')).not.toBeInTheDocument();
+
+    const btn = screen.getByTestId('reindex-references-btn');
+    expect(btn).toHaveTextContent('Build Index & Citations');
+    expect(btn).toHaveClass('btn-primary');
+  });
+
+  it('shows PageReferenceBadges and labels the action "Rebuild Cross-References" once the index has been built', () => {
+    const store = storeWithDelta(
+      { 1: { 'clause:8': [{ anchor_id: 'a1', collapsed_key: 'clause:8', page: 1 }] } },
+      1,
+      { 1: [{ key: 'clause:8', raw_text: 'Clause 8', resolution: 'exact' }] }
+    );
+    const job = jobWithPages([{ page: 1, text: 'See Clause 8 for details.' }]); // index_built_at set by the jobWithPages default
+    render(
+      <ViewerPanel {...baseProps} viewMode="split" pdfSrc="blob:fake-url" jobDetails={job} referenceStore={store} scopeRanges={[]} onReindexReferences={vi.fn()} />
+    );
+
+    expect(screen.getByTestId('page-reference-badge-clause:8')).toBeInTheDocument();
+    const btn = screen.getByTestId('reindex-references-btn');
+    expect(btn).toHaveTextContent('Rebuild Cross-References');
+    expect(btn).toHaveClass('btn-secondary');
   });
 });
 
@@ -504,7 +667,15 @@ describe('ViewerPanel — Structure sidebar leaf click jumps the main panel', ()
     expect(screen.queryByTestId('structure-reading-modal')).not.toBeInTheDocument();
   });
 
-  it('scrolls the Result pane to the leaf\'s exact anchor position once its page has rendered', () => {
+  // REWRITTEN (premise obsolete): exact in-page anchor scrolling relied on
+  // renderPageMarkdown's injectAnchor() stamping an `#xref-anchor` span into
+  // the dangerouslySetInnerHTML'd body at the matched block's position. The
+  // Result pane's body is now the editable WysiwygEditor, which parses the
+  // page's Markdown fresh via TipTap rather than rendering that annotated
+  // HTML — so there's no anchor span left for this effect to scroll to. The
+  // leaf jump itself (moving the main viewer to the target page) still
+  // works unchanged; only the sub-page scroll precision is gone.
+  it('still moves the main viewer straight to the leaf\'s page (exact in-page anchor scrolling no longer applies now that the Result pane is the editable WysiwygEditor)', () => {
     const store = storeWithDelta({
       5: {
         'clause:2.1': [{
@@ -514,28 +685,21 @@ describe('ViewerPanel — Structure sidebar leaf click jumps the main panel', ()
       },
     });
     const job = jobWithPages([{ page: 1, text: 'x' }, { page: 5, text: 'Clause 2.1 page five text.' }]);
-    const scrollSpy = vi.fn();
-    const original = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = scrollSpy;
-    try {
-      render(
-        <ViewerPanel
-          {...baseProps}
-          viewMode="split"
-          pdfSrc="blob:full-doc"
-          jobDetails={job}
-          referenceStore={store}
-          scopeRanges={[]}
-        />
-      );
-      fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
-      fireEvent.click(screen.getByTestId('structure-leaf-anchor-leaf'));
+    render(
+      <ViewerPanel
+        {...baseProps}
+        viewMode="split"
+        pdfSrc="blob:full-doc"
+        jobDetails={job}
+        referenceStore={store}
+        scopeRanges={[]}
+      />
+    );
+    fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
+    fireEvent.click(screen.getByTestId('structure-leaf-anchor-leaf'));
 
-      expect(screen.getByTestId('mock-pdf-page')).toHaveTextContent('5');
-      expect(scrollSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
-    } finally {
-      Element.prototype.scrollIntoView = original;
-    }
+    expect(screen.getByTestId('mock-pdf-page')).toHaveTextContent('5');
+    expect(screen.getByText('Clause 2.1 page five text.')).toBeInTheDocument();
   });
 
   // Magnifying-glass/jump button is temporarily disabled in StructureTree.jsx — re-enable alongside it.
@@ -955,5 +1119,25 @@ describe('ViewerPanel — pageMentions memoization', () => {
     // dependency fix must keep getPageMentions from re-running here.
     fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
     expect(getPageMentions.mock.calls.length).toBe(callsAfterMount);
+  });
+});
+
+describe('ViewerPanel — Studio split group containment', () => {
+  it('wraps scan pane, split resizer, and editor pane inside studio-split-group in studioMode split view', () => {
+    const job = jobWithPages([{ page: 1, text: 'Sample text' }]);
+    render(
+      <ViewerPanel
+        {...baseProps}
+        studioMode={true}
+        viewMode="split"
+        pdfSrc="blob:fake-url"
+        jobDetails={job}
+      />
+    );
+    const splitGroup = document.querySelector('.studio-split-group');
+    expect(splitGroup).toBeInTheDocument();
+    expect(splitGroup.querySelector('.studio-scan-pane')).toBeInTheDocument();
+    expect(splitGroup.querySelector('.split-resizer')).toBeInTheDocument();
+    expect(splitGroup.querySelector('.studio-editor-pane')).toBeInTheDocument();
   });
 });

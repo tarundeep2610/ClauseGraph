@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { apiFetch } from '../utils/api';
-import Dashboard from './Dashboard';
+import { renderApp } from './testRouteHelpers';
 
 vi.mock('../utils/api', () => ({
   apiFetch: vi.fn(),
 }));
 
+let mockIsAdmin = false;
 vi.mock('../utils/AuthContext', () => ({
-  useAuth: () => ({ isAdmin: false }),
+  useAuth: () => ({ isAdmin: mockIsAdmin }),
 }));
 
 vi.mock('../utils/ThemeContext', () => ({
@@ -17,6 +18,7 @@ vi.mock('../utils/ThemeContext', () => ({
 
 describe('Dashboard — job submission includes the new batch/escalation params', () => {
   beforeEach(() => {
+    mockIsAdmin = false;
     vi.clearAllMocks();
     global.URL.createObjectURL = vi.fn(() => 'blob:fake');
     global.URL.revokeObjectURL = vi.fn();
@@ -32,7 +34,7 @@ describe('Dashboard — job submission includes the new batch/escalation params'
   });
 
   it('sends processing_mode/escalate_before_flagging for the default unlimited engine', async () => {
-    render(<Dashboard />);
+    renderApp('/');
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/prompts'));
 
     const file = new File(['dummy'], 'test.pdf', { type: 'application/pdf' });
@@ -54,13 +56,15 @@ describe('Dashboard — job submission includes the new batch/escalation params'
   });
 
   it('sends enable_overlap when processing_mode=batch, defaulting to true', async () => {
-    render(<Dashboard />);
+    mockIsAdmin = true;
+    renderApp('/');
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/prompts'));
 
     const file = new File(['dummy'], 'test.pdf', { type: 'application/pdf' });
     const input = screen.getByTestId('file-input');
     fireEvent.change(input, { target: { files: [file] } });
 
+    fireEvent.click(screen.getByTestId('open-settings-btn'));
     const batchParams = await screen.findByTestId('batch-mode-params');
     const processingModeSelect = batchParams.querySelector('select');
     fireEvent.change(processingModeSelect, { target: { value: 'batch' } });
@@ -81,13 +85,15 @@ describe('Dashboard — job submission includes the new batch/escalation params'
   });
 
   it('sends enable_overlap=false when the overlap checkbox is unchecked in batch mode', async () => {
-    render(<Dashboard />);
+    mockIsAdmin = true;
+    renderApp('/');
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/prompts'));
 
     const file = new File(['dummy'], 'test.pdf', { type: 'application/pdf' });
     const input = screen.getByTestId('file-input');
     fireEvent.change(input, { target: { files: [file] } });
 
+    fireEvent.click(screen.getByTestId('open-settings-btn'));
     const batchParams = await screen.findByTestId('batch-mode-params');
     const processingModeSelect = batchParams.querySelector('select');
     fireEvent.change(processingModeSelect, { target: { value: 'batch' } });

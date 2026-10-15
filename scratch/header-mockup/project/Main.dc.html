@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OCR Rokka header mockup v2</title>
+<script src="./support.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body { margin: 0; }
+  .hdr-btn { transition: color 0.15s, background 0.15s; }
+  .hdr-btn:hover { color: var(--hover-text) !important; background: var(--hover-bg) !important; }
+  .avatar-btn:hover { background: var(--hover-bg) !important; }
+</style>
+</helmet>
+
+<div style="width: 1280px; box-sizing: border-box; padding: 40px; display: flex; flex-direction: column; gap: 36px; font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0b0b10;">
+
+  <!-- LIGHT MODE -->
+  <div style="display: flex; flex-direction: column; gap: 10px;">
+    <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #71717a; padding-left: 2px;">Light mode</span>
+    <div style="background: #f4f5fb; border-radius: 10px; padding: 28px 24px;">
+      <div style="height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: #ffffff; border-bottom: 1px solid rgba(15,23,42,0.09); border-radius: 8px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 24px; height: 24px; border-radius: 7px; background: #4f46e5; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"></rect><line x1="8.5" y1="8" x2="15.5" y2="8"></line><line x1="8.5" y1="12" x2="15.5" y2="12"></line><line x1="8.5" y1="16" x2="13" y2="16"></line></svg>
+          </div>
+          <span style="font-size: 15px; font-weight: 700; letter-spacing: -0.015em; color: #18181b;">OCR Rokka</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button class="hdr-btn" style="--hover-bg: rgba(15,23,42,0.06); --hover-text: #18181b; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 6px; font-size: 12.5px; font-weight: 500; background: transparent; border: 1px solid transparent; color: #71717a; cursor: pointer;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            Settings
+          </button>
+          <div style="width: 1px; height: 18px; background: rgba(15,23,42,0.09); margin: 0 6px;"></div>
+          <button class="hdr-btn avatar-btn" style="--hover-bg: rgba(15,23,42,0.06); --hover-text: #18181b; display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px 2px 2px; border-radius: 999px; background: transparent; border: 1px solid transparent; cursor: pointer;">
+            <span style="width: 24px; height: 24px; border-radius: 50%; background: #4f46e5; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600; line-height: 1;">A</span>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DARK MODE -->
+  <div style="display: flex; flex-direction: column; gap: 10px;">
+    <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #71717a; padding-left: 2px;">Dark mode</span>
+    <div style="border-radius: 10px; padding: 28px 24px; background-image: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #09090b 100%);">
+      <div style="height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: #1c1d2b; border-bottom: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 24px; height: 24px; border-radius: 7px; background: #6366f1; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"></rect><line x1="8.5" y1="8" x2="15.5" y2="8"></line><line x1="8.5" y1="12" x2="15.5" y2="12"></line><line x1="8.5" y1="16" x2="13" y2="16"></line></svg>
+          </div>
+          <span style="font-size: 15px; font-weight: 700; letter-spacing: -0.015em; color: #f4f4f5;">OCR Rokka</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button class="hdr-btn" style="--hover-bg: rgba(255,255,255,0.08); --hover-text: #f4f4f5; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 6px; font-size: 12.5px; font-weight: 500; background: transparent; border: 1px solid transparent; color: #8a8f98; cursor: pointer;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            Settings
+          </button>
+          <div style="width: 1px; height: 18px; background: rgba(255,255,255,0.1); margin: 0 6px;"></div>
+          <button class="hdr-btn avatar-btn" style="--hover-bg: rgba(255,255,255,0.08); --hover-text: #f4f4f5; display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px 2px 2px; border-radius: 999px; background: transparent; border: 1px solid transparent; cursor: pointer;">
+            <span style="width: 24px; height: 24px; border-radius: 50%; background: #6366f1; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600; line-height: 1;">A</span>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#8a8f98" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p style="margin: 0; padding: 0 4px; font-size: 12.5px; font-weight: 400; color: #71717a; line-height: 1.6; max-width: 860px;">
+    v2, after "still doesn't feel sophisticated enough": switched to Inter (from Segoe UI), dropped the header's utility-text weight from 600 to 500 (Linear's own UI text sits at ~510 — bold is reserved for the wordmark only now), replaced the unicode star with a drawn document/scan line-icon in the chip, and removed the box-shadow in favor of a pure 1px hairline border (Linear/Vercel use borders, not shadows, for depth). Settings and the avatar control are now borderless/transparent at rest — only the hairline divider marks the boundary between them, and hover is the only thing that gives either control a background.
+  </p>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":600}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

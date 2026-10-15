@@ -1,7 +1,34 @@
 import { useState } from 'react';
 import { useAuth } from '../utils/AuthContext';
+import { useTheme } from '../utils/ThemeContext';
 
-export default function AdvancedSettingsPanel({
+// Replaces the old header pills (idle/GPU/exit/theme) + AdvancedSettingsPanel
+// sidebar card with a single consolidated "Settings" surface, reachable from
+// the unified top bar on every route (see Header.jsx) instead of only from
+// Library. Role-gated per-field, per the UX-redesign round-4 decisions:
+// theme is the only thing every role sees; idle-timeout status/config, GPU
+// status, Exit & Free Memory, and all engine/prompt/output/indexing config
+// stay admin-only, the same boundary AdvancedSettingsPanel already drew for
+// everything except theme. QualityPresetPicker is NOT here — it's a per-job
+// choice made at upload time, not a persistent setting, and lives next to
+// the Library upload dropzone instead (see LibraryHome.jsx).
+function gpuStatusDisplay(gpuStatus) {
+  if (!gpuStatus) return null;
+  if (gpuStatus.gpu_ocr_service_connection !== 'online') {
+    return { className: 'offline', text: 'GPU: Offline' };
+  }
+  if (!gpuStatus.gpu_model_loaded) {
+    return { className: 'warn', text: 'GPU: Idle' };
+  }
+  return { className: '', text: 'GPU: Ready' };
+}
+
+export default function SettingsModal({
+  open,
+  onClose,
+  idleState,
+  gpuStatus,
+  onExit,
   form,
   updateForm,
   prompts,
@@ -21,7 +48,7 @@ export default function AdvancedSettingsPanel({
   onTestAiConnection,
 }) {
   const { isAdmin } = useAuth();
-  const [open, setOpen] = useState(true);
+  const { theme, toggleTheme } = useTheme();
   const [promptSavedMsg, setPromptSavedMsg] = useState('');
   const [outputSaved, setOutputSaved] = useState(false);
   const [idleSaved, setIdleSaved] = useState(false);
@@ -65,201 +92,259 @@ export default function AdvancedSettingsPanel({
     setAiTesting(false);
   }
 
+  if (!open) return null;
+
+  const gpuDisplay = gpuStatusDisplay(gpuStatus);
+
   return (
-    <div className="panel">
-      <div className="settings-toggle" onClick={() => setOpen(!open)}>
-        <span className="toggle-title"><i className="fa-solid fa-sliders" /> Advanced Settings</span>
-        <i className="fa-solid fa-chevron-down" style={{ transform: open ? 'rotate(180deg)' : '', transition: 'transform 0.25s' }} />
-      </div>
+    <div className="modal-overlay" onClick={onClose} data-testid="settings-modal-overlay">
+      <div className="modal-panel settings-modal-panel" onClick={(e) => e.stopPropagation()} data-testid="settings-modal">
+        <div className="settings-modal-header">
+          <span className="modal-title"><i className="fa-solid fa-gear" /> Settings</span>
+          <button type="button" className="btn-icon-close" onClick={onClose} aria-label="Close settings" data-testid="settings-modal-close-btn">
+            <i className="fa-solid fa-xmark" />
+          </button>
+        </div>
 
-      {open && (
-        <div className="settings-body">
-          <p className="section-label">Engine</p>
+        <div className="settings-modal-body">
+          <p className="section-label">Appearance</p>
           <div className="form-group">
-            <label>OCR Engine</label>
-            <select value={form.engine} onChange={(e) => updateForm({ engine: e.target.value })} data-testid="engine-select">
-              <option value="unlimited">🧠 Unlimited-OCR — Baidu GPU</option>
-              <option value="glm">🤖 GLM-OCR — Ollama Vision</option>
-            </select>
-          </div>
-
-          {form.engine === 'glm' && (
-            <div data-testid="glm-params">
-              <div className="params-grid">
-                <div className="form-group">
-                  <label>Temperature</label>
-                  <div className="slider-row">
-                    <input type="range" min="0" max="2" step="0.1" value={form.glmTemperature}
-                      onChange={(e) => updateForm({ glmTemperature: parseFloat(e.target.value) })} />
-                    <span className="slider-val">{form.glmTemperature.toFixed(1)}</span>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Repeat Penalty</label>
-                  <div className="slider-row">
-                    <input type="range" min="1.0" max="2.0" step="0.1" value={form.glmRepeatPenalty}
-                      onChange={(e) => updateForm({ glmRepeatPenalty: parseFloat(e.target.value) })} />
-                    <span className="slider-val">{form.glmRepeatPenalty.toFixed(1)}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="params-grid">
-                <div className="form-group">
-                  <label>Context Window</label>
-                  <select value={form.glmNumCtx} onChange={(e) => updateForm({ glmNumCtx: e.target.value })}>
-                    <option value="2048">2 048</option>
-                    <option value="4096">4 096</option>
-                    <option value="8192">8 192</option>
-                    <option value="16384">16 384</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>Max Output Tokens</label>
-                  <select value={form.glmNumPredict} onChange={(e) => updateForm({ glmNumPredict: e.target.value })}>
-                    <option value="256">256</option>
-                    <option value="512">512</option>
-                    <option value="1024">1 024</option>
-                    <option value="2048">2 048</option>
-                    <option value="4096">4 096</option>
-                  </select>
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="check-row" style={{ textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem' }}>
-                  <input type="checkbox" checked={form.glmTiling} onChange={(e) => updateForm({ glmTiling: e.target.checked })} />
-                  Enable tiling (splits page into overlapping sections)
-                </label>
-              </div>
-            </div>
-          )}
-
-          {form.engine === 'unlimited' && (
-            <div className="form-group" data-testid="unlimited-params">
-              <label>Base Size (inference resolution)</label>
-              <select value={form.unlimitedBaseSize} onChange={(e) => updateForm({ unlimitedBaseSize: e.target.value })}>
-                <option value="512">512 — Fastest</option>
-                <option value="768">768</option>
-                <option value="1024">1024 — Recommended</option>
-                <option value="2048">2048 — High Detail (very slow)</option>
-              </select>
-            </div>
-          )}
-
-          {form.engine === 'unlimited' && (
-            <div data-testid="batch-mode-params">
-              <div className="form-group">
-                <label>Page Processing</label>
-                <select
-                  value={form.processingMode || 'single'}
-                  onChange={(e) => updateForm({ processingMode: e.target.value })}
-                >
-                  <option value="single">Single page at a time (default, proven)</option>
-                  <option value="batch">Batch (multi-page, shares model context per chunk)</option>
-                </select>
-                <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
-                  Batch mode processes several pages together so the model retains context
-                  across them — trades some per-page resolution for that context. Still
-                  being validated; single-page is the recommended default.
-                </p>
-              </div>
-              {form.processingMode === 'batch' && (
-                <div className="form-group">
-                  <label>Batch / Chunk Size (pages)</label>
-                  <input
-                    type="number"
-                    min="2"
-                    max="20"
-                    value={form.batchSize || '5'}
-                    onChange={(e) => updateForm({ batchSize: e.target.value })}
-                    data-testid="batch-size-input"
-                  />
-                  <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
-                    Pages per batch call; consecutive batches share one page for context continuity.
-                  </p>
-                </div>
-              )}
-              {form.processingMode === 'batch' && (
-                <div className="form-group">
-                  <label className="check-row" style={{ textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={form.enableOverlap !== false}
-                      onChange={(e) => updateForm({ enableOverlap: e.target.checked })}
-                      data-testid="enable-overlap-checkbox"
-                    />
-                    Overlap pages between batches
-                  </label>
-                  <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
-                    Shares one boundary page between consecutive batches for context continuity, and
-                    enables table-continuation merging on export. Turning this off also disables
-                    export-time table stitching, since there's no shared page to compare.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="form-group">
-            <label className="check-row" style={{ textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem' }}>
-              <input
-                type="checkbox"
-                checked={form.escalateBeforeFlagging !== false}
-                onChange={(e) => updateForm({ escalateBeforeFlagging: e.target.checked })}
-                data-testid="escalate-before-flagging-checkbox"
-              />
-              Auto-escalate low-confidence pages before flagging for review
-            </label>
-            <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
-              When a page scores low confidence, retry it once with stronger settings before
-              marking it for human review. Applies to both engines.
-            </p>
-          </div>
-
-          <div className="form-group">
-            <label>PDF Render Scale</label>
-            <select value={form.scale} onChange={(e) => updateForm({ scale: e.target.value })}>
-              <option value="1.0">1.0× Standard</option>
-              <option value="1.5">1.5× High Detail</option>
-              <option value="2.0">2.0× Ultra Detail</option>
-            </select>
-          </div>
-
-          <hr className="section-divider" />
-
-          <p className="section-label">Instructions / Prompt</p>
-          <div className="form-group">
-            <label>Prompt Mode</label>
-            <select value={form.promptMode} onChange={(e) => onPromptModeChange(e.target.value)}>
-              <option value="document">Document (Default)</option>
-              <option value="generic">Generic OCR</option>
-              <option value="captcha">Captcha</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', textTransform: 'none', letterSpacing: 'normal' }}>
-              <span style={{ fontSize: '0.77rem', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Meta-Prompt</span>
-              {promptSavedMsg && <span className="flash-saved">{promptSavedMsg}</span>}
-            </label>
-            <textarea
-              rows={6}
-              value={form.customPrompt}
-              readOnly={!isAdmin}
-              onChange={(e) => updateForm({ customPrompt: e.target.value })}
-            />
-            {isAdmin && (
-              <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
-                <button className="btn btn-sm btn-secondary" style={{ flex: 1 }} onClick={handleSavePrompt}>
-                  <i className="fa-solid fa-floppy-disk" /> Save
-                </button>
-                <button className="btn btn-sm btn-outline" onClick={handleResetPrompt}>
-                  <i className="fa-solid fa-rotate-left" /> Reset
-                </button>
-              </div>
-            )}
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={toggleTheme}
+              data-testid="theme-toggle-btn"
+            >
+              <i className={`fa-solid ${theme === 'light' ? 'fa-moon' : 'fa-sun'}`} />
+              {theme === 'light' ? ' Switch to dark mode' : ' Switch to light mode'}
+            </button>
           </div>
 
           {isAdmin && (
             <>
+              <hr className="section-divider" />
+              <p className="section-label">Session &amp; GPU</p>
+              <div className="form-group settings-status-row">
+                <div id="idlePill" className={idleState.className}>
+                  <i className="fa-solid fa-circle" style={{ fontSize: '0.5rem' }} /> {idleState.text ?? idleState.label}
+                </div>
+                {gpuDisplay && (
+                  <div className={`gpu-status-pill ${gpuDisplay.className}`} data-testid="gpu-status-pill">
+                    <i className="fa-solid fa-circle" style={{ fontSize: '0.5rem' }} /> {gpuDisplay.text}
+                  </div>
+                )}
+                <button id="exitBtn" className="btn btn-sm btn-danger" onClick={onExit}>
+                  <i className="fa-solid fa-power-off" /> Exit &amp; Free Memory
+                </button>
+              </div>
+
+              <div className="form-group">
+                <label>Idle Shutdown (minutes, 0 = disabled)</label>
+                <div style={{ display: 'flex', gap: 7 }}>
+                  <input
+                    type="number"
+                    min="0"
+                    max="120"
+                    style={{ flex: 1 }}
+                    defaultValue={settings.idle_timeout_minutes}
+                    id="idleTimeoutInputEl"
+                  />
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    title="Save"
+                    onClick={() => {
+                      const val = parseInt(document.getElementById('idleTimeoutInputEl').value, 10) || 0;
+                      onSaveIdleTimeout(val);
+                      flash(setIdleSaved);
+                    }}
+                  >
+                    <i className="fa-solid fa-floppy-disk" />
+                  </button>
+                </div>
+                {idleSaved && <span className="flash-saved"><i className="fa-solid fa-check" /> Saved</span>}
+              </div>
+
+              <hr className="section-divider" />
+              <p className="section-label">Engine</p>
+              <div className="form-group">
+                <label>OCR Engine</label>
+                <select value={form.engine} onChange={(e) => updateForm({ engine: e.target.value })} data-testid="engine-select">
+                  <option value="unlimited">🧠 Unlimited-OCR — Baidu GPU</option>
+                  <option value="glm">🤖 GLM-OCR — Ollama Vision</option>
+                </select>
+              </div>
+
+              {form.engine === 'glm' && (
+                <div data-testid="glm-params">
+                  <div className="params-grid">
+                    <div className="form-group">
+                      <label>Temperature</label>
+                      <div className="slider-row">
+                        <input type="range" min="0" max="2" step="0.1" value={form.glmTemperature}
+                          onChange={(e) => updateForm({ glmTemperature: parseFloat(e.target.value) })} />
+                        <span className="slider-val">{form.glmTemperature.toFixed(1)}</span>
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label>Repeat Penalty</label>
+                      <div className="slider-row">
+                        <input type="range" min="1.0" max="2.0" step="0.1" value={form.glmRepeatPenalty}
+                          onChange={(e) => updateForm({ glmRepeatPenalty: parseFloat(e.target.value) })} />
+                        <span className="slider-val">{form.glmRepeatPenalty.toFixed(1)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="params-grid">
+                    <div className="form-group">
+                      <label>Context Window</label>
+                      <select value={form.glmNumCtx} onChange={(e) => updateForm({ glmNumCtx: e.target.value })}>
+                        <option value="2048">2 048</option>
+                        <option value="4096">4 096</option>
+                        <option value="8192">8 192</option>
+                        <option value="16384">16 384</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Max Output Tokens</label>
+                      <select value={form.glmNumPredict} onChange={(e) => updateForm({ glmNumPredict: e.target.value })}>
+                        <option value="256">256</option>
+                        <option value="512">512</option>
+                        <option value="1024">1 024</option>
+                        <option value="2048">2 048</option>
+                        <option value="4096">4 096</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="check-row" style={{ textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem' }}>
+                      <input type="checkbox" checked={form.glmTiling} onChange={(e) => updateForm({ glmTiling: e.target.checked })} />
+                      Enable tiling (splits page into overlapping sections)
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {form.engine === 'unlimited' && (
+                <div className="form-group" data-testid="unlimited-params">
+                  <label>Base Size (inference resolution)</label>
+                  <select value={form.unlimitedBaseSize} onChange={(e) => updateForm({ unlimitedBaseSize: e.target.value })}>
+                    <option value="512">512 — Fastest</option>
+                    <option value="768">768</option>
+                    <option value="1024">1024 — Recommended</option>
+                    <option value="2048">2048 — High Detail (very slow)</option>
+                  </select>
+                </div>
+              )}
+
+              {form.engine === 'unlimited' && (
+                <div data-testid="batch-mode-params">
+                  <div className="form-group">
+                    <label>Page Processing</label>
+                    <select
+                      value={form.processingMode || 'single'}
+                      onChange={(e) => updateForm({ processingMode: e.target.value })}
+                    >
+                      <option value="single">Single page at a time (default, proven)</option>
+                      <option value="batch">Batch (multi-page, shares model context per chunk)</option>
+                    </select>
+                    <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
+                      Batch mode processes several pages together so the model retains context
+                      across them — trades some per-page resolution for that context. Still
+                      being validated; single-page is the recommended default.
+                    </p>
+                  </div>
+                  {form.processingMode === 'batch' && (
+                    <div className="form-group">
+                      <label>Batch / Chunk Size (pages)</label>
+                      <input
+                        type="number"
+                        min="2"
+                        max="20"
+                        value={form.batchSize || '5'}
+                        onChange={(e) => updateForm({ batchSize: e.target.value })}
+                        data-testid="batch-size-input"
+                      />
+                      <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
+                        Pages per batch call; consecutive batches share one page for context continuity.
+                      </p>
+                    </div>
+                  )}
+                  {form.processingMode === 'batch' && (
+                    <div className="form-group">
+                      <label className="check-row" style={{ textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={form.enableOverlap !== false}
+                          onChange={(e) => updateForm({ enableOverlap: e.target.checked })}
+                          data-testid="enable-overlap-checkbox"
+                        />
+                        Overlap pages between batches
+                      </label>
+                      <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
+                        Shares one boundary page between consecutive batches for context continuity, and
+                        enables table-continuation merging on export. Turning this off also disables
+                        export-time table stitching, since there's no shared page to compare.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="check-row" style={{ textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.escalateBeforeFlagging !== false}
+                    onChange={(e) => updateForm({ escalateBeforeFlagging: e.target.checked })}
+                    data-testid="escalate-before-flagging-checkbox"
+                  />
+                  Auto-escalate low-confidence pages before flagging for review
+                </label>
+                <p style={{ fontSize: '0.71rem', color: 'var(--muted)', marginTop: 5 }}>
+                  When a page scores low confidence, retry it once with stronger settings before
+                  marking it for human review. Applies to both engines.
+                </p>
+              </div>
+
+              <div className="form-group">
+                <label>PDF Render Scale</label>
+                <select value={form.scale} onChange={(e) => updateForm({ scale: e.target.value })}>
+                  <option value="1.0">1.0× Standard</option>
+                  <option value="1.5">1.5× High Detail</option>
+                  <option value="2.0">2.0× Ultra Detail</option>
+                </select>
+              </div>
+
+              <hr className="section-divider" />
+              <p className="section-label">Instructions / Prompt</p>
+              <div className="form-group">
+                <label>Prompt Mode</label>
+                <select value={form.promptMode} onChange={(e) => onPromptModeChange(e.target.value)}>
+                  <option value="document">Document (Default)</option>
+                  <option value="generic">Generic OCR</option>
+                  <option value="captcha">Captcha</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', textTransform: 'none', letterSpacing: 'normal' }}>
+                  <span style={{ fontSize: '0.77rem', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Meta-Prompt</span>
+                  {promptSavedMsg && <span className="flash-saved">{promptSavedMsg}</span>}
+                </label>
+                <textarea
+                  rows={6}
+                  value={form.customPrompt}
+                  onChange={(e) => updateForm({ customPrompt: e.target.value })}
+                />
+                <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
+                  <button className="btn btn-sm btn-secondary" style={{ flex: 1 }} onClick={handleSavePrompt}>
+                    <i className="fa-solid fa-floppy-disk" /> Save
+                  </button>
+                  <button className="btn btn-sm btn-outline" onClick={handleResetPrompt}>
+                    <i className="fa-solid fa-rotate-left" /> Reset
+                  </button>
+                </div>
+              </div>
+
               <hr className="section-divider" />
               <p className="section-label">Output</p>
               <div className="form-group">
@@ -470,38 +555,10 @@ export default function AdvancedSettingsPanel({
                   </span>
                 )}
               </div>
-
-              <hr className="section-divider" />
-              <p className="section-label">Session</p>
-              <div className="form-group">
-                <label>Idle Shutdown (minutes, 0 = disabled)</label>
-                <div style={{ display: 'flex', gap: 7 }}>
-                  <input
-                    type="number"
-                    min="0"
-                    max="120"
-                    style={{ flex: 1 }}
-                    defaultValue={settings.idle_timeout_minutes}
-                    id="idleTimeoutInputEl"
-                  />
-                  <button
-                    className="btn btn-sm btn-secondary"
-                    title="Save"
-                    onClick={() => {
-                      const val = parseInt(document.getElementById('idleTimeoutInputEl').value, 10) || 0;
-                      onSaveIdleTimeout(val);
-                      flash(setIdleSaved);
-                    }}
-                  >
-                    <i className="fa-solid fa-floppy-disk" />
-                  </button>
-                </div>
-                {idleSaved && <span className="flash-saved"><i className="fa-solid fa-check" /> Saved</span>}
-              </div>
             </>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -140,6 +140,25 @@ def test_addressee_list_items_never_become_headings():
     assert numheadings == []
 
 
+def test_addressee_list_items_never_become_subdoc_candidates_either():
+    """A second, distinct false-positive on this exact page, caught by a
+    different mechanism: _looks_like_generic_heading_shape's residual
+    fallback can't tell "Chief Engineer/MM, HVPNL, Panchkula." apart from a
+    real open-vocabulary heading on shape alone - confirmed live (19 of 22
+    addressee lines minted as spurious subdoc: candidates on the 100-page
+    fixture). The "Copy ... forwarded to the following"/"Copy to:" intro
+    line gates this off for the rest of the page. Real subdoc detection
+    elsewhere (e.g. a genuine "BANK GUARANTEE FOR CONTRACT PERFORMANCE"
+    heading) is untouched - this only suppresses pages that actually open
+    with a distribution-list intro."""
+    candidates, _ = build_targets_for_page(_PAGE_91_ADDRESSEE_LIST, seed_scope=None, has_next_page=False)
+    addressee_subdocs = [
+        c["key"] for c in candidates
+        if c["key"].startswith("subdoc:") and c["key"] not in ("subdoc:no-text", "subdoc:non-text")
+    ]
+    assert addressee_subdocs == []
+
+
 def test_equipment_schedule_dotted_headings_still_match_but_stray_bare_integer_does_not():
     """Page 169's genuine dotted-decimal headings (3.1, 3.3-3.8, and the
     real container 3.0) must keep matching exactly as before - this fix

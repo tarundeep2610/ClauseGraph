@@ -689,7 +689,7 @@ export default function StructureTree({
     const raw = buildTree(getStructureCandidates(referenceStore));
     const reparented = applyHierarchyOverrides(raw, parentOverrides);
     return finalize(reparented, groupSortOverrides(sortOverrides));
-    // referenceStore is a stable ref mutated in place (see Dashboard.jsx) —
+    // referenceStore is a stable ref mutated in place (see AppShell.jsx) —
     // `.version` is the actual change signal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referenceStore, referenceStore?.version, parentOverrides, sortOverrides]);
