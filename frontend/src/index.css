@@ -1,7 +1,8 @@
 :root {
-  --bg: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #09090b 100%);
-  --panel: rgba(20, 20, 25, 0.75);
-  --border: rgba(255,255,255,0.08);
+  --bg: #0a0b12;
+  --panel: rgba(24, 26, 41, 0.85);
+  --border: rgba(255, 255, 255, 0.18);
+  --border-strong: rgba(255, 255, 255, 0.30);
   --text: #f4f4f5;
   --muted: #a1a1aa;
   --primary: #6366f1;
@@ -36,10 +37,10 @@
   --header-gradient: linear-gradient(135deg, #fff 30%, #a5b4fc 100%);
   --modal-panel-bg: #17171c;
   --modal-overlay-bg: rgba(0, 0, 0, 0.6);
-  --canvas-wrap-bg: #1e293b;
+  --canvas-wrap-bg: #0d0e17;
   --canvas-nav-bg: rgba(0, 0, 0, 0.35);
   --tree-leaf-fg: #d4d4d8;
-  --input-bg: rgba(0, 0, 0, 0.25);
+  --input-bg: rgba(255, 255, 255, 0.05);
 
   /* OCR confidence-tier colors (ViewerPanel's TIER_DISPLAY) — a 6-step
      gradient from highly-confident to failed, independent of the
@@ -52,12 +53,34 @@
   --shadow-panel: 0 8px 32px rgba(0,0,0,0.35);
   --shadow-modal: 0 20px 60px rgba(0,0,0,0.5);
   --shadow-dropdown: 0 8px 32px rgba(0,0,0,0.45);
+
+  /* Studio-redesign mockup's own shadow scale (distinct from the heavier
+     --shadow-panel/modal/dropdown trio above, which predate the redesign) —
+     lighter, used for the flat toolbar/floating-chrome look the mockup
+     actually uses (see OCR_STUDIO_UX_REDESIGN_PLAN.md's visual-fidelity
+     remediation notes). sm = toolbars/bars, lg = floating/popover chrome. */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
+  --shadow-lg: 0 12px 36px rgba(0,0,0,0.6);
+
+  /* Studio 4-Tier Surface Elevation Hierarchy */
+  --surface-rail: #12131f;
+  --surface-drawer: #181a29;
+  --surface-pane: #161826;
+  --surface-header: #1f2235;
+  --surface-solid: #181a29;
+
+  /* Tinted-but-opaque surface for the mockup's hero dropzone / docked
+     citation strip backgrounds — a soft primary wash, not a translucent
+     overlay. */
+  --primary-subtle: rgba(99, 102, 241, 0.08);
 }
 
 :root[data-theme="light"] {
   --bg: radial-gradient(circle at 50% 0%, #eef2ff 0%, #f8fafc 100%);
   --panel: rgba(255, 255, 255, 0.82);
-  --border: rgba(15, 23, 42, 0.1);
+  --border: rgba(15, 23, 42, 0.12);
+  --border-strong: rgba(15, 23, 42, 0.24);
   --text: #18181b;
   --muted: #52525b;
   --primary: #4f46e5;
@@ -96,6 +119,17 @@
   --shadow-panel: 0 8px 24px rgba(15,23,42,0.08);
   --shadow-modal: 0 20px 48px rgba(15,23,42,0.16);
   --shadow-dropdown: 0 8px 24px rgba(15,23,42,0.12);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+  --shadow-lg: 0 12px 30px rgba(0,0,0,0.1);
+
+  --surface-rail: #f1f5f9;
+  --surface-drawer: #f8fafc;
+  --surface-pane: #ffffff;
+  --surface-header: #f1f5f9;
+  --surface-solid: #ffffff;
+  --primary-subtle: rgba(79, 70, 229, 0.06);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -103,31 +137,74 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  padding: 30px 20px;
+  margin: 0;
+  padding: 0;
 }
 
 .container { width: 100%; }
 
-header { text-align: center; margin-bottom: 16px; animation: fadeDown 0.7s ease-out; }
-.badge {
+.app-shell-container {
+  width: 100%;
+  min-height: 100vh;
+}
+
+.app-shell-container:not(.is-studio) {
+  padding: 24px 20px 48px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.app-shell-container.is-studio {
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Unified top bar (Header.jsx), used identically on every route — the
+   mockup has no separate "marketing banner" anywhere, just one flat
+   .top-file-bar per screen (wordmark + action buttons). Shares the exact
+   recipe StudioAppBar's bar already uses (see .top-file-bar below) so
+   Library and Studio read as the same app shell. */
+header.app-header { margin-bottom: 16px; }
+.app-shell-container.is-studio header.app-header {
+  margin-bottom: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.app-header-wordmark {
+  font-size: 0.94rem; font-weight: 700; letter-spacing: -0.015em;
+  color: var(--text);
+  display: flex; align-items: center; gap: 10px;
+}
+/* Logomark chip — a drawn line-icon on a solid brand-color tile, not a bare
+   inline icon-font glyph, per the Linear/Vercel/Stripe research: a small
+   colored badge next to the wordmark is most of what makes a header read as
+   "a considered product" rather than a text label with a decoration. */
+.app-header-logo {
+  width: 24px; height: 24px; border-radius: 7px; flex-shrink: 0;
+  background: var(--primary); display: flex; align-items: center; justify-content: center;
+}
+
+/* Header-only "ghost" buttons (Settings, the user-menu trigger) — transparent
+   and borderless at rest, only gaining a background on hover. Deliberately
+   NOT .btn-secondary (which stays as-is for use elsewhere, e.g. the Studio
+   toolbar/history rows) — this is the header's own, more restrained treatment,
+   per the research finding that borders/fills should be used sparingly
+   ("the confidence to leave things out reads as premium"). */
+.btn-header-ghost {
   display: inline-flex; align-items: center; gap: 6px;
-  background: rgba(var(--primary-rgb), 0.1); border: 1px solid rgba(var(--primary-rgb), 0.2);
-  color: var(--fg-primary-soft); padding: 6px 16px; border-radius: 9999px;
-  font-size: 0.82rem; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.05em; margin-bottom: 12px;
+  padding: 5px 10px; border-radius: 6px; border: 1px solid transparent;
+  background: transparent; color: var(--muted);
+  font-size: 0.78rem; font-weight: 500; cursor: pointer; transition: background 0.15s, color 0.15s;
 }
-h1 {
-  font-size: 2.4rem; font-weight: 800;
-  background: var(--header-gradient);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  letter-spacing: -0.02em; margin-bottom: 6px;
-}
-.tagline { color: var(--muted); font-size: 0.92rem; }
+.btn-header-ghost:hover { background: rgba(var(--overlay), 0.06); color: var(--text); }
 
 #idleBanner {
   width: 100%; margin-bottom: 12px;
@@ -152,6 +229,14 @@ h1 {
 .dashboard.sidebar-collapsed { grid-template-columns: 1fr; }
 .dashboard.sidebar-collapsed .sidebar { display: none; }
 
+/* LibraryHome ("/") only ever renders the sidebar column (no viewer next to
+   it — Studio is a separate, viewer-only page now), so the 340px/1fr
+   two-column grid built for sidebar+viewer would otherwise leave a huge
+   empty right column. Center a single column instead, matching the mockup's
+   Library screen width (~1100px, a plain upload+table page, not a sidebar). */
+.dashboard.library-view { grid-template-columns: minmax(0, 1100px); justify-content: center; }
+.dashboard.library-view .sidebar { display: flex; flex-direction: column; gap: 20px; }
+
 /* Desktop: the page scrolls normally (not a fixed-height container) — the
    sidebar and viewer panel are each pinned to a full viewport height, so
    scrolling down moves the header/banner/toolbar out of view and lets the
@@ -165,6 +250,11 @@ h1 {
 
   .dual-viewport { flex: 1; min-height: 0; height: auto; }
 }
+
+/* StudioView ("/studio/:docId") — a plain, functional back bar above the
+   viewer. Full StudioAppBar/StudioRail visual redesign (frosted HUD, labeled
+   rail, etc.) is out of scope for this sprint. */
+.studio-topbar { margin-bottom: 12px; }
 
 .panel {
   background: var(--panel);
@@ -183,22 +273,25 @@ label {
   color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 7px;
 }
 
+/* Hero dropzone, per the mockup's Library screen: dashed primary-tinted
+   border on a soft primary wash, not a neutral-gray drop target — reads as
+   the page's one clear call to action rather than a generic form field. */
 .upload-zone {
   position: relative;
-  border: 2px dashed rgba(var(--overlay), 0.12);
-  border-radius: 12px; padding: 20px 16px; text-align: center;
-  background: rgba(var(--overlay), 0.02); cursor: pointer; transition: all 0.2s;
+  border: 2px dashed rgba(var(--primary-rgb), 0.3);
+  border-radius: 12px; padding: 36px 20px; text-align: center;
+  background: var(--primary-subtle); cursor: pointer; transition: all 0.2s;
 }
 .upload-zone:hover, .upload-zone.dragging {
-  border-color: var(--primary); background: rgba(var(--primary-rgb), 0.06);
+  border-color: var(--primary); background: rgba(var(--primary-rgb), 0.12);
 }
 .upload-zone.file-ready {
   border-color: var(--success); border-style: solid;
   background: rgba(var(--success-rgb), 0.05); cursor: default;
 }
-.upload-zone i { font-size: 1.6rem; color: var(--primary); display: block; margin-bottom: 6px; }
-.upload-zone span { font-size: 0.86rem; color: var(--text); display: block; margin-bottom: 3px; }
-.upload-zone p { font-size: 0.74rem; color: var(--muted); }
+.upload-zone i { font-size: 2rem; color: var(--primary); display: block; margin-bottom: 10px; }
+.upload-zone span { font-size: 0.92rem; font-weight: 600; color: var(--text); display: block; margin-bottom: 4px; }
+.upload-zone p { font-size: 0.76rem; color: var(--muted); }
 .upload-zone input[type="file"] {
   position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
 }
@@ -227,15 +320,22 @@ input[type="range"]::-webkit-slider-thumb {
 
 .btn {
   width: 100%; padding: 11px 16px; border: none; border-radius: 10px;
-  font-size: 0.88rem; font-weight: 600; cursor: pointer;
+  /* 500, not 600 — Linear's own UI text sits at a similarly restrained
+     weight ("~510"), reserving heavier weight for genuine emphasis rather
+     than making every button shout at the same volume. */
+  font-size: 0.88rem; font-weight: 500; cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s;
 }
 .btn-primary {
-  background: linear-gradient(135deg, var(--primary), var(--primary-h));
-  color: white; box-shadow: 0 4px 14px rgba(var(--primary-rgb), 0.28);
+  /* Flat, per the mockup's design system (zero gradients anywhere in it) —
+     was a gradient + hover lift, which has no equivalent in the mockup and
+     was one of the main reasons the Studio shell read as "the old app with
+     new panels," not the redesign's own flatter visual language. */
+  background: var(--primary);
+  color: white;
 }
-.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(var(--primary-rgb), 0.4); }
-.btn-primary:disabled { opacity: 0.45; transform: none; box-shadow: none; cursor: not-allowed; }
+.btn-primary:hover { background: var(--primary-h); }
+.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-sm { padding: 5px 11px; font-size: 0.76rem; border-radius: 6px; width: auto; }
 .btn-secondary { background: rgba(var(--overlay), 0.06); color: var(--text); border: 1px solid rgba(var(--overlay), 0.12); }
 .btn-secondary:hover { background: rgba(var(--overlay), 0.12); }
@@ -276,6 +376,26 @@ input[type="range"]::-webkit-slider-thumb {
 .modal-option-count { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
 .modal-actions { display: flex; justify-content: flex-end; }
 
+/* Settings modal (replaces the old "Admin Settings" sidebar card) — wider
+   than the generic .modal-panel default and internally scrollable, since its
+   admin content (engine/prompt/output/indexing/session) is long. */
+.settings-modal-panel {
+  max-width: 480px; max-height: 85vh;
+  display: flex; flex-direction: column; padding: 0; overflow: hidden;
+}
+.settings-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.settings-modal-header .modal-title { margin-bottom: 0; display: flex; align-items: center; gap: 8px; }
+.btn-icon-close {
+  background: transparent; border: none; color: var(--muted); font-size: 1rem;
+  cursor: pointer; padding: 4px; line-height: 1; border-radius: 6px;
+}
+.btn-icon-close:hover { color: var(--text); background: rgba(var(--overlay), 0.08); }
+.settings-modal-body { padding: 20px; overflow-y: auto; }
+.settings-status-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
 .settings-toggle {
   display: flex; align-items: center; justify-content: space-between;
   cursor: pointer; user-select: none; margin-bottom: 0;
@@ -299,18 +419,27 @@ input[type="range"]::-webkit-slider-thumb {
 .check-row { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.82rem; color: var(--text); }
 .check-row input[type="checkbox"] { accent-color: var(--primary); width: 14px; height: 14px; }
 
+.library-doc-section { margin-top: 4px; }
 .history-title {
   font-size: 1rem; font-weight: 700;
   display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
 }
-.history-list { display: flex; flex-direction: column; gap: 8px; }
-.history-card {
-  background: var(--input-bg); border: 1px solid var(--border);
-  border-radius: 10px; padding: 11px; transition: all 0.2s; cursor: pointer;
+.history-empty-state { text-align: center; color: var(--muted); padding: 24px; font-size: 0.85rem; }
+
+/* Plain document table, per the mockup's Library screen — a simple table
+   with a tinted header row, not the card-list chrome this used before the
+   round-4 Library rebuild. */
+.history-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.history-table thead th {
+  text-align: left; font-size: 0.7rem; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 8px 10px; border-bottom: 1px solid var(--border); background: rgba(var(--overlay), 0.03);
 }
-.history-card:hover, .history-card.active { border-color: var(--primary); background: rgba(var(--primary-rgb), 0.08); }
-.history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
-.history-filename { font-weight: 600; font-size: 0.83rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 185px; }
+.history-table tbody td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.history-card { cursor: pointer; transition: background 0.15s; }
+.history-card:hover, .history-card.active { background: rgba(var(--primary-rgb), 0.08); }
+.history-filename { font-weight: 600; color: var(--text); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-cell-muted { color: var(--muted); white-space: nowrap; }
 
 .status-badge {
   font-size: 0.68rem; font-weight: 600; padding: 2px 7px; border-radius: 10px;
@@ -331,8 +460,7 @@ input[type="range"]::-webkit-slider-thumb {
 .control-bar-label { font-size: 0.82rem; color: var(--fg-error-soft); font-weight: 500; display: flex; align-items: center; gap: 6px; }
 .control-bar-actions { display: flex; gap: 8px; }
 
-.history-meta { font-size: 0.72rem; color: var(--muted); display: flex; align-items: center; justify-content: space-between; }
-.history-actions { display: flex; gap: 5px; margin-top: 7px; }
+.history-actions { display: flex; gap: 5px; flex-wrap: wrap; }
 
 .viewer-panel { min-height: 660px; min-width: 0; display: flex; flex-direction: column; }
 .viewer-toolbar {
@@ -370,23 +498,115 @@ input[type="range"]::-webkit-slider-thumb {
 .reading-modal-body { flex: 1; min-height: 0; display: flex; gap: 14px; }
 
 .dual-viewport { display: flex; gap: 14px; flex: 1; min-height: 540px; height: 540px; }
+/* The Studio shell (.studio-view, height:100vh) needs this to actually
+   fill the remaining viewport height, not the legacy fixed 540px the plain
+   .dual-viewport rule above was sized for (that one backs the Library-era
+   embedded viewer, which isn't viewport-height-constrained) — without this
+   override the panes stopped ~540px down, leaving a dead gap of app
+   background between them and the floating HUD instead of the mockup's
+   edge-to-edge canvas. */
+.dual-viewport.studio-viewport { height: auto; min-height: 0; gap: 0; }
+/* Confirmed via real-browser Playwright testing (round-4 visual-fidelity
+   pass): the base .dual-viewport's `gap: 14px` (meant for the legacy
+   Library-embedded viewer, which has no rail/drawer siblings) was still
+   leaking into Studio, landing between the structure drawer and the scan
+   pane but NOT between the rail and the drawer (different flex container)
+   — a real, asymmetric 14px gap on just one side of the drawer, even though
+   .structure-sidebar/.review-queue-panel/.studio-pane are all deliberately
+   flush (no radius/shadow/margin of their own). Zeroing it here makes every
+   internal divider in the Studio shell equally flush; SplitResizer still
+   provides its own explicit visual gap between the scan and editor panes
+   via its own width, independent of this. */
 .view-box {
   flex: 1; min-width: 0; min-height: 0; background: var(--input-bg); border: 1px solid rgba(var(--overlay), 0.06);
   border-radius: 10px; overflow: hidden; display: flex; flex-direction: column;
 }
+/* Studio's scan/editor panes reuse .view-box for header/content layout.
+   Strip the generic card radius and outer border so every internal divider
+   in the Studio shell is equally flush, but add border-right: 1px solid var(--border)
+   extending the same single-hairline-per-junction pattern already used by the
+   rail and drawers. Panes have an elevated surface background (--surface-pane). */
+.studio-pane {
+  background: var(--surface-pane);
+  border: none;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+}
 .view-box-header {
-  background: rgba(var(--overlay), 0.03); border-bottom: 1px solid var(--border);
-  padding: 9px 13px; font-size: 0.78rem; font-weight: 600; color: var(--accent);
-  display: flex; align-items: center; justify-content: space-between;
+  background: var(--surface-header);
+  border-bottom: 1px solid var(--border);
+  height: 48px;
+  min-height: 48px;
+  box-sizing: border-box;
+  padding: 0 15px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.structure-sidebar .view-box-header {
+  padding: 0 18px;
+}
+.structure-sidebar .view-box-content {
+  padding: 16px 20px;
 }
 .view-box-content { flex: 1; min-height: 0; overflow-y: auto; padding: 15px; position: relative; overflow-wrap: anywhere; }
 
-.structure-sidebar { flex: 0 0 280px; max-width: 280px; }
-@media (max-width: 1280px) { .structure-sidebar { flex-basis: 220px; max-width: 220px; } }
+.drawer-close-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: all 0.15s;
+  padding: 0;
+}
+.drawer-close-btn:hover {
+  background: rgba(var(--overlay), 0.08);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+/* Sprint 4 "Structure Tree Drawer": a fixed-width collapsible drawer, not a
+   flex sibling that splits space with the PDF/editor panes — `flex: 0 0`
+   keeps it from growing OR shrinking so those panes keep their own width
+   whether the drawer is open or not. `structureSidebarSlideIn` plays once on
+   mount (the drawer is conditionally rendered by StructureTreePanel, so
+   mounting *is* the open toggle) for the "slide in" open transition; there's
+   no matching unmount animation since the element is removed from the DOM
+   immediately on close, same as before this redesign.
+
+   Flush against the rail per the mockup's actual slide-7 markup: flat
+   border-right only, no corner radius, no card background-tint, no shadow —
+   an integrated panel of the app shell, not a floating card dropped into the
+   row (which is what reusing .view-box's chrome looked like before). Width
+   280px matches the mockup's real markup (not the 260px figure quoted in the
+   prose redesign plan, which disagreed with it). */
+.structure-sidebar {
+  flex: 0 0 280px; width: 280px; max-width: 280px;
+  background: var(--surface-drawer);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  animation: structureSidebarSlideIn 0.2s ease;
+}
+@media (max-width: 1280px) { .structure-sidebar { flex: 0 0 220px; width: 220px; max-width: 220px; } }
+@keyframes structureSidebarSlideIn {
+  from { transform: translateX(-16px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
 
 .pdf-canvas-wrap {
   position: relative; width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column;
   background: var(--canvas-wrap-bg); overflow: hidden;
+  padding: 12px; box-sizing: border-box;
 }
 /* Deliberately not `display: flex; justify-content: center` — centering an
    overflowing child with flexbox clips its overflow on one side even with
@@ -395,7 +615,12 @@ input[type="range"]::-webkit-slider-thumb {
    itself centers it when it fits and simply degrades to 0 (full, both-
    directions scrollability) once zoomed content exceeds the container. */
 .pdf-canvas-scroll { flex: 1 1 auto; min-height: 0; width: 100%; overflow: auto; }
-.pdf-canvas-scroll canvas { display: block; margin: 0 auto; }
+.pdf-canvas-scroll canvas {
+  display: block;
+  margin: 0 auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  border-radius: 4px;
+}
 .pdf-canvas-error { padding: 20px; color: var(--error); text-align: center; }
 .pdf-canvas-nav {
   display: flex; align-items: center; gap: 10px; padding: 8px;
@@ -420,6 +645,17 @@ input[type="range"]::-webkit-slider-thumb {
   border: 2px solid rgba(var(--overlay), 0.15); border-top-color: var(--accent);
   border-radius: 50%; animation: spin 0.7s linear infinite;
 }
+/* Shown over the PDF pane while a newly-selected document's file blob is
+   still being fetched (see AppShell.jsx's fileLoading state) — fixes the
+   "click a document, nothing visibly happens" complaint: without this, the
+   pane either kept showing the previous document or a static "No document
+   selected" placeholder during that fetch. */
+.pdf-pane-loading-overlay {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--canvas-wrap-bg); color: var(--muted); font-size: 0.86rem;
+}
+.pdf-pane-loading-overlay .spinner { width: 16px; height: 16px; }
 @keyframes spin { 100% { transform: rotate(360deg); } }
 @keyframes fadeDown { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
 
@@ -464,14 +700,26 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .theme-toggle-btn:hover { background: rgba(var(--overlay), 0.12); }
 
-.user-menu { position: relative; margin-top: 8px; }
+.user-menu { position: relative; }
 #userMenuBtn {
   display: inline-flex; align-items: center; gap: 6px;
-  background: rgba(var(--overlay), 0.06); border: 1px solid var(--border);
-  color: var(--text); padding: 5px 14px; border-radius: 9999px;
-  font-size: 0.76rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  background: transparent; border: 1px solid transparent;
+  color: var(--text); padding: 2px 6px 2px 2px; border-radius: 9999px;
+  font-size: 0.76rem; font-weight: 500; cursor: pointer; transition: background 0.15s;
 }
-#userMenuBtn:hover { background: rgba(var(--overlay), 0.12); }
+#userMenuBtn:hover { background: rgba(var(--overlay), 0.06); }
+.user-avatar-badge {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--primary); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.72rem; font-weight: 600; line-height: 1;
+}
+.bar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 6px;
+}
 .user-menu-dropdown {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: 10;
   min-width: 200px; background: var(--panel); backdrop-filter: blur(20px);
@@ -514,20 +762,28 @@ input[type="range"]::-webkit-slider-thumb {
 
 .xref-anchor { display: inline; }
 
-/* Top-right per-page reference badges (PDF pane) — the reinstated click
-   surface, scoped to the PDF pane only, not the Result pane above. */
+/* Docked citation strip above the PDF scan (PDF pane) — per the mockup's
+   slide-4: a tinted bar spanning the pane's width, holding opaque white pill
+   badges, NOT a floating absolute overlay on top of the document image
+   (which is what this used to be — top-right corner pills over the canvas).
+   Rendered as a normal block before <PdfCanvasViewer> in ViewerPanel.jsx so
+   it takes its own row and the canvas gets the remaining height, rather than
+   sitting on top of it. */
 .page-reference-badges {
-  position: absolute; top: 10px; right: 10px; z-index: 5;
-  display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
-  max-height: calc(100% - 20px); overflow-y: auto;
-  pointer-events: none;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 8px 14px;
+  background: rgba(var(--primary-rgb), 0.1);
+  border-bottom: 1px solid rgba(var(--primary-rgb), 0.3);
+}
+.page-reference-badges-label {
+  font-size: 0.68rem; font-weight: 800; color: var(--fg-primary-soft); white-space: nowrap;
 }
 .page-reference-badge {
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em; color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.14); border: 1px solid var(--accent); border-radius: 999px;
-  padding: 3px 10px; cursor: pointer; white-space: nowrap; pointer-events: auto;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em; color: var(--fg-primary-soft);
+  background: var(--surface-solid); border: 1px solid rgba(var(--primary-rgb), 0.45); border-radius: 999px;
+  padding: 3px 10px; cursor: pointer; white-space: nowrap;
 }
-.page-reference-badge:hover { background: rgba(var(--accent-rgb), 0.24); }
+.page-reference-badge:hover { background: rgba(var(--primary-rgb), 0.08); }
 /* No exact same-family target — reached only via the cross-family fallback,
    a guess rather than a certainty (mirrors .xref-link--approximate's "mark
    it, don't hide it" convention). Always opens the confirmation picker on
@@ -637,4 +893,832 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .structure-tree-root-dropzone--over { border-color: var(--accent); color: var(--accent); background: rgba(var(--accent-rgb), 0.1); }
 
+/* ─── WYSIWYG Editor (TipTap) ──────────────────────────────────────────── */
+
+/* .ocr-page-block (the WysiwygEditor's direct parent, see ViewerPanel.jsx)
+   is otherwise a plain block div with no height of its own — a percentage
+   height on .wysiwyg-editor below has nothing definite to resolve against,
+   so it silently falls back to shrink-wrapping its content instead of
+   filling .view-box-content's available height. That's invisible in the
+   rich-text view (a full OCR page's text is normally tall enough to look
+   "full height" by accident), but it's exactly what made the Source-mode
+   <textarea> — which has no content of its own to stretch it — render at
+   the browser's tiny default textarea height instead. Making this a flex
+   column with a real min-height gives .wysiwyg-editor's `flex: 1` below
+   something genuine to grow into, in both modes. */
+.ocr-page-block { display: flex; flex-direction: column; min-height: 100%; }
+
+.wysiwyg-editor {
+  display: flex; flex-direction: column; flex: 1; height: 100%; min-height: 0;
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--panel);
+}
+
+.editor-header {
+  display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+  border-bottom: 1px solid var(--border); background: rgba(var(--overlay), 0.03); flex-wrap: wrap;
+}
+
+.editor-toolbar { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; flex: 1; }
+.editor-toolbar-divider { width: 1px; align-self: stretch; margin: 2px 4px; background: var(--border); }
+.editor-toolbar-spacer { flex: 1; }
+
+.editor-toolbar-btn {
+  display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border: none; border-radius: 6px;
+  background: transparent; color: var(--text); font-size: 0.76rem; font-weight: 600; cursor: pointer; transition: background 0.15s;
+}
+.editor-toolbar-btn:hover { background: rgba(var(--overlay), 0.1); }
+.editor-toolbar-btn.active { background: rgba(var(--primary-rgb), 0.2); color: var(--fg-primary-soft); }
+.editor-toolbar-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.editor-toolbar-btn.editor-source-toggle { font-family: monospace; }
+
+.editor-toolbar-select {
+  padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--input-bg); color: var(--text); font-size: 0.76rem; font-weight: 600;
+}
+
+.editor-table-controls { display: inline-flex; align-items: center; gap: 2px; }
+
+.editor-save-status {
+  font-size: 0.72rem; font-weight: 600; white-space: nowrap; padding: 0 6px; color: var(--muted);
+}
+.editor-save-status--saved { color: var(--fg-success-soft); }
+.editor-save-status--saving,
+.editor-save-status--pending { color: var(--fg-warning-soft); }
+
+.editor-content {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px; font-size: 0.92rem; line-height: 1.6;
+}
+.editor-content .ProseMirror { outline: none; min-height: 100%; }
+.editor-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder); float: left; color: var(--muted); pointer-events: none; height: 0;
+}
+.editor-content table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+.editor-content th, .editor-content td {
+  border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top;
+}
+.editor-content th { background: rgba(var(--overlay), 0.06); font-weight: 700; }
+.editor-content mark { background: rgba(var(--warning-rgb), 0.35); border-radius: 2px; padding: 0 2px; }
+
+.editor-source-view {
+  flex: 1; min-height: 0; width: 100%; resize: none; border: none; outline: none;
+  padding: 16px 20px; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.82rem; line-height: 1.6;
+  background: var(--input-bg); color: var(--text);
+}
+
+/* ─── Export Dropdown ──────────────────────────────────────────────────── */
+
+.export-dropdown { position: relative; display: inline-block; }
+
+.export-dropdown-panel {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; width: 340px;
+  background: var(--modal-panel-bg); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--shadow-dropdown); padding: 14px; display: flex; flex-direction: column; gap: 12px;
+}
+
+.export-format-cards { display: flex; gap: 8px; }
+.export-format-card {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px;
+  border-radius: 8px; border: 1px solid var(--border); background: rgba(var(--overlay), 0.04);
+  color: var(--text); cursor: pointer; font-size: 0.72rem; transition: all 0.15s;
+}
+.export-format-card i { font-size: 1.1rem; }
+.export-format-card:hover { background: rgba(var(--overlay), 0.08); }
+/* Mockup's active-card recipe thickens the border (1px -> 2px), not just a
+   color swap — padding drops by 1px to compensate so the card's outer box
+   doesn't shift size when toggled. */
+.export-format-card.active {
+  border-width: 2px; border-color: var(--primary); padding: 9px 5px;
+  background: rgba(var(--primary-rgb), 0.12); color: var(--fg-primary-soft);
+}
+.export-format-label { font-weight: 700; }
+.export-format-sub { color: var(--muted); font-size: 0.65rem; text-align: center; }
+.export-format-card.active .export-format-sub { color: var(--fg-primary-soft); opacity: 0.85; }
+
+.export-scope-group { display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem; }
+.export-scope-option { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.export-range-input {
+  margin-left: 24px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--input-bg); color: var(--text); font-size: 0.8rem;
+}
+.export-range-error { margin-left: 24px; color: var(--fg-error-soft); font-size: 0.74rem; }
+
+.export-metadata-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; cursor: pointer; color: var(--muted); }
+
+.export-dropdown-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ─── Guided Review Queue ──────────────────────────────────────────────── */
+
+/* Real bug found via actual visual testing (not just reading the CSS): this
+   had no flex-basis at all, so as a flex child of .dual-viewport.studio-
+   viewport (alongside panes that DO claim an explicit width/flex-basis) it
+   collapsed to ~2px wide — present in the DOM, "visible" per computed style,
+   but functionally invisible. Fixed width + flush treatment, consistent with
+   the Structure drawer (.structure-sidebar) it sits alongside on the same
+   rail — both are "rail-toggled side panels," not floating cards. */
+.review-queue-panel {
+  flex: 0 0 280px; width: 280px; max-width: 280px;
+  display: flex; flex-direction: column; height: 100%; min-height: 0;
+  background: var(--surface-drawer); border-right: 1px solid var(--border); overflow: hidden;
+}
+@media (max-width: 1280px) { .review-queue-panel { flex: 0 0 220px; width: 220px; max-width: 220px; } }
+
+.review-queue-header {
+  height: 48px;
+  min-height: 48px;
+  box-sizing: border-box;
+  background: var(--surface-header);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--fg-error-soft);
+}
+
+.review-queue-empty {
+  padding: 24px 20px; text-align: center; color: var(--muted); font-size: 0.85rem;
+}
+
+.review-queue-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px;
+  gap: 4px;
+}
+
+.review-queue-item {
+  display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: transparent; color: var(--text); cursor: pointer; text-align: left; font-size: 0.78rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+.review-queue-item:hover { background: rgba(var(--overlay), 0.06); }
+.review-queue-item.active { background: rgba(var(--primary-rgb), 0.14); border-color: var(--primary); }
+.review-queue-item-page { font-weight: 700; min-width: 56px; }
+.review-queue-item-confidence { color: var(--fg-warning-soft); font-weight: 600; min-width: 40px; }
+.review-queue-item-reason { color: var(--muted); font-size: 0.72rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.review-queue-actions { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--border); }
+.review-queue-actions .btn { width: 100%; }
+
+.admin-badge {
+  font-size: 0.6rem; font-weight: 700; background: rgba(var(--overlay), 0.15); padding: 1px 5px;
+  border-radius: 4px; margin-left: 6px; opacity: 0.85;
+}
+
 .structure-manual-badge { border-color: var(--success); color: var(--success); }
+
+/* Sprint 7 — Library Home: document-list search + status filter pills */
+.history-filters { margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
+.history-search-input { font-size: 0.82rem; }
+.history-status-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.status-pill {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  font-size: 0.72rem; font-weight: 600; padding: 5px 11px; border-radius: 999px;
+  cursor: pointer; transition: all 0.15s;
+}
+.status-pill:hover { border-color: var(--primary); color: var(--text); }
+.status-pill.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+/* Sprint 7 / §8.1.4 — Library Home: non-admin Quality Preset picker,
+   replacing raw engine/scale/prompt-mode controls */
+.quality-preset-options { display: flex; flex-direction: column; gap: 8px; }
+.quality-preset-option {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  width: 100%; text-align: left; background: rgba(var(--overlay), 0.02);
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px 13px;
+  cursor: pointer; transition: all 0.15s;
+}
+.quality-preset-option:hover { border-color: var(--primary); background: rgba(var(--primary-rgb), 0.06); }
+.quality-preset-option.active { border-color: var(--primary); background: rgba(var(--primary-rgb), 0.1); }
+.quality-preset-name { font-size: 0.86rem; font-weight: 700; color: var(--text); }
+.quality-preset-desc { font-size: 0.74rem; color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: normal; }
+
+/* ─── Studio Pro: Container Shell & App Bar ────────────────────────────── */
+
+.studio-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.viewer-panel.studio-mode {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+}
+
+/* Shared base recipe for every top bar in the app — Header.jsx's global
+   .app-header bar and StudioAppBar's document toolbar both use this class,
+   so Library and Studio render the same flat, opaque 48px bar the mockup
+   uses everywhere (no backdrop-filter — was translucent + blurred, reading
+   as "trying to be glassy" rather than the mockup's quiet, flat toolbar). */
+.top-file-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  height: 48px;
+  min-height: 48px;
+  background: var(--surface-header);
+  /* A 1px hairline border reads cleaner than a soft drop shadow (Linear/
+     Vercel both use borders, not shadows, for this kind of depth) — no
+     box-shadow here by design. */
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 40;
+}
+
+/* Studio Document Toolbar: secondary toolbar below the global Header */
+.top-file-bar.studio-app-bar {
+  height: 44px;
+  min-height: 44px;
+  background: var(--surface-solid);
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+  z-index: 35;
+  flex-shrink: 0;
+}
+
+.bar-left, .bar-right {
+  display: flex;
+  align-items: center;
+}
+.bar-left {
+  gap: 12px;
+}
+.bar-right {
+  gap: 8px;
+}
+
+.btn-library-back {
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.file-meta-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 450px;
+  overflow: hidden;
+}
+
+.file-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-page-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(var(--overlay), 0.08);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.file-save-status {
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.file-save-status--saved { color: var(--fg-success-soft); }
+.file-save-status--saving,
+.file-save-status--pending { color: var(--fg-warning-soft); }
+
+.btn-search-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(var(--overlay), 0.05);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-search-trigger:hover, .btn-search-trigger.active {
+  background: rgba(var(--primary-rgb), 0.15);
+  border-color: var(--primary);
+  color: var(--text);
+}
+.btn-search-trigger kbd {
+  background: rgba(var(--overlay), 0.1);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 0.65rem;
+}
+
+.btn-return-editor {
+  font-weight: 700;
+  animation: pulse-border 2s infinite;
+}
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 0 0 rgba(var(--warning-rgb), 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(var(--warning-rgb), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--warning-rgb), 0); }
+}
+
+/* In-Doc Search Widget Dropdown */
+.search-widget {
+  position: absolute;
+  top: 58px;
+  right: 24px;
+  z-index: 200;
+  background: var(--modal-panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  box-shadow: var(--shadow-dropdown);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  backdrop-filter: blur(14px);
+}
+.search-widget-icon { font-size: 0.8rem; color: var(--muted); }
+.search-input {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  color: var(--text);
+  width: 170px;
+  outline: none;
+}
+.search-input:focus { border-color: var(--primary); }
+.search-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--fg-primary-soft);
+  background: rgba(var(--primary-rgb), 0.15);
+  border: 1px solid rgba(var(--primary-rgb), 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.search-nav-buttons { display: flex; gap: 3px; }
+.btn-search-nav {
+  background: rgba(var(--overlay), 0.06);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-search-nav:hover:not(:disabled) { background: var(--primary); color: #fff; }
+.btn-search-nav:disabled { opacity: 0.35; cursor: not-allowed; }
+.search-divider { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
+.search-both-panes-label {
+  font-size: 0.74rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.btn-search-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.btn-search-close:hover { color: var(--text); }
+
+/* ─── Studio Rail (48px action bar) ────────────────────────────────────── */
+
+.studio-main-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.studio-split-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  position: relative;
+}
+
+.studio-rail {
+  width: 48px;
+  min-width: 48px;
+  background: var(--surface-rail);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  gap: 14px;
+  z-index: 25;
+}
+
+.rail-btn-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  cursor: pointer;
+}
+
+.rail-icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-size: 0.92rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s;
+}
+.rail-icon-btn:hover {
+  background: rgba(var(--overlay), 0.08);
+  border-color: var(--border);
+  color: var(--text);
+}
+.rail-icon-btn.active {
+  background: rgba(var(--primary-rgb), 0.2);
+  border-color: var(--primary);
+  color: var(--fg-primary-soft);
+}
+
+.rail-btn-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  text-align: center;
+  line-height: 1;
+}
+.rail-btn-wrap:hover .rail-btn-label { color: var(--text); }
+.rail-btn-wrap:has(.active) .rail-btn-label { color: var(--fg-primary-soft); }
+
+.rail-badge-alert {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  background: var(--warning);
+  color: #000;
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 999px;
+  line-height: 1;
+  border: 1px solid var(--panel);
+}
+
+/* ─── Studio Workspaces & Split Resizer ────────────────────────────────── */
+
+.studio-workspaces {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  padding-bottom: 74px; /* clearance for floating HUD */
+}
+
+.split-resizer {
+  width: 12px;
+  margin: 0 -1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  z-index: 30;
+  position: relative;
+  user-select: none;
+}
+.resizer-bar {
+  width: 2px;
+  height: 100%;
+  background: var(--border);
+  border-radius: 2px;
+  transition: background 0.15s, width 0.15s;
+}
+.split-resizer:hover .resizer-bar, .split-resizer.dragging .resizer-bar {
+  background: var(--primary);
+  width: 4px;
+}
+.resizer-pill {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 32px;
+  background: var(--modal-panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+  box-shadow: var(--shadow-dropdown);
+}
+.split-resizer:hover .resizer-pill {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.resizer-snaps {
+  position: absolute;
+  top: calc(50% + 24px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--modal-panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  display: none;
+  align-items: center;
+  gap: 3px;
+  box-shadow: var(--shadow-dropdown);
+  z-index: 50;
+  white-space: nowrap;
+}
+.split-resizer:hover .resizer-snaps { display: flex; }
+
+/* ─── Floating HUD Navigation & Controls ───────────────────────────────── */
+
+.floating-nav-hud {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Opaque per the mockup's .floating-nav-hud — its own backdrop-filter is
+     vestigial there too (nothing shows through a fully opaque surface);
+     matching that exactly rather than our own (nicer-looking, but
+     mismatched) genuinely-translucent glass version. */
+  background: var(--surface-solid);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.floating-nav-hud.minimized {
+  padding: 4px 10px;
+  opacity: 0.92;
+  transform: translateX(-50%) translateY(4px);
+}
+.floating-nav-hud.is-dragging {
+  transition: none !important;
+  user-select: none;
+}
+.hud-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 22px;
+  cursor: grab;
+  color: var(--muted);
+  border-radius: 4px;
+  touch-action: none;
+  user-select: none;
+  font-size: 0.75rem;
+  transition: color 0.15s, background-color 0.15s;
+}
+.hud-drag-handle:hover {
+  color: var(--text);
+  background: rgba(var(--overlay), 0.08);
+}
+.hud-drag-handle:active,
+.floating-nav-hud.is-dragging .hud-drag-handle {
+  cursor: grabbing;
+}
+.hud-reset-pos-btn {
+  color: var(--muted);
+}
+.hud-reset-pos-btn:hover {
+  color: #fff;
+}
+.hud-cluster { display: flex; align-items: center; gap: 5px; }
+.hud-divider { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+
+.hud-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--overlay), 0.06);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.hud-btn:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.hud-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.hud-page-cluster { flex-shrink: 0; }
+.hud-page-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(var(--overlay), 0.05);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.hud-page-box:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.2);
+}
+.hud-page-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  user-select: none;
+}
+.hud-page-total {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+  user-select: none;
+}
+input.hud-page-input,
+.hud-page-box input[type="text"].hud-page-input {
+  width: 38px !important;
+  min-width: 38px;
+  max-width: 48px;
+  height: 22px;
+  line-height: 22px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--fg-primary-soft);
+  outline: none;
+  padding: 0 2px !important;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+}
+input.hud-page-input:focus,
+.hud-page-box input[type="text"].hud-page-input:focus {
+  border-color: var(--primary);
+}
+
+.hud-view-toggle {
+  display: flex;
+  align-items: center;
+  background: rgba(var(--overlay), 0.05);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px;
+}
+.hud-view-btn {
+  background: transparent;
+  border: none;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 3px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.hud-view-btn:hover { color: var(--text); }
+.hud-view-btn.active {
+  background: var(--panel);
+  color: var(--fg-primary-soft);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+/* ─── Dual PDF Compare Mode ────────────────────────────────────────────── */
+
+.dual-pdf-compare-container {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  gap: 12px;
+}
+.dual-pdf-pane {
+  flex: 1 1 50%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.dual-pdf-target-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.dual-pdf-target-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.target-clause-badge {
+  background: rgba(var(--warning-rgb), 0.2);
+  border: 1px solid rgba(var(--warning-rgb), 0.45);
+  color: var(--fg-warning-soft);
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+.dual-pdf-target-tabs { display: flex; gap: 4px; }
+.target-tab-btn {
+  background: rgba(var(--overlay), 0.05);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.target-tab-btn:hover { color: var(--text); }
+.target-tab-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.dual-pdf-target-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-sync-zoom.active {
+  background: rgba(var(--primary-rgb), 0.2);
+  border-color: var(--primary);
+  color: var(--fg-primary-soft);
+}
+

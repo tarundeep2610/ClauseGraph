@@ -1,13 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { renderMarkdown, renderPageMarkdown, getPageMentions } from '../utils/markdown';
+import { useAuth } from '../utils/AuthContext';
+import { getPageMentions } from '../utils/markdown';
 import RetryPagesModal from './RetryPagesModal';
 import PdfCanvasViewer from './PdfCanvasViewer';
-import StructureTree from './StructureTree';
 import PageNavBar from './PageNavBar';
 import StructureReadingModal from './StructureReadingModal';
 import StructureItemModal from './StructureItemModal';
 import StructureDeleteConfirmModal from './StructureDeleteConfirmModal';
 import PageReferenceBadges from './PageReferenceBadges';
+import WysiwygEditor from './editor/WysiwygEditor';
+import ExportDropdown from './studio/ExportDropdown';
+import StructureTreePanel from './studio/StructureTreePanel';
+import ReviewQueuePanel from './review/ReviewQueuePanel';
+import StudioAppBar from './studio/StudioAppBar';
+import StudioRail from './studio/StudioRail';
+import StudioFloatingHud from './studio/StudioFloatingHud';
+import SplitResizer from './studio/SplitResizer';
+import DualPdfCompare from './studio/DualPdfCompare';
 
 // Presentational only — the thresholds themselves live entirely on the backend
 // (confidence.py); this just maps the already-computed tier string to a label/color
@@ -42,21 +51,28 @@ function ConfidenceBadge({ page }) {
 }
 
 export default function ViewerPanel({
+  studioMode = false,
+  initialReviewOpen = false,
+  onBackToLibrary,
   viewMode,
   setViewMode,
   pdfSrc,
   pdfStatusLabel,
   jobDetails,
   hasSelection,
+  fileLoading = false,
   onPause,
   onResume,
   onDownloadPdf,
-  onDownloadResult,
+  onSavePageText,
+  onExport,
   sidebarCollapsed,
   onToggleSidebar,
   onRetryPage,
   retryingPage,
   onRetryPages,
+  reviewPages,
+  onConfirmCorrectPage,
   onReindexReferences,
   reindexing,
   referenceStore,
@@ -70,7 +86,9 @@ export default function ViewerPanel({
   onEditStructureItem,
   onDeleteStructureItem,
   onMoveStructureItem,
+  onOpenSettings,
 }) {
+  const { isAdmin } = useAuth();
   const showPdf = viewMode === 'split' || viewMode === 'pdf';
   const [retryModalOpen, setRetryModalOpen] = useState(false);
   const [pdfPageOverride, setPdfPageOverride] = useState(null);
@@ -80,6 +98,7 @@ export default function ViewerPanel({
   // inactive. Reset below whenever the document changes or the reader
   // manually picks a view mode; also closable via its own header button.
   const [pinnedPdfPage, setPinnedPdfPage] = useState(null);
+  const [pinnedReference, setPinnedReference] = useState(null);
   const showPinnedPdf = pinnedPdfPage != null && !!pdfSrc;
   const showResult = !showPinnedPdf && (viewMode === 'split' || viewMode === 'result');
   // Set by a Structure-sidebar leaf jump that carries an anchor_id — cleared
@@ -92,6 +111,20 @@ export default function ViewerPanel({
   // Split/PDF/Result the reader has open, since jumping to a reference and
   // seeing the document it points to are both things a reader wants at once.
   const [structureSidebarOpen, setStructureSidebarOpen] = useState(false);
+  // Guided Review Queue drawer (Sprint 6) — same "persistent, collapsed by
+  // default" treatment as the Structure sidebar above, toggled independently.
+  const [reviewSidebarOpen, setReviewSidebarOpen] = useState(initialReviewOpen);
+  const [splitRatio, setSplitRatio] = useState(50);
+  const [editorSaveStatus, setEditorSaveStatus] = useState('saved');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [bothPanesSearch, setBothPanesSearch] = useState(true);
+  const [searchMatchIndex, setSearchMatchIndex] = useState(0);
+
+  useEffect(() => {
+    if (initialReviewOpen) setReviewSidebarOpen(true);
+  }, [initialReviewOpen]);
+
   // The reading modal opened by a Structure-tab click — { startPage,
   // endPage, label, anchorId? } or null when closed. Deliberately never
   // touches pdfPageOverride: this is what guarantees the main viewer sits
@@ -159,17 +192,22 @@ export default function ViewerPanel({
       // formatted_text (headings/tables/columns, built from the OCR
       // engine's raw layout tags) is preferred when present — NULL for any
       // page OCR'd without grounding, or before this capture existed, which
-      // falls back to the plain text exactly as before. Note: a block
-      // rendered as a blockquote (indentation) or inside a raw HTML table
-      // (columns) isn't walked by renderPageMarkdown's mention-anchor
-      // matcher below (same paragraph/heading/list/table-only walk
-      // reference_index.py's own block parser uses) — a mention inside one
-      // of those stays visible but loses its click-to-jump anchor; the rest
-      // of the page is unaffected.
+      // falls back to the plain text exactly as before. The Result pane is
+      // now an editable WysiwygEditor (Studio redesign) rather than
+      // dangerouslySetInnerHTML'd markdown — it ingests/persists this same
+      // Markdown string directly (see WysiwygEditor.jsx/MarkdownBridge.js),
+      // so there is no HTML to pre-render here any more. One accepted
+      // consequence: the inline cross-reference mention-linkification
+      // renderPageMarkdown used to inject (data-xref-key anchors turning
+      // "Clause 8" into a clickable link) no longer appears inside this
+      // editable body text, since the editor builds its own DOM from parsed
+      // Markdown, not from that annotated HTML — PageReferenceBadges (top-
+      // of-pane citation pills) remains the mechanism for reference
+      // navigation going forward.
       const pageText = data.formatted_text || data.text || '';
       currentPageBlock = {
         page: currentPdfPage,
-        bodyHtml: referenceStore ? renderPageMarkdown(pageText, data.page, referenceStore) : renderMarkdown(pageText),
+        pageText,
         data,
       };
     } else {
@@ -193,7 +231,7 @@ export default function ViewerPanel({
     [referenceStore, referenceStore?.version, currentPageText, currentPdfPage]
   );
 
-  // Reports the current page up to Dashboard.jsx so its windowed
+  // Reports the current page up to AppShell.jsx so its windowed
   // pages_data fetch (Part A) can center on wherever the reader actually
   // is — pdf.js always knows this exactly (one page at a time, no scroll
   // drift), so this fires only on genuine page changes, never guesses.
@@ -223,6 +261,18 @@ export default function ViewerPanel({
 
   function handlePdfPageChange(page) {
     setPdfPageOverride(page);
+  }
+
+  // "[✓ Mark Verified & Next]" — compute the next queue entry BEFORE
+  // confirming (the parent's reviewPages prop won't reflect the removal
+  // until its next render), then jump the viewer there once the confirm
+  // call resolves. Falls back to the previous entry if the confirmed page
+  // was the last one in the list.
+  async function handleConfirmCorrectAndAdvance(pageNum) {
+    const idx = (reviewPages || []).findIndex((p) => p.page_num === pageNum);
+    const next = idx >= 0 ? (reviewPages[idx + 1] || reviewPages[idx - 1]) : undefined;
+    await onConfirmCorrectPage(pageNum);
+    if (next) handlePdfPageChange(next.page_num);
   }
 
   // A Structure-sidebar row click now moves the main viewer itself — a leaf
@@ -263,6 +313,12 @@ export default function ViewerPanel({
   // a separate windowed fetch.
   function handleBadgeOpenReference(candidate) {
     setPinnedPdfPage(candidate.page);
+    setPinnedReference({
+      clauseLabel: candidate.label || candidate.section || (candidate.page ? `Page ${candidate.page}` : ''),
+      snippet: candidate.snippet || '',
+      targets: candidate.targets || [{ page: candidate.page, section: candidate.label || candidate.section }],
+      activeTargetIndex: 0,
+    });
   }
 
   function openAddItemModal() {
@@ -328,92 +384,134 @@ export default function ViewerPanel({
   const canPause = jobDetails?.status === 'processing';
   const canResume = jobDetails?.status === 'paused' || jobDetails?.status === 'failed';
 
-  // The Result pane is still display-only — this only swallows the click so
-  // an `<a href="#">` doesn't jump the page to top. The reinstated click
-  // surface is the PDF pane's PageReferenceBadges list, not an inline link
-  // in this pane (see its own click handling for why: a page can have
-  // several distinct mentions, each needing its own badge/dropdown, which a
-  // single inline click target can't represent).
-  function handleMarkdownClick(e) {
-    const link = e.target.closest('a.xref-link');
-    if (!link) return;
-    e.preventDefault();
-  }
-
   return (
-    <div className="panel viewer-panel">
-      <div className="viewer-toolbar">
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button
-            className="btn btn-sm btn-secondary"
-            onClick={onToggleSidebar}
-            title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
-            data-testid="sidebar-toggle-btn"
-          >
-            <i className={`fa-solid ${sidebarCollapsed ? 'fa-angles-right' : 'fa-angles-left'}`} />
-          </button>
-          <button
-            className={`btn btn-sm btn-secondary${structureSidebarOpen ? ' active' : ''}`}
-            onClick={() => setStructureSidebarOpen((v) => !v)}
-            title={structureSidebarOpen ? 'Hide document structure' : 'Show document structure'}
-            data-testid="structure-sidebar-toggle-btn"
-          >
-            <i className="fa-solid fa-sitemap" /> Structure
-          </button>
-          <div className="view-toggles">
-            <button className={`view-toggle-btn ${viewMode === 'split' ? 'active' : ''}`} onClick={() => { setViewMode('split'); setPinnedPdfPage(null); }}>
-              <i className="fa-solid fa-columns" /> Split
+    <div className={`panel viewer-panel${studioMode ? ' studio-mode' : ''}`}>
+      {studioMode ? (
+        <StudioAppBar
+          filename={jobDetails?.original_filename || jobDetails?.filename || jobDetails?.job_id}
+          currentPage={currentPdfPage}
+          totalPages={jobDetails?.total_pages}
+          saveStatus={editorSaveStatus}
+          onBackToLibrary={onBackToLibrary}
+          canPause={canPause}
+          onPause={onPause}
+          canResume={canResume}
+          onResume={onResume}
+          isAdmin={isAdmin}
+          onOpenRetryModal={() => setRetryModalOpen(true)}
+          onToggleSidebar={onToggleSidebar}
+          sidebarCollapsed={sidebarCollapsed}
+          onBuildIndex={
+            jobDetails?.status !== 'processing' && jobDetails?.status !== 'escalating'
+              ? () => onReindexReferences(useRawText ? 'raw' : 'clean')
+              : undefined
+          }
+          reindexing={reindexing}
+          indexBuiltAt={jobDetails?.index_built_at}
+          onExport={(opts) => onExport && onExport(opts)}
+          isDualCompare={showPinnedPdf}
+          onExitDualCompare={() => setPinnedPdfPage(null)}
+          searchOpen={searchOpen}
+          onToggleSearch={() => setSearchOpen((v) => !v)}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          matchIndex={searchMatchIndex}
+          totalMatches={0}
+          bothPanesSearch={bothPanesSearch}
+          onBothPanesSearchChange={setBothPanesSearch}
+          onOpenSettings={onOpenSettings}
+        />
+      ) : (
+        <div className="viewer-toolbar">
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={onToggleSidebar}
+              title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+              data-testid="sidebar-toggle-btn"
+            >
+              <i className={`fa-solid ${sidebarCollapsed ? 'fa-angles-right' : 'fa-angles-left'}`} />
             </button>
-            <button className={`view-toggle-btn ${viewMode === 'pdf' ? 'active' : ''}`} onClick={() => { setViewMode('pdf'); setPinnedPdfPage(null); }}>
-              <i className="fa-regular fa-file-pdf" /> PDF Only
+            <button
+              className={`btn btn-sm btn-secondary${structureSidebarOpen ? ' active' : ''}`}
+              onClick={() => setStructureSidebarOpen((v) => !v)}
+              title={structureSidebarOpen ? 'Hide document structure' : 'Show document structure'}
+              data-testid="structure-sidebar-toggle-btn"
+            >
+              <i className="fa-solid fa-sitemap" /> Structure
             </button>
-            <button className={`view-toggle-btn ${viewMode === 'result' ? 'active' : ''}`} onClick={() => { setViewMode('result'); setPinnedPdfPage(null); }}>
-              <i className="fa-solid fa-file-lines" /> Result Only
-            </button>
-          </div>
-        </div>
-        {hasSelection && (
-          <div className="download-group">
-            {canPause && <button className="btn btn-sm btn-warn" onClick={onPause}><i className="fa-solid fa-pause" /> Pause</button>}
-            {canResume && <button className="btn btn-sm btn-secondary" onClick={onResume}><i className="fa-solid fa-rotate-right" /> Resume</button>}
-            <button className="btn btn-sm btn-secondary" onClick={() => setRetryModalOpen(true)} data-testid="retry-pages-btn"><i className="fa-solid fa-rotate-right" /> Retry Pages</button>
-            {jobDetails?.status !== 'processing' && jobDetails?.status !== 'escalating' && (
-              <label
-                className="btn btn-sm btn-secondary"
-                style={{ opacity: groundingEnabled ? 1 : 0.5, cursor: groundingEnabled ? 'pointer' : 'default' }}
-                title={groundingEnabled
-                  ? "Use Unlimited-OCR's raw, layout-tagged text as the AI indexer's input instead of the cleaned text"
-                  : 'This job was not run with grounding enabled — toggling this has no effect'}
-                data-testid="reindex-raw-text-toggle"
-              >
-                <input
-                  type="checkbox"
-                  checked={useRawText}
-                  disabled={!groundingEnabled}
-                  onChange={(e) => setUseRawText(e.target.checked)}
-                  style={{ marginRight: 6 }}
-                />
-                Raw tagged text
-              </label>
-            )}
-            {jobDetails?.status !== 'processing' && jobDetails?.status !== 'escalating' && (
+            {reviewPages?.length > 0 && (
               <button
-                className="btn btn-sm btn-secondary"
-                disabled={!!reindexing}
-                onClick={() => onReindexReferences(useRawText ? 'raw' : 'clean')}
-                data-testid="reindex-references-btn"
+                className={`btn btn-sm btn-secondary${reviewSidebarOpen ? ' active' : ''}`}
+                onClick={() => setReviewSidebarOpen((v) => !v)}
+                title={reviewSidebarOpen ? 'Hide review queue' : 'Show review queue'}
+                data-testid="review-sidebar-toggle-btn"
               >
-                <i className="fa-solid fa-diagram-project" />
-                {reindexing ? 'Rebuilding…' : 'Rebuild Cross-References'}
+                <i className="fa-solid fa-triangle-exclamation" /> Review ({reviewPages.length})
               </button>
             )}
-            <button className="btn btn-sm btn-secondary" onClick={onDownloadPdf}><i className="fa-solid fa-file-arrow-down" /> PDF</button>
-            <button className="btn btn-sm btn-primary" onClick={onDownloadResult}><i className="fa-solid fa-download" /> Result (.md)</button>
+            <div className="view-toggles">
+              <button className={`view-toggle-btn ${viewMode === 'split' ? 'active' : ''}`} onClick={() => { setViewMode('split'); setPinnedPdfPage(null); }}>
+                <i className="fa-solid fa-columns" /> Split
+              </button>
+              <button className={`view-toggle-btn ${viewMode === 'pdf' ? 'active' : ''}`} onClick={() => { setViewMode('pdf'); setPinnedPdfPage(null); }}>
+                <i className="fa-regular fa-file-pdf" /> PDF Only
+              </button>
+              <button className={`view-toggle-btn ${viewMode === 'result' ? 'active' : ''}`} onClick={() => { setViewMode('result'); setPinnedPdfPage(null); }}>
+                <i className="fa-solid fa-file-lines" /> Result Only
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+          {hasSelection && (
+            <div className="download-group">
+              {canPause && <button className="btn btn-sm btn-warn" onClick={onPause}><i className="fa-solid fa-pause" /> Pause</button>}
+              {canResume && <button className="btn btn-sm btn-secondary" onClick={onResume}><i className="fa-solid fa-rotate-right" /> Resume</button>}
+              {isAdmin && (
+                <button className="btn btn-sm btn-secondary" onClick={() => setRetryModalOpen(true)} data-testid="retry-pages-btn"><i className="fa-solid fa-rotate-right" /> Retry Pages</button>
+              )}
+              {jobDetails?.status !== 'processing' && jobDetails?.status !== 'escalating' && (
+                <label
+                  className="btn btn-sm btn-secondary"
+                  style={{ opacity: groundingEnabled ? 1 : 0.5, cursor: groundingEnabled ? 'pointer' : 'default' }}
+                  title={groundingEnabled
+                    ? "Use Unlimited-OCR's raw, layout-tagged text as the AI indexer's input instead of the cleaned text"
+                    : 'This job was not run with grounding enabled — toggling this has no effect'}
+                  data-testid="reindex-raw-text-toggle"
+                >
+                  <input
+                    type="checkbox"
+                    checked={useRawText}
+                    disabled={!groundingEnabled}
+                    onChange={(e) => setUseRawText(e.target.checked)}
+                    style={{ marginRight: 6 }}
+                  />
+                  Raw tagged text
+                </label>
+              )}
+              {jobDetails?.status !== 'processing' && jobDetails?.status !== 'escalating' && (
+                <button
+                  className={`btn btn-sm ${jobDetails?.index_built_at ? 'btn-secondary' : 'btn-primary'}`}
+                  disabled={!!reindexing}
+                  onClick={() => onReindexReferences(useRawText ? 'raw' : 'clean')}
+                  data-testid="reindex-references-btn"
+                  title={jobDetails?.index_built_at ? undefined : 'Generate the document outline and cross-reference citation badges'}
+                >
+                  <i className="fa-solid fa-diagram-project" />
+                  {reindexing ? 'Rebuilding…' : jobDetails?.index_built_at ? 'Rebuild Cross-References' : 'Build Index & Citations'}
+                </button>
+              )}
+              <button className="btn btn-sm btn-secondary" onClick={onDownloadPdf}><i className="fa-solid fa-file-arrow-down" /> PDF</button>
+              <ExportDropdown
+                currentPage={currentPdfPage}
+                totalPages={jobDetails?.total_pages}
+                onExport={(opts) => onExport && onExport(opts)}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
-      {hasSelection && jobDetails?.total_pages > 0 && (
+      {!studioMode && hasSelection && jobDetails?.total_pages > 0 && (
         <PageNavBar
           currentPage={currentPdfPage}
           minPage={1}
@@ -422,128 +520,321 @@ export default function ViewerPanel({
         />
       )}
 
-      <div className="dual-viewport">
-        {structureSidebarOpen && (
-          <div className="view-box structure-sidebar" data-testid="structure-sidebar">
-            <div className="view-box-header">
-              <span><i className="fa-solid fa-sitemap" /> Document Structure</span>
-              {onAddStructureItem && (
-                <button className="btn btn-sm btn-secondary" onClick={openAddItemModal} data-testid="structure-add-btn">
-                  <i className="fa-solid fa-plus" /> Add
-                </button>
-              )}
-            </div>
-            <div className="view-box-content">
-              <StructureTree
-                referenceStore={referenceStore}
-                onSelect={handleStructureJumpToPage}
-                onOpenReference={handleStructureSelect}
-                onSelectContainer={handleStructureContainerJump}
-                onJumpContainer={handleStructureJumpContainer}
-                scopeRanges={scopeRanges}
-                activePage={currentPdfPage}
-                onEditItem={onEditStructureItem ? openEditItemModal : undefined}
-                onDeleteItem={onDeleteStructureItem ? setDeleteTarget : undefined}
-                onMoveItem={onMoveStructureItem}
-                onAddItem={onAddStructureItem ? openAddChildModal : undefined}
-                parentOverrides={parentOverrides}
-                sortOverrides={sortOverrides}
-              />
-            </div>
-          </div>
-        )}
-        {showPdf && (
-          <div className="view-box">
-            <div className="view-box-header">
-              <span><i className="fa-regular fa-file-pdf" /> Document Viewer</span>
-              <span style={{ fontSize: '0.73rem', color: 'var(--muted)' }}>{pdfStatusLabel}</span>
-            </div>
-            <div className="view-box-content" style={{ padding: 0, overflow: 'hidden' }}>
-              {pdfSrc ? (
-                <>
-                  <PdfCanvasViewer
-                    pdfSrc={pdfSrc}
-                    pageNum={currentPdfPage}
-                    totalPages={jobDetails?.total_pages}
-                    onPageChange={handlePdfPageChange}
-                    showPageNav={false}
-                  />
-                  <PageReferenceBadges
-                    mentions={pageMentions}
-                    referenceStore={referenceStore}
-                    scopeRanges={scopeRanges}
-                    currentPage={currentPdfPage}
-                    onOpenReference={handleBadgeOpenReference}
-                  />
-                </>
-              ) : (
-                <div style={{ textAlign: 'center', paddingTop: 60, color: 'var(--muted)' }}>
-                  No document selected
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        {showPinnedPdf ? (
-          <div className="view-box">
-            <div className="view-box-header">
-              <span><i className="fa-regular fa-file-pdf" /> Reference: Page {pinnedPdfPage}</span>
-              <button
-                className="btn btn-sm btn-secondary"
-                onClick={() => setPinnedPdfPage(null)}
-                title="Close reference pane"
-                data-testid="pinned-pdf-close-btn"
-              >
-                <i className="fa-solid fa-xmark" /> Close
-              </button>
-            </div>
-            <div className="view-box-content" style={{ padding: 0, overflow: 'hidden' }}>
-              <PdfCanvasViewer
-                pdfSrc={pdfSrc}
-                pageNum={pinnedPdfPage}
-                totalPages={jobDetails?.total_pages}
-                onPageChange={setPinnedPdfPage}
-              />
-            </div>
-          </div>
-        ) : showResult && (
-          <div className="view-box">
-            <div className="view-box-header">
-              <span><i className="fa-solid fa-align-left" /> Extracted OCR Markdown</span>
-              <span style={{ fontSize: '0.73rem', color: progressColor }}>{progressLabel}</span>
-            </div>
-            {hasSelection && currentPageBlock ? (
-              <div ref={resultContentRef} className="view-box-content markdown-body" onClick={handleMarkdownClick}>
-                <div id={`page-block-${currentPageBlock.page}`} className="ocr-page-block" data-testid={`page-block-${currentPageBlock.page}`}>
-                  <h3 style={{ display: 'flex', alignItems: 'center', margin: '0 0 8px' }}>
-                    Page {currentPageBlock.page}
-                    <ConfidenceBadge page={currentPageBlock.data} />
-                    {(currentPageBlock.data.status === 'failed' || currentPageBlock.data.status === 'review') && (
-                      <button
-                        className="btn btn-sm btn-secondary"
-                        style={{ marginLeft: 10 }}
-                        disabled={retryingPage !== null && retryingPage !== undefined}
-                        onClick={() => onRetryPage(currentPageBlock.page)}
-                        data-testid={`retry-page-${currentPageBlock.page}`}
-                      >
-                        <i className="fa-solid fa-rotate-right" /> {retryingPage === currentPageBlock.page ? 'Retrying...' : 'Retry'}
-                      </button>
-                    )}
-                  </h3>
-                  <div dangerouslySetInnerHTML={{ __html: currentPageBlock.bodyHtml }} />
-                </div>
-              </div>
-            ) : (
-              <div
-                className="view-box-content markdown-body"
-                dangerouslySetInnerHTML={{
-                  __html: hasSelection ? resultHtml : '<div style="text-align:center;color:var(--muted);padding-top:90px;">Select a document or upload a new file to view results.</div>',
-                }}
+      {studioMode ? (
+        <div className="studio-main-body" style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+          <StudioRail
+            structureOpen={structureSidebarOpen}
+            onToggleStructure={() => setStructureSidebarOpen((v) => !v)}
+            reviewOpen={reviewSidebarOpen}
+            onToggleReview={() => setReviewSidebarOpen((v) => !v)}
+            reviewCount={reviewPages?.length || 0}
+          />
+          <div className="dual-viewport studio-viewport" style={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex' }}>
+            <StructureTreePanel
+              open={structureSidebarOpen}
+              onClose={() => setStructureSidebarOpen(false)}
+              onAddClick={onAddStructureItem ? openAddItemModal : undefined}
+              referenceStore={referenceStore}
+              onSelect={handleStructureJumpToPage}
+              onOpenReference={handleStructureSelect}
+              onSelectContainer={handleStructureContainerJump}
+              onJumpContainer={handleStructureJumpContainer}
+              scopeRanges={scopeRanges}
+              activePage={currentPdfPage}
+              onEditItem={onEditStructureItem ? openEditItemModal : undefined}
+              onDeleteItem={onDeleteStructureItem ? setDeleteTarget : undefined}
+              onMoveItem={onMoveStructureItem}
+              onAddItem={onAddStructureItem ? openAddChildModal : undefined}
+              parentOverrides={parentOverrides}
+              sortOverrides={sortOverrides}
+            />
+            {reviewSidebarOpen && (
+              <ReviewQueuePanel
+                pages={reviewPages}
+                currentPageNum={currentPdfPage}
+                isAdmin={isAdmin}
+                onSelectPage={handlePdfPageChange}
+                onConfirmCorrect={handleConfirmCorrectAndAdvance}
+                onRerunPage={onRetryPage}
+                rerunningPage={retryingPage}
+                onClose={() => setReviewSidebarOpen(false)}
               />
             )}
+            {showPinnedPdf ? (
+              <DualPdfCompare
+                pdfSrc={pdfSrc}
+                currentPage={currentPdfPage}
+                targetPage={pinnedPdfPage}
+                targets={pinnedReference?.targets || [{ page: pinnedPdfPage, section: pinnedReference?.clauseLabel }]}
+                activeTargetIndex={pinnedReference?.activeTargetIndex || 0}
+                onSelectTargetIndex={(idx) => {
+                  const t = pinnedReference?.targets?.[idx];
+                  if (t) {
+                    setPinnedPdfPage(t.page);
+                    setPinnedReference((prev) => ({ ...prev, activeTargetIndex: idx }));
+                  }
+                }}
+                onTargetPageChange={setPinnedPdfPage}
+                totalPages={jobDetails?.total_pages}
+                onClose={() => setPinnedPdfPage(null)}
+                pdfStatusLabel={pdfStatusLabel}
+              />
+            ) : (
+              <div className="studio-split-group" style={{ flex: 1, minWidth: 0, display: 'flex', position: 'relative' }}>
+                {showPdf && (
+                  <div
+                    className="view-box studio-pane studio-scan-pane"
+                    style={{
+                      flex: viewMode === 'split' ? `0 0 ${splitRatio}%` : '1 1 100%',
+                      width: viewMode === 'split' ? `${splitRatio}%` : '100%',
+                      minWidth: 200,
+                    }}
+                  >
+                    <div className="view-box-header">
+                      <span><i className="fa-regular fa-file-pdf" /> Document Viewer</span>
+                      <span style={{ fontSize: '0.73rem', color: 'var(--muted)' }}>{jobDetails?.total_pages ? `${jobDetails.total_pages} pages` : ''}</span>
+                    </div>
+                    <div className="view-box-content" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                      {fileLoading && (
+                        // Shown regardless of whether pdfSrc is currently stale
+                        // (a previous document's blob, kept around until the
+                        // new one replaces it) or null — positive, immediate
+                        // feedback that the click registered and a new
+                        // document is loading, instead of the click appearing
+                        // to do nothing (see AppShell.jsx's fileLoading state).
+                        <div className="pdf-pane-loading-overlay" data-testid="pdf-pane-loading">
+                          <div className="spinner" /> Loading document…
+                        </div>
+                      )}
+                      {pdfSrc ? (
+                        <>
+                          {!!jobDetails?.index_built_at && (
+                            <PageReferenceBadges
+                              mentions={pageMentions}
+                              referenceStore={referenceStore}
+                              scopeRanges={scopeRanges}
+                              currentPage={currentPdfPage}
+                              onOpenReference={handleBadgeOpenReference}
+                            />
+                          )}
+                          <div style={{ flex: 1, minHeight: 0 }}>
+                            <PdfCanvasViewer
+                              pdfSrc={pdfSrc}
+                              pageNum={currentPdfPage}
+                              totalPages={jobDetails?.total_pages}
+                              onPageChange={handlePdfPageChange}
+                              showPageNav={false}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        !fileLoading && (
+                          <div style={{ textAlign: 'center', paddingTop: 60, color: 'var(--muted)' }}>
+                            No document selected
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {viewMode === 'split' && (
+                  <SplitResizer splitRatio={splitRatio} onSplitChange={setSplitRatio} />
+                )}
+
+                {showResult && (
+                  <div
+                    className="view-box studio-pane studio-editor-pane"
+                    style={{
+                      flex: viewMode === 'split' ? `0 0 ${100 - splitRatio}%` : '1 1 100%',
+                      width: viewMode === 'split' ? `${100 - splitRatio}%` : '100%',
+                      minWidth: 200,
+                    }}
+                  >
+                    <div className="view-box-header">
+                      <span><i className="fa-solid fa-align-left" /> Extracted OCR Markdown</span>
+                      <span style={{ fontSize: '0.73rem', color: progressColor }}>{progressLabel}</span>
+                    </div>
+                    {hasSelection && currentPageBlock ? (
+                      <div ref={resultContentRef} className="view-box-content markdown-body">
+                        <div id={`page-block-${currentPageBlock.page}`} className="ocr-page-block" data-testid={`page-block-${currentPageBlock.page}`}>
+                          <h3 style={{ display: 'flex', alignItems: 'center', margin: '0 0 8px' }}>
+                            Page {currentPageBlock.page}
+                            <ConfidenceBadge page={currentPageBlock.data} />
+                            {isAdmin && (currentPageBlock.data.status === 'failed' || currentPageBlock.data.status === 'review') && (
+                              <button
+                                className="btn btn-sm btn-secondary"
+                                style={{ marginLeft: 10 }}
+                                disabled={retryingPage !== null && retryingPage !== undefined}
+                                onClick={() => onRetryPage(currentPageBlock.page)}
+                                data-testid={`retry-page-${currentPageBlock.page}`}
+                              >
+                                <i className="fa-solid fa-rotate-right" /> {retryingPage === currentPageBlock.page ? 'Retrying...' : 'Retry'}
+                              </button>
+                            )}
+                          </h3>
+                          <WysiwygEditor
+                            key={currentPageBlock.page}
+                            value={currentPageBlock.pageText}
+                            onChange={(md) => onSavePageText && onSavePageText(currentPageBlock.page, md)}
+                            onSaveStatusChange={setEditorSaveStatus}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        className="view-box-content markdown-body"
+                        dangerouslySetInnerHTML={{
+                          __html: hasSelection ? resultHtml : '<div style="text-align:center;color:var(--muted);padding-top:90px;">Select a document or upload a new file to view results.</div>',
+                        }}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+          <StudioFloatingHud
+            currentPage={currentPdfPage}
+            totalPages={jobDetails?.total_pages || 1}
+            onNavigate={handlePdfPageChange}
+            viewMode={viewMode}
+            onViewModeChange={(m) => { setViewMode(m); setPinnedPdfPage(null); }}
+            isDualCompare={showPinnedPdf}
+          />
+        </div>
+      ) : (
+        <div className="dual-viewport">
+          <StructureTreePanel
+            open={structureSidebarOpen}
+            onAddClick={onAddStructureItem ? openAddItemModal : undefined}
+            referenceStore={referenceStore}
+            onSelect={handleStructureJumpToPage}
+            onOpenReference={handleStructureSelect}
+            onSelectContainer={handleStructureContainerJump}
+            onJumpContainer={handleStructureJumpContainer}
+            scopeRanges={scopeRanges}
+            activePage={currentPdfPage}
+            onEditItem={onEditStructureItem ? openEditItemModal : undefined}
+            onDeleteItem={onDeleteStructureItem ? setDeleteTarget : undefined}
+            onMoveItem={onMoveStructureItem}
+            onAddItem={onAddStructureItem ? openAddChildModal : undefined}
+            parentOverrides={parentOverrides}
+            sortOverrides={sortOverrides}
+          />
+          {reviewSidebarOpen && (
+            <ReviewQueuePanel
+              pages={reviewPages}
+              currentPageNum={currentPdfPage}
+              isAdmin={isAdmin}
+              onSelectPage={handlePdfPageChange}
+              onConfirmCorrect={handleConfirmCorrectAndAdvance}
+              onRerunPage={onRetryPage}
+              rerunningPage={retryingPage}
+            />
+          )}
+          {showPdf && (
+            <div className="view-box">
+              <div className="view-box-header">
+                <span><i className="fa-regular fa-file-pdf" /> Document Viewer</span>
+                <span style={{ fontSize: '0.73rem', color: 'var(--muted)' }}>{pdfStatusLabel}</span>
+              </div>
+              <div className="view-box-content" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                {pdfSrc ? (
+                  <>
+                    {!!jobDetails?.index_built_at && (
+                      <PageReferenceBadges
+                        mentions={pageMentions}
+                        referenceStore={referenceStore}
+                        scopeRanges={scopeRanges}
+                        currentPage={currentPdfPage}
+                        onOpenReference={handleBadgeOpenReference}
+                      />
+                    )}
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                      <PdfCanvasViewer
+                        pdfSrc={pdfSrc}
+                        pageNum={currentPdfPage}
+                        totalPages={jobDetails?.total_pages}
+                        onPageChange={handlePdfPageChange}
+                        showPageNav={false}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ textAlign: 'center', paddingTop: 60, color: 'var(--muted)' }}>
+                    No document selected
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {showPinnedPdf ? (
+            <div className="view-box">
+              <div className="view-box-header">
+                <span><i className="fa-regular fa-file-pdf" /> Reference: Page {pinnedPdfPage}</span>
+                <button
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => setPinnedPdfPage(null)}
+                  title="Close reference pane"
+                  data-testid="pinned-pdf-close-btn"
+                >
+                  <i className="fa-solid fa-xmark" /> Close
+                </button>
+              </div>
+              <div className="view-box-content" style={{ padding: 0, overflow: 'hidden' }}>
+                <PdfCanvasViewer
+                  pdfSrc={pdfSrc}
+                  pageNum={pinnedPdfPage}
+                  totalPages={jobDetails?.total_pages}
+                  onPageChange={setPinnedPdfPage}
+                />
+              </div>
+            </div>
+          ) : showResult && (
+            <div className="view-box">
+              <div className="view-box-header">
+                <span><i className="fa-solid fa-align-left" /> Extracted OCR Markdown</span>
+                <span style={{ fontSize: '0.73rem', color: progressColor }}>{progressLabel}</span>
+              </div>
+              {hasSelection && currentPageBlock ? (
+                <div ref={resultContentRef} className="view-box-content markdown-body">
+                  <div id={`page-block-${currentPageBlock.page}`} className="ocr-page-block" data-testid={`page-block-${currentPageBlock.page}`}>
+                    <h3 style={{ display: 'flex', alignItems: 'center', margin: '0 0 8px' }}>
+                      Page {currentPageBlock.page}
+                      <ConfidenceBadge page={currentPageBlock.data} />
+                      {isAdmin && (currentPageBlock.data.status === 'failed' || currentPageBlock.data.status === 'review') && (
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          style={{ marginLeft: 10 }}
+                          disabled={retryingPage !== null && retryingPage !== undefined}
+                          onClick={() => onRetryPage(currentPageBlock.page)}
+                          data-testid={`retry-page-${currentPageBlock.page}`}
+                        >
+                          <i className="fa-solid fa-rotate-right" /> {retryingPage === currentPageBlock.page ? 'Retrying...' : 'Retry'}
+                        </button>
+                      )}
+                    </h3>
+                    <WysiwygEditor
+                      key={currentPageBlock.page}
+                      value={currentPageBlock.pageText}
+                      onChange={(md) => onSavePageText && onSavePageText(currentPageBlock.page, md)}
+                      onSaveStatusChange={setEditorSaveStatus}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="view-box-content markdown-body"
+                  dangerouslySetInnerHTML={{
+                    __html: hasSelection ? resultHtml : '<div style="text-align:center;color:var(--muted);padding-top:90px;">Select a document or upload a new file to view results.</div>',
+                  }}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <RetryPagesModal
         open={retryModalOpen}

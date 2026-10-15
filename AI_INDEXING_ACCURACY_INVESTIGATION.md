@@ -1263,6 +1263,16 @@ Three previously-undetected bugs were found and corrected (via
    itself, plus `Projects` and `Inventory and Order Management (Supply
    Chain Management)` (which *did* mint), are enough to keep that section
    represented.
+5. **Defined-term/doc-ref detection has no INDEX/TOC awareness — unlike
+   the AI heading path — and is a confirmed production bug (fixed, see
+   §15.5).** The page-2 INDEX table's own row text ("Section-V: General
+   Conditions of Contract (GCC)", "Section-VI: Special Conditions of
+   Contract (SCC)", "Section-III: Instructions To Bidders (ITB)") minted
+   three spurious root-level `term:` targets straight from the INDEX, with
+   zero mentions on the INDEX page explaining why — found because a
+   second-pass review (by the user, re-reading the exported fixture against
+   the source document) caught both this and the under-indexing described
+   in §15.6.
 
 ### 15.4 Why `structure_overrides`, not code fixes, for #2 and #3
 
@@ -1278,16 +1288,192 @@ the 100-page fixture's own p92-letterhead correction (§13, "a correction to
 the 100-page gold fixture itself... not a code bug"). Both bugs are recorded
 here as follow-up leads, not silently absorbed.
 
-### 15.5 Fixture characteristics
+### 15.5 Finding #5 — fixed in code: INDEX/TOC-blindness in term/doc-ref detection
+
+Unlike #2/#3, this one was fixed at the source (2026-10-15), per explicit
+request, since it was already fully root-caused and the fix is narrow.
+
+**Root cause:** heading-grounding (`parse_page_blocks` → `_flatten_blocks`,
+`reference_index.py:918`) cannot see inside raw HTML `<table>` blocks at all
+— no `block_html` case — which is why the AI heading path's own
+"Container-Aware Table of Contents Suppression" (§11.2 item 5,
+`is_inside_toc` in `ai_reference_index.py:608-616`, scoped to `page <= 2`)
+was never needed for the defined-term/doc-ref passes. But
+`build_term_index_for_job` and `build_docref_index_for_job`
+(`reference_index.py:2776`/`2663`) walk pages via `_walk_blocks_from_tokens`
+(`reference_index.py:2640`), which *does* have a `block_html` case
+(`_strip_html` the raw HTML and yield the cleaned text) — so these two
+whole-job scanning passes see straight through an INDEX/TOC table's own row
+text, with zero equivalent TOC-awareness of their own. Both are called
+unconditionally from `build_mention_index_for_job`, so this affects every
+job, AI-indexed or rule-indexed, independent of model quality — not an
+artifact of hand-authoring this fixture.
+
+**Verified relocation, not pure elimination:** `(ITB)` appears nowhere else
+in this document — `term:itb` is genuinely eliminated by the fix. But
+`(GCC)` and `(SCC)` also appear in their own real section headings (pages 46
+and 52) and, for SCC, two further legitimate cross-references (pages 27,
+44) — so after the fix, `term:gcc`'s definition page correctly relocates
+from 2 to 46, and `term:scc`'s from 2 to 27 (earliest genuine occurrence).
+Net target-count effect of this fix alone: **-1** (`term:itb` only), not -3.
+
+**Fix:** a page-level (not block-level) guard —
+`_TOC_BLOCK_RE = re.compile(r"\b(?:INDEX|TABLE OF CONTENTS)\b", re.IGNORECASE)`,
+checked once against the whole page's text for `page_num <= 2` via a new
+`_page_is_toc_like()` helper — skips the entire page for both of
+`build_term_index_for_job`'s loops (the definition scan *and* the separate
+bare-mention scan further down the same function — easy to miss, since
+guarding only the first loop would still leave spurious mentions anchored
+to the INDEX page) and for `build_docref_index_for_job`'s scan. Page-level
+rather than block-level so a document whose INDEX heading and row-table sit
+in separate blocks is still caught, not just this one (whose whole INDEX
+happens to be one `block_html` blob).
+
+**Tests added** (`tests/test_reference_index_reindex.py`): INDEX-page
+suppression of both the definition and the bare mention; relocation to a
+genuine later occurrence; elimination when no later occurrence exists;
+negative test confirming a genuine page-1 definition *without* an
+INDEX/TOC marker is still captured; doc-ref parity test. Full backend suite:
+819 tests, 816 passed (the 3 failures are pre-existing, unrelated
+`test_gpu_ocr_client.py` network-mocking flakiness — no dependency on
+`reference_index.py`). Confirmed no regression: neither the 17-page nor the
+100-page fixture has any `term:`/`docref:` key on page 1-2 for the new
+guard to touch.
+
+### 15.6 Second-pass correction — under-indexed numbered content
+
+A first review of the exported fixture (by the user, reading the source
+document directly against it) found a consistent gap: wherever genuine
+numbered/lettered content sat inside a nested "Note:" block or a `<table>`
+whose rows were each a distinct, individually-referenceable fact (not bulk
+filler), it was too often skipped — the same discipline already correctly
+applied to Section-III's definitions and Section-V's GCC clauses had been
+applied inconsistently elsewhere. A second read-through of all 135 pages
+added 81 more `AIHeading` entries (660 → 741) and reran the same offline
+replay against the same `[GOLD]` job:
+
+- **p3-4** — `TENDER NOTICE`'s `NOTE: -` block, 13 numbered points.
+- **p5-6** — `Key Dates and Basic Tender Information`'s `Note: -` block:
+  points (1)-(3), with roman sub-points (I)/(II)/(III) under (2), and
+  lettered sub-points i.-vi. under (II).
+- **p7** — `Section-I: Essential Tender Information`'s 15-row identification
+  table (name of works, purchaser, contract period, fees, four
+  availability-date rows, validity period, correspondence address), one
+  point per row.
+- **p8-10** — Section-II's "(1) ... given in the table hereunder:" intro
+  line (now its own point — empirically confirmed after rebuild that the
+  already-auto-recovered i.-vi. roman list, synthesized by
+  `_recover_colon_sublists_in_chunk`, re-nests under it rather than staying
+  flat under Section-II, which the pre-rebuild code trace had predicted the
+  *other* way; the colon-intro's own semantic role does make this the more
+  defensible nesting regardless), the 10-row eligibility-criteria table,
+  and a further `Note:` with 2 points on page 10.
+- **p68** — Annexure-IV's own 11-point `Note:` (price-schedule submission
+  rules), entirely missed in the first pass.
+- **p81** — Annexure-XI's closing `Note:` under the SLA target tables.
+- **p130-131** — Annexure-XVI's Check List, structurally identical to
+  Section-II's eligibility table (`SN/Criteria/Documents/Page#`), the same
+  fix applied to its 10 rows.
+
+One genuine regression surfaced by this second pass and corrected via
+`structure_overrides`: adding the new p81 `Note:` (authored at the same
+level as the SLA's I-IV sub-tables) caused `f. Breach of SLA` through
+`i. Issue Management Procedures` to nest under the new `Note:` instead of
+staying direct children of Annexure-XI — the same class of "most recently
+opened container at a shared depth absorbs the next sibling" mechanism
+behind finding #2, now observed causing collateral damage from a
+*fixture-authoring* change rather than a pipeline change. Reparented via
+`structure_overrides.set_parent()` back to Annexure-XI directly.
+
+### 15.7 Third pass (2026-10-15): decimal sub-numbering nested flat, two more bugs fixed
+
+The user found a third, distinct issue: on page 11 (Section-III's `1`,
+`1.1`, `1.2`, ...) and page 23 (Section-IV's `4.1`, `4.1.1`, ...),
+decimal-numbered headings that should nest hierarchically (`1.1` inside
+`1`, `1.2` a sibling of `1.1`) were instead all flattened to the same
+level. Root-caused to **two separate, confirmed bugs**, both fixed at the
+source:
+
+**Bug A — `_pleading_scope_active` default-active assumption.**
+`apply_heading_events_to_scope` force-classifies a numbered heading as a
+`point`-family leaf (never a real container — see `FAMILIES`' `rank=None`
+comment) whenever `_pleading_scope_active(nested_stack)` returns true, which
+happens by default for *any* `subdoc` container unless its label matches
+`_NON_PLEADING_SUBDOC_LABELS_RE` (`reference_index.py:384`) — an exclusion
+list, not an allow-list. That list only recognized FAO-CARB-specific
+embedded-annexure labels (`CONTRACT AGREEMENT`, `BANK GUARANTEE`, etc.),
+nothing resembling this tender document's own `Section-III: Instructions to
+Bidders` / `Section-IV: Scope of Work` top-level parts — so every numbered
+heading under any `Section-N:` part defaulted to pleading-point (flat leaf)
+treatment. **Fix:** extended the exclusion list with
+`SECTION[\s-]+[IVXLCDM0-9]+`. Confirmed safe against both existing
+arbitration-judgment fixtures (neither has a `subdoc` *container* — as
+opposed to plain body text mentioning a law section — whose own label
+starts with "Section").
+
+**Bug B — the sibling-chaining safety net misfires on genuine decimal
+children.** Even after Bug A's fix, Section-VI (SCC)'s own `1.1` →
+`1.1.1`/`1.1.2` still flattened, despite grounding cleanly (no
+`ai_unlocated`) and correctly minting as `numheading`. Root cause: the
+"enum chain safety net" (`reference_index.py:3705-3736`, added earlier in
+this investigation to catch an AI mis-nesting `(ii)` one level under `(i)`
+when they're really flat siblings) buckets headings into coarse styles
+(`_enumeration_marker_style`: `"decimal"`/`"lower_roman"`/
+`"upper_letter_or_roman"`) and flattens **any** two consecutive
+same-style events that are exactly one depth apart — it cannot tell a
+genuine decimal parent/child pair (`"4.1."` then `"4.1.1."`) from a
+mis-nested same-level sibling pair, when both happen to end with a literal
+period before the label (`_ENUM_MARKER_RE` requires a trailing `)`/`.`
+to match at all, so `"4.1.1 Foo"` with no period doesn't even match and
+was accidentally immune — which is why page 23 partially worked before this
+fix while pages 11/46/52, authored consistently with periods, didn't).
+**Fix:** added a `num_segments`-based check — a genuine decimal child's
+segments extend the previous item's by exactly one (`["4","1","1"]`
+extends `["4","1"]`); a mis-nested sibling's never do — and only flatten
+when that's *not* the case. Verified the original roman/letter
+sibling-chaining protection (the bug this safety net was built for) is
+untouched.
+
+Both fixes verified via a standalone async replay directly against the
+container (not guessed), and via `tests/test_ai_reference_index_stack_machine.py`
+(4 new tests: decimal-section-container nesting, a pleading-scope
+no-regression case, decimal-child-not-flattened, and a roman-sibling
+no-regression case). Full backend suite: 820/823 passing throughout (the 3
+failures are the same pre-existing, unrelated `test_gpu_ocr_client.py`
+network-mocking flakiness as every prior round).
+
+**Known remaining limitation, not fixed here:** Section-III and Section-V
+(GCC) still flatten, because their content sits inside literal `<table>`
+HTML (§15.3 finding #1's table-blindness) — `_flatten_blocks` can't ground
+them at all, which sets `heading_confidence_reasons=["ai_unlocated"]`,
+which in turn triggers a third, separate mechanism
+(`_GROUNDING_PUSH_BLOCKING_REASONS`, `reference_index.py:3480`): an
+ungrounded heading is never pushed onto the real stack as a container
+regardless of its otherwise-correct family, so nothing can nest under it.
+This is a downstream consequence of the already-documented, already-deferred
+table-blindness bug, not a new one — fixing it properly means teaching
+`_flatten_blocks` to walk raw HTML `<table>` blocks, a change with far more
+blast radius than either fix in this section (it's the function the entire
+AI heading-grounding path depends on), so it was left as open follow-up
+rather than attempted in this pass.
+
+### 15.8 Fixture characteristics
 
 `tests/fixtures/gold_index_89cfa529.json` — job_id `89cfa529-2390-464c-9c3e-2446ef68c588`
 ([GOLD] duplicate of `3cafeb89-e2e0-428b-9fd1-73471232deae`), 135 pages,
-**634 targets** (point 433, subdoc 92, numheading 77, term 30, section 1,
-letterheading 1) and **976 mentions** (778 resolving, 198 suppressed).
+**765 targets** (numheading 354, point 287, subdoc 94, term 29, section 1)
+and **970 mentions** (788 resolving, 182 suppressed) — up from the second
+pass's 714/970; the large point→numheading shift (519→287 / 72→354) is
+§15.7's two fixes correctly reclassifying previously-mis-flattened decimal
+headings, not new content.
 
-### 15.6 Verification
+### 15.9 Verification
 
 ```bash
+# Full backend suite (confirms §15.5's term/docref fix, §15.6's reauthoring
+# pass, and §15.7's two decimal-nesting fixes introduced no regression):
+docker exec ocr-services-glm-ocr-api-1 python3 -m pytest tests/ -q
+
 # Re-export from the GOLD job after any further override correction:
 docker exec ocr-services-glm-ocr-api-1 python3 scripts/export_gold_fixture.py \
   89cfa529-2390-464c-9c3e-2446ef68c588 --out tests/fixtures/gold_index_89cfa529.json
@@ -1302,4 +1488,624 @@ during this build, caught, and killed before it produced any output; the
 throwaway duplicate job it created was deleted. Establishing a live
 qwen3:8b baseline against this fixture (§11.4's deferred generalization
 check) remains open, future work — not done here.
+
+---
+
+## 16. Variable Chunk-Size Packing, Truncation Removal, Per-Chunk Instrumentation, and Two Confirmed Over-Generation Fixes (2026-10-14)
+
+### 16.1 Context
+
+An externally-authored plan proposing "variable density-aware chunking" to
+fix qwen3:8b's precision/recall on the 100-page fixture was reviewed against
+this codebase and found to reinvent an already-existing mechanism
+(`ai_indexing.plan_chunks()` already flushes a chunk on either page count or
+a character budget), cite page-density numbers and a baseline (0.818
+precision / 0.749 recall) that don't appear anywhere in this repo's fixtures,
+scripts, or git history, and not engage with the root causes this
+investigation had already confirmed (target over-generation, enumerated
+sub-item recall loss — neither caused by chunk size). The review is not
+reproduced here; what survived it and actually shipped:
+
+1. **`ai_index_chunk_chars_max` threaded through `engine_params`**
+   (`ai_reference_index.py`, mirroring the existing `ai_index_chunk_pages`/
+   `ai_index_chunk_overlap_pages` pattern) and a matching `--chunk-chars-max`
+   CLI flag on `scripts/score_reference_index.py` — makes the existing char
+   budget configurable per job instead of only via the (effectively
+   unreachable at `chunk_pages=3`) 60,000-char global default. The global
+   default itself is unchanged; only per-job overrides use this.
+2. **Page truncation removed entirely**, at both sites that previously
+   silently clipped an oversized page and appended a
+   `"[... page truncated for length ...]"` marker: `ai_indexing.plan_chunks()`
+   (the plain `clean_text` used for chunk-packing bookkeeping) and
+   `reference_index.build_layout_annotated_text()` (the **layout-annotated**
+   text actually sent to the model — up to ~3x longer than `clean_text`
+   because of the `[OCR-LAYOUT: TYPE]` tag prepended to every block, so a
+   page could be truncated in the real prompt even when its plain text
+   looked well under the old 12,000-char cap). `AI_INDEX_PAGE_CHARS_MAX` is
+   now dead config, removed from `config.py`. A page now always reaches the
+   model whole, even if that means one outsized prompt for a single dense
+   page's chunk.
+3. **New per-chunk instrumentation**, previously nonexistent: a real
+   wall-clock `duration_seconds` per chunk (`ai_reference_index.py`,
+   distinct from `ChunkStructureResult.duration_ms`, which only covers the
+   raw provider HTTP call and is left at `0` on the failure/timeout path —
+   exactly the case most worth timing), live per-chunk progress printed as
+   each chunk completes during a trial (`scripts/score_reference_index.py`'s
+   `_monitor_chunks`, polling `database.get_ai_index_report()` every 5s —
+   previously a trial printed nothing until the entire run finished, which
+   on one occasion was mistaken for a hang), and a new `score_chunks()`
+   function giving precision/recall **per page-range chunk**, not just one
+   whole-document number — attributing a gold/detected target to whichever
+   chunk's page range contains the target's own `page`, independent of
+   which chunk's AI call actually produced it (this separates "this page
+   range is genuinely hard" from chunk-boundary artifacts like the
+   already-documented subdoc-ordinal cascade).
+
+### 16.2 Quantitative results — `chunk_chars_max=8000` on the 100-page fixture
+
+3 trials, `chunk_pages=3`, `chunk_chars_max=8000`, `review_rule_prior=false`,
+against `bb417471`/`gold_index_bb417471.json`, on the code state after items
+1-3 above (before the two fixes in §16.4):
+
+| Metric | Min | Mean | Max |
+|---|---:|---:|---:|
+| Merged Precision | 0.726 | 0.744 | 0.771 |
+| Merged Recall | 0.815 | 0.830 | 0.840 |
+| AI-only Precision | 0.633 | 0.676 | 0.724 |
+| AI-only Recall | 0.556 | 0.628 | 0.664 |
+| Rule-only | P=0.670, R=1.000 (deterministic) | | |
+| Mention P/R | 0.998 / 0.985 | | |
+
+**This is not a clean, single-variable comparison.** It bundles the
+char-budget packing change together with the truncation-removal change
+against a baseline measured before either existed (§11.3-B /
+`project_qwen_ollama_vs_rokkaai` memory: precision 0.386–0.492, recall
+0.668–0.690) — both numbers moved, and which change (or their interaction)
+is responsible isn't isolated here.
+
+**Also unreconciled, by explicit decision**: §14 of this document claims
+Merged Precision **0.909** / Recall **0.934** on this same fixture — well
+above both the above measurement and the older §11.3-B baseline. This
+session's fresh 3-trial measurement was not checked against §14's claim
+with a new baseline run; both numbers stand in this document as recorded,
+unreconciled. Whoever reads this next should treat §14's numbers with
+appropriate skepticism until that reconciliation happens — it was not done
+here.
+
+### 16.3 Per-chunk findings — three page ranges, consistently bad across all 3 trials
+
+| Page range | Precision (3 trials) | Recall (3 trials) | Pattern |
+|---|---|---|---|
+| 90–92 | 0.185 / 0.214 / 0.214 | 0.833 / 1.000 / 0.833 | `act=27/28` vs `gold=6` every trial — stable over-generation |
+| 66–68 | 0.250 / 0.214 / 0.286 | 0.500 / 0.500 / 0.625 | `act=12–14` vs `gold=6` every trial — stable over-generation |
+| 64–65 | 1.000 / 1.000 / 1.000 | 0.095 / 0.524 / 0.095 | `gold=21` steady, detected count swings 2→11→2 — unstable, not over-generation |
+
+All three were investigated with real data (raw OCR page text, the gold
+fixture's exact targets for these pages, and — for pages 90–92 — a recorded
+raw AI completion via `--record-dir`) rather than guessed at. Two were
+root-caused and fixed; the third is a known, already-partially-addressed
+issue, confirmed still present.
+
+#### Pages 66–68 — commercial-contract signature-block noise, AI path
+
+Page 66 ends with a contract-execution/signature block (`"IN WITNESS
+WHEREOF..."`, `"Signed, sealed and Delivered by the."`, `"NAME : H. G.
+CHHABRA"`, `"TITLE : CHIEF ENGINEER/MM,"`, `"IN THE PRESENCE OF"`, bare
+witness names). Tested directly against the live `_GENERIC_LEGAL_NOISE_RE`
+(`ai_indexing/schema.py`): 11 of 15 lines escaped it — this filter already
+covers the equivalent *court-pleading* signature-block genre
+(`"Authorized Signatory"`, `"For [X] LTD/LIMITED/BANK..."`), but this
+document also contains an embedded Contract Agreement annexure with
+commercial-contract-style execution language the existing patterns never
+anticipated.
+
+**Fix**: `ai_indexing/schema.py`'s `_GENERIC_LEGAL_NOISE_RE` gained a new
+alternation branch — `IN WITNESS WHEREOF\b.*`, `Signed,?\s+sealed\s+and\s+
+Delivered\b.*`, `NAME\s*:.*`, `TITLE\s*:.*`, `IN THE PRESENCE OF\b.*` — all
+shape-generic, not tied to this document's specific names. Bare witness
+names (`S.D.CHAWLA`, `DINESH DIWAN`) deliberately left unfiltered — too
+risky to generalize without a real collateral-damage case to design
+against. New test: `tests/test_ai_indexing_schema_noise_filters.py::
+test_contract_execution_signature_block_is_dropped`, plus
+`"BANK GUARANTEE FOR CONTRACT PERFORMANCE"` (a real gold heading on this
+same page range) added to the existing preservation/negative test to
+confirm no collateral suppression.
+
+#### Pages 90–92 — pleading-point scope leaking 90+ pages from the document's true root
+
+Page 91 is a 22-item numbered government-office distribution/CC list
+("Copy of the above is forwarded to the following for information and
+necessary action please: 1. Sr. PS to Chairman, HVPNL, Panchkula. ... 22.
+Supdt. (Purchase)/MM, HVPNL, Panchkula.") with **zero gold targets**. The
+obvious hypothesis — these lines escape `_GENERIC_LEGAL_NOISE_RE` — was
+**wrong**: every one of the 22 lines matches that filter already (the
+existing `Sr\.?\s*PS|Superin[tl][a-z]+ing\s*Engineer|...|Supdt\.?...`
+branch). A recorded raw AI completion (`--record-dir`) for this exact chunk
+confirmed the model's own JSON response contains only 6 headings, **none**
+of them from the distribution list — the AI got it right.
+
+**First diagnosis was also wrong, and worth recording as a lesson, not
+quietly erasing.** Calling `reference_index.build_targets_for_page()`
+directly on page 91's text offline reproduced the same 19 spurious
+`subdoc:<slug>` candidates via `_looks_like_generic_heading_shape()`'s
+residual fallback, which looked like a confirmed fix — a new
+`_DISTRIBUTION_LIST_INTRO_RE`-gated `in_distribution_list` flag was added
+and shipped (see below, kept — it's a real, separate bug). But testing it
+against a fresh live run showed **zero change**: identical `act=27` numbers
+across the pre-fix run, the "fixed" validation run, and a dedicated
+recheck. The reason: `build_targets_for_page` is **never called at all**
+for an AI-successful chunk (confirmed `status=ok` throughout) — that
+function only runs on the rule-*fallback* path. The offline repro had been
+testing the wrong code path the entire time.
+
+**Real diagnosis**, found by adding a temporary debug print at the actual
+per-page persistence call site (`ai_reference_index.py`, right before
+`_persist_page_index`) and running the full job from page 1 so real
+carry-forward context was present (an isolated `start_page=90` test, with
+no inherited context, showed **zero** spurious candidates — the bug is
+context-dependent, not reproducible on the page in isolation). The debug
+output showed the real culprit directly: `point:1` through `point:22`,
+persisted via `detect_pleading_points_for_page`'s always-on hybrid
+supplementation (`ai_reference_index.py`, unconditional for every
+AI-successful page — see §14.2 item 2), gated by
+`_pleading_scope_active(nested_stack)`.
+
+That function checked only `nested_stack[0]` — the document's **true
+root** (here, "JUDGMENT") — not the nearest enclosing boundary. Since
+almost every document's root is generic `subdoc` family, this returned
+`True` nearly everywhere, 90+ pages into an unrelated embedded Contract
+Agreement annexure included. **This is the identical bug
+`_ground_scope_active` already had and was fixed for** (its own docstring
+documents the exact same root-vs-nearest mistake and its fix: walk
+`nested_stack` inward-to-outward, stop at the nearest `subdoc` boundary,
+check only *that* boundary's label) — `_pleading_scope_active` never
+received the equivalent fix until now.
+
+**Fix**: rewrote `_pleading_scope_active` to walk `nested_stack` in reverse
+and stop at the nearest `subdoc` boundary, mirroring `_ground_scope_active`
+exactly — but using an **exclusion list**
+(`_NON_PLEADING_SUBDOC_LABELS_RE`: `CONTRACT AGREEMENT`, `BANK GUARANTEE`,
+`PURCHASE/WORK ORDER`, `LETTER OF AWARD/INTENT`, `TENDER
+DOCUMENT/SPECIFICATION`) rather than an allow-list. An allow-list
+(`_PLEADING_SCOPE_HEADINGS`, modeled on `_GROUND_SCOPE_HEADINGS`) was tried
+first and broke 13 existing tests — legitimate pleading-scope triggers are
+genuinely open-vocabulary (`"RESPECTFULLY SHOWETH"`, `"FACTS"`,
+`"JUDGMENT"`, a bare case caption — all used as this project's own
+canonical test examples), unlike `_ground_scope_active`'s narrow,
+consistent "Grounds of Appeal"/"Prayer" vocabulary. Defaulting to active
+and excluding only the specific, identifiable non-pleading document types
+actually responsible for the bug preserved all 13 tests' original intent.
+
+One further test (`test_ai_reference_index_stack_machine.py::
+test_ai_enum_chain_a_genuinely_different_style_nests_one_level_deeper_undisturbed`)
+needed its expected nesting depth updated — a narrow, synthetic (not
+present in any real fixture) side effect where a roman-numeral pair
+directly under a bare, unqualified `"article"` family container changes
+nesting depth once the nearest-walk logic is in place. Documented inline
+in the test.
+
+New regression tests, `tests/test_reference_index_pleading_points.py`:
+`test_pleading_points_do_not_leak_into_an_unrelated_embedded_contract_annexure`
+(the confirmed bug, directly) and
+`test_pleading_points_still_detected_when_nearest_boundary_is_a_real_pleading_document`
+(control — confirms the fix didn't just disable the function).
+
+**The `build_targets_for_page` fix is kept, but reframed**: it's a real,
+independently-confirmed bug for the rule-*fallback* path specifically (a
+page that genuinely falls back to rule-only detection, where
+`_looks_like_generic_heading_shape`'s residual fallback would equally mint
+a distribution list's lines as spurious `subdoc:` candidates) — just not
+what explained pages 90-92's over-generation in the AI-success case this
+investigation was chasing. Both fixes are correct and both are deployed.
+
+**One known residual, not fixed in this round**: `[NO TEXT]`/`[Non-Text]`
+OCR-placeholder tags on this same page still mint as `subdoc:no-text`/
+`subdoc:non-text` via the rule-fallback path — a separate, smaller issue
+(literal bracket placeholders should never be heading candidates
+regardless of context) left for a future pass.
+
+#### Pages 64–65 — known, already-partially-addressed, still unstable
+
+`gold=21` here is almost entirely page 64: 4 numheadings, the `point:i`–
+`point:vi` sublist under "2.0 CONTRACT DOCUMENTS", 6 glossary terms
+(ECC/GCC/ITB/NIT/SCC/"Contract Documents"), and 3 docrefs — four different
+target families packed into one dense page. This is the exact page
+`project_gold_fixture_100page` memory already flagged (*"list items like
+p64's (i)-(vi) ... are simply dropped"*) and that §11.2 item 6's
+`_recover_colon_sublists_in_chunk` fix specifically targeted. This
+session's fresh data shows that fix is **not fully stabilizing this page**
+— recall swings 0.095 → 0.524 → 0.095 across three otherwise-identical
+re-runs. Documented here as confirmation the issue persists at real scale,
+not a new finding; no new fix attempted this round — needs its own focused
+investigation (plausibly: why `_recover_colon_sublists_in_chunk` fires
+inconsistently here, and whether the deterministic term/docref path is
+reliably covering its half of this page's gold targets).
+
+### 16.4 Verification
+
+- `py -m pytest tests/ -q`: 813 passed (up from 812 before this round's two
+  new tests), zero regressions.
+- A fresh 3-trial `chunk_chars_max=8000` validation run with both §16.3
+  fixes in place, to confirm pages 66–68 and 90–92 actually improved
+  without regressing elsewhere, is the natural next step — see Operational
+  Status below for whether it had completed by the time this was written.
+
+### 16.5 Operational status
+
+Both fixes are implemented, unit-tested, and deployed
+(`docker cp` into `ocr-services-glm-ocr-api-1`; `reference_index.py` and
+`ai_indexing/schema.py` are imported fresh by each new
+`score_reference_index.py` process, so no container restart was needed —
+only the long-running API service would require one). A fresh 3-trial
+post-fix validation run (`chunk_pages=3, chunk_chars_max=8000`) was launched
+immediately after deployment; see the top of this document's revision
+history or re-run `score_chunks()` against a new trial for its results if
+this paragraph wasn't updated with them directly.
+
+---
+
+## 17. First Live Evaluation on the Structurally-Different Tender-Doc Fixture (2026-10-14)
+
+### 17.1 Context
+
+§15 built `tests/fixtures/gold_index_89cfa529.json` (the 135-page MPPKVVCL
+ERP tender spec, job `3cafeb89-e2e0-428b-9fd1-73471232deae`) but explicitly
+left establishing a live qwen3:8b baseline against it as open, future work
+— §15.6 even records a prior accidental run being caught and killed before
+producing output, with a standing note to get explicit go-ahead first. That
+go-ahead was given this session. This section is that baseline: 3 trials,
+`chunk_pages=3`, default config (no `chunk_chars_max` override — this run is
+about "how does the system currently perform on a different document
+shape," not a re-run of §16's packing experiment on a second document),
+`--resumable` (a 135-page document is long enough that an interruption
+shouldn't mean restarting from chunk 1).
+
+**Read this section's numbers next to §15.3's three already-known,
+independently-root-caused pipeline bugs, not as a verdict on model quality
+or on §16's chunking/truncation work** — none of those three bugs are
+chunking-related, and this run uses none of §16's experimental settings.
+
+### 17.2 Results
+
+3 trials against `3cafeb89-e2e0-428b-9fd1-73471232deae` /
+`gold_index_89cfa529.json` (634 targets, 976 mentions):
+
+| Metric | Min | Mean | Max |
+|---|---:|---:|---:|
+| Merged Precision | 0.476 | 0.531 | 0.586 |
+| Merged Recall | 0.306 | 0.368 | 0.415 |
+| Merged Scope Accuracy | 0.128 | 0.141 | 0.165 |
+| Merged Family Drift | 1 | 14.33 | 29 |
+| AI-only Precision | 0.432 | 0.481 | 0.524 |
+| AI-only Recall | 0.258 | 0.272 | 0.286 |
+| Rule-only Precision | 0.201 | 0.484 | 1.000 |
+| Rule-only Recall | 1.000 | 1.000 | 1.000 |
+| Mention P/R | 0.860 / 0.995 | | |
+
+Substantially worse than the 100-page arbitration fixture on every axis,
+most strikingly **family drift** (mean 14.33, max 29 — versus ≤1 on the
+100-page fixture throughout this entire investigation). This tracks
+directly to §15.3 finding #2 (the root-container-protection clamp nesting
+Section-II through VI under Section-I): once one top-level section is
+wrongly nested under another, every target inside it carries a
+`scope_key`/family relationship the gold fixture doesn't expect, and that
+single structural error cascades into dozens of downstream family-drift
+counts. Rule-only precision's unusually wide spread (0.201–1.000 across 3
+trials, where every other fixture's rule-only precision has been stable
+within a few hundredths) is a visible symptom of the same cascade — which
+specific pages the rule path's deterministic term/docref detection lands
+on shifts with whatever the AI path did to the container stack that trial.
+
+Several chunks show `gold=0, act=1-3, matched=0` in a long unbroken run
+(pages 88 through 111) — consistent with §15.3 finding #1 (HTML-table
+blindness: this stretch is Annexure/Scope-of-Work table-heavy content the
+parser can't see into at all, so the AI's own attempts to extract structure
+from what little text survives produce low-confidence noise against an
+empty gold set for those pages).
+
+### 17.3 What this is, and isn't, evidence of
+
+This is **not** a fair read on "did §16's fixes or packing change help or
+hurt" — this run doesn't use `chunk_chars_max`, predates nothing, and the
+three confounding bugs are large enough to dominate any signal from
+chunking or noise-filter changes. It **is** the first real evidence that
+this project's accuracy work to date (tuned entirely against one arbitration
+judgment's three page-slices) does not generalize to a structurally
+different document shape without further work — exactly the gap §11.4 item
+3 and §15.1 both flagged as open. The three §15.3 bugs (HTML-table
+blindness in particular) are the leading suspects for most of this gap and
+remain unfixed; a second, truly comparable "before/after" run on this
+fixture would only be meaningful once at least the table-blindness bug is
+addressed.
+
+### 17.4 Verification
+
+```bash
+docker exec -e PYTHONPATH=/app:/app/scripts ocr-services-glm-ocr-api-1 sh -c \
+  "python3 -u scripts/score_reference_index.py 3cafeb89-e2e0-428b-9fd1-73471232deae \
+   --fixture tests/fixtures/gold_index_89cfa529.json --trials 3 --chunk-pages 3 --resumable"
+```
+Run via the new per-chunk-instrumented `score_reference_index.py` (§16.1
+item 3) — live per-chunk progress and the worst-chunks table are both
+available for this fixture now, same as the 100-page one.
+
+## 18. Ollama Comparative Evaluation, a Thinking-Mode Finding, and a Confirmed Cross-Page Hallucination Fix (2026-10-15)
+
+### 18.1 Context: RokkaAI reliability prompted a second backend
+
+RokkaAI suffered two separate outages during this session's chunk-size-sweep
+work (one overnight, one mid-afternoon) plus repeated 20-30+ minute queue
+stalls outside those windows. The user asked to try the same qwen3:8b model
+via a self-hosted Ollama instance reachable over Tailscale
+(`http://100.124.212.108:11600`), explicitly scoped as "just for the script
+and our trial" — i.e. a comparison tool, not a production config change.
+
+**Why a new provider class was needed rather than pointing the existing
+`OpenAICompatibleProvider` at Ollama's OpenAI-compatible endpoint**: that
+provider's `_complete_once` calls the OpenAI SDK's
+`chat.completions.create()`, which has no mechanism to set Ollama's
+`num_ctx`. Ollama defaults `num_ctx` to a small window (commonly 2048)
+regardless of the model's real capability — confirmed directly: an early
+standalone test sending the real chunk-1 prompt with no `num_ctx` override
+returned `{"headings": [], "notes": ""}` in 5.5s (silent truncation, no
+error). Setting `num_ctx` explicitly, sized to the actual prompt
+(`max(32768, approx_input_tokens + 4096)`), produced a real, substantive
+response (21,315 chars) in 86.5s.
+
+**`scripts/_ollama_native_provider.py`** — a scoring-harness-only provider
+(never added to `ai_indexing/providers.py`'s real `_PROVIDERS` dict; only
+monkeypatched into it for the lifetime of a driver script, the same pattern
+`--resumable` already uses for RokkaAI) talking to Ollama's *native*
+`/api/chat` endpoint instead of its OpenAI-compatible shim, specifically so
+`num_ctx` can be set. This also sidesteps `_require_https_or_local`'s
+rejection of the Tailscale CGNAT range (100.64.0.0/10 is not in Python's
+`ipaddress` private-range definition) without touching that production
+validation function at all — the custom provider's own `validate_config`
+simply never calls it.
+
+**`scripts/run_ollama_chunk_size_sweep.py`** / **`scripts/retry_ollama_sizes.py`**
+— driver scripts that register the provider, point `config.AI_INDEX_*` at
+Ollama for the process only, then call the *real* `scripts/score_reference_index.py`
+primitives (`run_trial`, `load_gold_fixture`) unmodified — full reuse of the
+existing chunk-planning, grounding, persistence, and scoring pipeline; only
+the provider differs.
+
+### 18.2 A model-reliability problem that looked like it could be ours: per-attempt hard timeout
+
+Re-running the chunk-size sweep (32000/16000/8000, `chunk_pages=20`) against
+Ollama surfaced chunks that ran far longer than anything previously
+observed — one chunk sat silently for 15+ minutes with its TCP connection
+still `ESTABLISHED` (confirmed directly via `/proc/net/tcp` inspection) and
+no error. httpx's configured read timeout (180s) never fired for this
+slow-trickle case. Diagnosed as genuine model-generation-time variance, not
+a network fault: a direct health check (`/api/tags`, `/api/ps`) against the
+same host succeeded in under a second throughout, and `/api/ps` confirmed
+`qwen3:8b` was fully resident in VRAM (not swapped to CPU).
+
+Fixed by making the provider self-manage a hard per-attempt cap via
+`asyncio.wait_for` (not relying on httpx's own timeout, which this slow-
+trickle case defeated) — 2 attempts, 5 minutes each initially (later raised
+to 8 minutes for a 64000-char experiment where even a *successful* 45-page
+chunk took 275s). On exhausting both attempts, the provider sets
+`is_daily_quota = True` on the raised `AITimeoutError` — repurposing
+`BaseProvider.complete()`'s existing "stop retrying unconditionally"
+escape hatch (read via `getattr(e, "is_daily_quota", False)`, not a
+constructor parameter) so the shared retry wrapper doesn't stack additional
+attempts on top of this provider's own two — then lets the chunk fall back
+to the rule-based detector and the sweep continues automatically, exactly
+matching the explicit requirement ("retry once, then skip and move on").
+Confirmed working end-to-end multiple times: a chunk times out twice (10
+minutes total), falls back, the trial continues without manual
+intervention.
+
+A second, distinct failure mode also appeared once: `AIUnreachableError:
+Server disconnected without sending a response` / `All connection attempts
+failed`, immediately following a report that the user had closed their
+laptop. A health check moments later succeeded instantly — consistent with
+a brief Tailscale peer-connection renegotiation (WireGuard re-handshake,
+NAT path change) rather than a sustained outage, and not something to
+distinguish from the generation-time timeouts above since the same 2-
+attempt/fallback handling covers both.
+
+### 18.3 The thinking-mode finding: `think: false` is a net win at the winning chunk size, not just faster
+
+Per the user's direction to test disabling Qwen3's hybrid "thinking" mode
+(`"think": false`, a top-level field on Ollama's native `/api/chat`,
+confirmed supported — server version 0.34.3), on the hypothesis that an
+occasional runaway internal reasoning chain was the real cause of the
+timeouts in §18.2. Qwen3's own published RULER benchmarks already show
+non-thinking mode scoring *higher* at every context length (89.1 avg vs.
+84.4 avg) — this was never a quality-for-speed tradeoff on this model in
+principle.
+
+Full before/after, same job (`bb417471-561c-4029-bb21-3bdcf74e7dcb`),
+`chunk_pages=20`, single trial per cell:
+
+| `chunk_chars_max` | Thinking | Merged P | Merged R | Timeouts |
+|---:|---|---:|---:|---:|
+| 32000 | ON | 0.803 | 0.831 | 0 |
+| **32000** | **OFF** | **0.848** | **0.859** | **0** |
+| 16000 | ON | 0.825 | 0.856 | 3 (fell back) |
+| 16000 | OFF | 0.586 | 0.618 | 0 |
+| 8000 | ON (partial) | weak throughout | weak throughout | 5+ |
+
+**32000 + thinking off is the best single configuration found in this
+entire investigation** — better than every RokkaAI run to date, including
+§16's own 32000 result (P=0.813/R=0.875 there; comparable, this edges it on
+precision) — and it got there with zero timeouts and roughly half the wall
+time of the with-thinking run.
+
+**Disabling thinking is not uniformly better, though** — at 16000 it made
+things clearly *worse* (Merged P dropped from 0.825 to 0.586), driven by a
+run of weak chunks (pages 25-61) that recovered on its own further into the
+trial. Read together with the 8000 result (also weak throughout,
+independent of thinking), the emerging picture is that *smaller* chunks
+lean on the reasoning step to compensate for less surrounding context, while
+*larger* chunks (32000, at Qwen3's native 32K-token ceiling) already carry
+enough context that the extra reasoning step adds variance without adding
+useful signal — consistent with this document's RULER-benchmark citation in
+§16's own context. **`chunk_chars_max=32000` with thinking off is the
+recommended production-equivalent configuration going forward**, not
+"thinking off" as a universal switch.
+
+A 64000-char run (`chunk_pages=999`, so the char cap — not the page cap —
+is the sole binding constraint) was also attempted, on the hypothesis that
+qwen3:8b's RULER numbers hold up reasonably to 64K tokens (82.1% vs.
+32K's 91.2%). Abandoned: even a *successful* 45-page chunk took 275s, and
+the next chunk exceeded even the raised 8-minute cap. The user's call:
+32000 is the sweet spot, stop chasing larger sizes.
+
+### 18.4 Two worst chunks root-caused directly against real OCR text
+
+With 32000/thinking-off settled as the target, the two worst-scoring chunks
+from that run were investigated by pulling the raw AI JSON response
+(`--record-dir`) and the real `database.get_pages()` OCR text side by
+side — not inferred from the P/R numbers alone.
+
+**Pages 56-70 (worst recall, R=0.429) — a new, previously-undocumented
+cross-page hallucination, fixed.** The raw response repeated the identical
+heading pair "4.0 SETTLEMENT OF DISPUTES" / "4.1 NOTICE OF DEFAULT" six
+times, attributed to pages 64, 66, 67, 68, 69, 70. The real OCR text
+confirms page 66 genuinely opens with that clause; pages 67-70 are a
+completely unrelated Bank Guarantee letter ("Ref. Our Bank Guarantee
+No.5558158508...", "BANK GUARANTEE FOR CONTRACT PERFORMANCE"). Ollama's
+`done_reason=stop` for this response (not a length cutoff) confirms the
+model chose to stop on its own after producing the duplicate content — a
+genuine generation failure, not truncation. Because the model "spent" its
+output re-stating a fake heading, it never reported the real document
+structure actually present on pages 67-70.
+
+No existing mechanism caught this: `_dedupe_same_page_headings`
+(`ai_reference_index.py`) only drops a same-page echo; the stack machine's
+same-key/same-depth repeat guard (`apply_heading_events_to_scope`,
+`reference_index.py`) only fires for the same still-open container
+reappearing at the same resolved depth — neither is a cross-page,
+text-repetition check.
+
+**Fix — `_drop_cross_page_hallucinated_repeats`, new function in
+`ai_reference_index.py`** (sibling to `_dedupe_same_page_headings`):
+scoped to headings with their own leading decimal reference number only
+(via the already-existing `_leading_reference_number` helper, used for
+this identical prior-bug shape), deliberately excluding bare/keyword-shaped
+headings (case captions, "ANNEXURE A-3" banners) that legitimately recur as
+running headers and are already governed elsewhere. Within that scope,
+groups headings by normalized text and drops every occurrence but the first
+in a run of **3+ consecutive** `start_page`s. A 2-page run (a plausible
+reprint at a page break) is left alone; a non-consecutive repeat (e.g. a
+second annexed agreement reusing the same clause numbering) is also left
+alone, since only a maximal consecutive stretch counts as one run. Verified
+directly against the bug data: pages 64,66-70 → page 64 kept (isolated),
+page 66 kept (first of the 66-70 run), 67-70 dropped — the exact OCR-
+confirmed correct answer. The drop count is surfaced into the per-chunk
+warning report as `ai_cross_page_repeat_dropped`, never silently swallowed
+(a cross-page drop is much higher-stakes for recall than the same-page
+echo case).
+
+8 regression tests added (`tests/test_ai_reference_index_integration.py`):
+the confirmed repeat-run shape is dropped correctly; a 2-occurrence gap and
+a 2-consecutive-page run are both left alone; a bare running-header/case-
+caption repeated across many consecutive pages is untouched (proving no
+overlap with the existing mechanisms); two different decimal headings
+looping in lockstep are trimmed independently; a dropped run followed by
+one more isolated later occurrence keeps that later one; and one full
+end-to-end variant through `reindex_job_with_ai` confirming the warning
+surfaces correctly. Full suite: **831 passed**, no regressions.
+
+A related, structurally different repeat (a whole front-matter block —
+CONTRACT AGREEMENT/INDEX/MEMO OF COSTS/etc. — appearing to repeat twice in
+one response) was noted but deliberately **not** folded into this fix: it's
+only a 2-occurrence run and not necessarily decimal-numbered, so it falls
+outside this heuristic's conservative scope; a sequence/prefix-repeat
+detector would be needed instead, and that risks false positives against
+documents that legitimately bind two near-duplicate boilerplate copies.
+Tracked as a separate follow-up.
+
+**Pages 89-98 (worst precision, P=0.286) — confirmed to be the ALREADY-
+KNOWN, already-deferred "HTML-table blindness" bug from §15.3 finding #1,
+not a new issue.** The real OCR text for this range is dense HTML
+`<table>` markup (`<table><tr><td>DOC TITLE</td><td>SUMMARY PRICE
+PROPOSAL</td></tr>...`). The AI promotes table *cell values* ("SUMMARY
+PRICE PROPOSAL") to headings while gold wants the actual standalone section
+labels nearby ("SCHEDULE-1A", "SUBJECT"). This is not a prompt-tuning gap:
+`parse_page_blocks` (`reference_index.py`, mistune-based) treats an entire
+`<table>` block as one opaque chunk it cannot see inside — and that one
+parser backs *both* the AI-path's grounding/depth-resolution step **and**
+the fully independent rule-based detector (`build_targets_for_page`), so
+content inside an HTML table is invisible to the deterministic path
+regardless of whether AI succeeds, fails, or isn't used at all. §15.3
+already sized teaching the block parser to walk raw HTML tables as "a much
+higher-blast-radius change... left as open follow-up" — this session's
+finding is the first confirmation that the same bug affects a **second,
+structurally different fixture** (an arbitration judgment, not just the
+tender spec), real evidence it's systemic rather than a one-off. Per the
+user's direction, this was deliberately **not** folded into the same
+fix-and-rerun cycle as the pages 56-70 bug — it remains its own, larger,
+separate follow-up initiative.
+
+### 18.5 Live re-verification: a determinism caveat worth recording plainly
+
+Re-running the exact same 32000/thinking-off config against
+`bb417471-561c-4029-bb21-3bdcf74e7dcb` after shipping the fix produced
+**byte-for-byte identical per-chunk warning counts and near-identical
+timings across three separate attempts** (two interrupted mid-run by
+container restarts, one completed clean) — a sharp contrast to the
+dramatic run-to-run variance seen everywhere else in this investigation
+with thinking enabled. The practical consequence: the specific pages 56-70
+hallucination this fix targets did not recur in any of these reruns
+(confirmed directly — the raw chunk-4 response in the completed rerun had
+**zero** repeated heading text at all, 68 distinct headings), so none of
+them exercise `_drop_cross_page_hallucinated_repeats` at all.
+
+**This is recorded honestly rather than glossed over**: the fix's
+correctness rests on its 8 dedicated unit/integration tests, which
+construct the exact confirmed bug shape directly and verify the function's
+behavior deterministically — the standard, valid way to verify a fix for a
+rare failure mode in a probabilistic system that can't be forced to
+reproduce the failure on demand. The completed rerun's overall numbers
+(Merged P=0.759/R=0.878) are **not** a before/after comparison for this
+fix — they reflect ordinary baseline variance between the original capture
+and this session's apparently more-deterministic decode path, and the
+lower precision there traces to a different, unrelated cause (32
+`ai_unlocated` headings in that run — content that doesn't ground to real
+page text at all, a separate quality issue this fix was never meant to
+address). Pages 89-98 reproduced its known P=0.286 in every rerun, as
+expected for an untouched, out-of-scope bug.
+
+### 18.6 Second-fixture baseline on the winning config
+
+Per explicit request, the tender-doc fixture (`89cfa529-2390-464c-
+9c3e-2446ef68c588` / `gold_index_89cfa529.json`, read-only — not rebuilt)
+was run through the identical winning config (`chunk_pages=20`,
+`chunk_chars_max=32000`, thinking off) as a pre-fix-work baseline, run in
+parallel with the Finding-1 implementation rather than blocking on it:
+
+**AI P=0.418 R=0.121 (ScopeAcc=0.022, Drift=50) | Merged P=0.566 R=0.288 |
+Rule P=0.165 R=1.000**. Substantially weaker than the arbitration document on every
+axis, consistent with §15.3/§17's already-documented, independent pipeline
+bugs for this fixture (HTML-table blindness chief among them — several
+chunks scored `P<0.3` with heavy table content per page-range inspection,
+e.g. pages 63-78 at P=0.100/R=0.024). Broadly in the same range as §17's
+earlier RokkaAI baseline on the same document (P=0.531/R=0.368), confirming
+the gap is a property of this document's known bugs, not this provider or
+config. No new bugs surfaced beyond what §15.3 already catalogued.
+
+### 18.7 Summary and open follow-ups
+
+- **Shipped**: `_drop_cross_page_hallucinated_repeats` (cross-page
+  hallucinated-duplicate-heading fix), 8 new tests, full suite green (831).
+- **Confirmed, not yet fixed**: HTML-table blindness affects a second
+  fixture — raises its priority but the fix itself remains its own
+  follow-up (teach `parse_page_blocks` to walk raw HTML tables).
+- **Confirmed, not yet fixed**: a separate whole-block prefix-repeat
+  hallucination shape (§18.4), needs its own sequence-repeat detector.
+- **Recommended production-equivalent config**: `chunk_pages=20`,
+  `chunk_chars_max=32000`, thinking disabled — best result in this
+  investigation, zero timeouts, roughly half the wall-clock of the
+  with-thinking equivalent. Do **not** generalize "thinking off" to smaller
+  chunk sizes without re-testing — it measurably hurt at 16000.
+- **Tooling**: `scripts/_ollama_native_provider.py` +
+  `scripts/run_ollama_chunk_size_sweep.py` / `retry_ollama_sizes.py` remain
+  scoring-harness-only (never touch `ai_indexing/providers.py` or
+  production config) and are reusable for any future Ollama-backed
+  comparison.
 

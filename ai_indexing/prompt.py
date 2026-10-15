@@ -586,21 +586,20 @@ def plan_chunks(
     pages: List[PageInput],
     max_pages: int = None,
     max_chars: int = None,
-    max_page_chars: int = None,
     overlap_pages: int = 0,
 ) -> List[ChunkPlan]:
     """Greedy packing: accumulate pages until max_pages OR max_chars,
     whichever comes first. A chunk always contains >= 1 page, even if that
-    single page blows the budget — clipped to max_page_chars with an
-    explicit truncation marker so the model knows it saw a partial page and
-    doesn't invent a continuation. Pages are never reordered or split
-    across chunks.
+    single page blows the budget — sent through whole and untouched, never
+    clipped, so a dense page never loses content the model would otherwise
+    see. Pages are never reordered or split across chunks.
+    `ChunkPlan.truncated_pages` is always empty now (kept on the dataclass
+    only because `ai_reference_index.py` still reads the field).
 
     When overlap_pages > 0, each chunk after the first is pre-seeded with
     the last overlap_pages PageInputs of the preceding chunk."""
     max_pages = max_pages or config.AI_INDEX_CHUNK_PAGES
     max_chars = max_chars or config.AI_INDEX_CHUNK_CHARS_MAX
-    max_page_chars = max_page_chars or config.AI_INDEX_PAGE_CHARS_MAX
     overlap_pages = min(overlap_pages, max(max_pages - 1, 0))
 
     chunks: List[ChunkPlan] = []
@@ -627,10 +626,6 @@ def plan_chunks(
 
     for p in pages:
         text = p.text or ""
-        was_truncated = False
-        if len(text) > max_page_chars:
-            text = text[:max_page_chars] + "\n\n[... page truncated for length ...]"
-            was_truncated = True
         page = PageInput(page_num=p.page_num, text=text)
 
         if current and (len(current) >= max_pages or current_chars + len(text) > max_chars):
@@ -638,8 +633,6 @@ def plan_chunks(
 
         current.append(page)
         current_chars += len(text)
-        if was_truncated:
-            current_truncated.append(p.page_num)
         new_count += 1
 
     flush()

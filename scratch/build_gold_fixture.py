@@ -44,9 +44,82 @@ def h(text, page, level, parent):
 
 # ===== Front matter (pages 1-10) =====
 h("TENDER NOTICE", 3, 1, None)
+h("NOTE: -", 3, 2, "TENDER NOTICE")
+for n, text, page in [
+    (1, "Other details can be seen in the complete tender documents", 3),
+    (2, "Tender Documents can be downloaded from main portal", 3),
+    (3, "The bid data should be filled in and the bid seals", 3),
+    (4, "The relevant portion of tender which tenderers have to fill online", 3),
+    (5, "Since the online bidders are required to sign their bids online", 3),
+    (6, "Bidders intending to participate in the Tender are required", 3),
+    (7, "The required amount of EMD shall be accepted through online payment only", 4),
+    (8, "No offer will be accepted without valid Earnest Money Deposit", 4),
+    (9, "The corrigendum or addendum to the bidding documents", 4),
+    (10, "Last date for online submission of bid documents", 4),
+    (11, "The Tender document will be available on portal", 4),
+    (12, "The Pre-bid meeting will be held on 09.10.2026", 4),
+    (13, "Only online bids will be considered as valid.", 4),
+]:
+    h(f"({n}) {text}", page, 3, "NOTE: -")
+
 h("Key Dates and Basic Tender Information", 5, 1, None)
+h("Note: -", 5, 2, "Key Dates and Basic Tender Information")
+h("(1) The Tenderers are required to submit all the desired documents", 5, 3, "Note: -")
+h("(2) The Tenderers have to upload following documents online", 5, 3, "Note: -")
+h("(I) IN COVER-1: -", 5, 4, "(2) The Tenderers have to upload following documents online")
+h("(II) IN COVER-2: -", 5, 4, "(2) The Tenderers have to upload following documents online")
+for marker, text, page in [
+    ("i.", "TENDER Forms - upload duly sealed, signed & dated scan copy", 5),
+    ("i.", "Annex-I Performa for Bid Form", 5),
+    ("ii.", "Annex-II Performa for No Deviations from Terms and Conditions of Bid Document", 5),
+    ("iii.", "Annex-III Performa for Undertakings", 5),
+    ("iv.", "Annex-V Performa for Conflict of Interest", 5),
+    ("v.", "Annex-VI Format for blacklisting", 5),
+    ("vi.", "Annex-VII Performa for Pending Litigation", 5),
+    ("ii.", "Documents required against eligibility criteria of the tender", 6),
+]:
+    h(f"{marker} {text}", page, 5, "(II) IN COVER-2: -")
+h("(III) IN COVER -3: -", 6, 4, "(2) The Tenderers have to upload following documents online")
+h("(3) In case of any of above dates is declared as holiday", 6, 3, "Note: -")
+
 h("Section-I: Essential Tender Information", 7, 1, None)
+for n, particulars, page in [
+    (1, "Name of works/services to be procured", 7),
+    (2, "Purchaser", 7),
+    (3, "TENDER/TENDER Specification Number", 7),
+    (4, "TENDER Type", 7),
+    (5, "Contract Period", 7),
+    (6, "TENDER/TENDER Currency Settings", 7),
+    (7, "Non-refundable TENDER document fee/TENDER fee (INR)", 7),
+    (8, "Earnest Money Deposit (INR)", 7),
+    (9, "Availability of TENDER/TENDER documents starts on", 7),
+    (10, "Availability of TENDER documents ends on", 7),
+    (11, "TENDER submission ends on", 7),
+    (12, "TENDER opens on", 7),
+    (13, "Pre-Bid Meeting/Conference if applicable", 7),
+    (14, "TENDER validity period (in days)", 7),
+    (15, "Purchaser address for Correspondence", 7),
+]:
+    h(f"{n}. {particulars}", page, 2, "Section-I: Essential Tender Information")
+
 h("Section-II: Eligibility Criteria for Tenderers", 8, 1, None)
+h("(1) The essential eligibility criteria for Tenderers have been given in the table hereunder:", 8, 2, "Section-II: Eligibility Criteria for Tenderers")
+for n, criteria, page in [
+    (1, "The Sole Bidder/Lead Bidder and the Consortium Partner", 8),
+    (2, "The bidder should be registered in India with GST", 8),
+    (3, "The Sole bidder/Lead bidder and Consortium Partner (in case of consortium) should not have been blacklisted", 8),
+    (4, "The Sole bidder/Lead bidder should have a Minimum Average Annual Turnover", 8),
+    (5, "The Sole bidder/Lead bidder and Consortium Partner (in case of consortium) must have positive net worth", 8),
+    (6, "The Sole bidder/Lead bidder should have successfully executed at least three projects", 9),
+    (7, "The Sole Bidder, in case of an individual bid, or the Lead Bidder/Lead Consortium Member", 9),
+    (8, "The Sole bidder/Lead bidder and Consortium Partner (in case of consortium) must have ISO 9001:2015", 9),
+    (9, "The Sole Bidder/Lead Bidder shall be an active Oracle Partner Network (OPN) member", 9),
+    (10, "The Sole bidder/Lead bidder should have at least 50", 9),
+]:
+    h(f"{n}. {criteria}", page, 2, "(1) The essential eligibility criteria for Tenderers have been given in the table hereunder:")
+h("Note:", 10, 2, "Section-II: Eligibility Criteria for Tenderers")
+h("(i) Bidders needs to mention page no. of the documents attached in the offer", 10, 3, "Note:")
+h("(ii) For the purpose of eligibility criteria work order executed in India", 10, 3, "Note:")
 
 # ===== Section-III: Instructions to Bidders (pages 11-22) =====
 S3 = "Section-III: Instructions to Bidders"
@@ -738,6 +811,21 @@ h("Item-I : Cost for Oracle ERP Version Upgrade", 66, 3, "Annexure-IV: Format fo
 h("Item II - Cost for Operations and Maintenance for five (5) Years", 66, 3, "Annexure-IV: Format for Price Schedule")
 h("Item III \u2013 Cost for GIS Migration/Redevelopment to Oracle Apex, Spatial & ORDS", 67, 3, "Annexure-IV: Format for Price Schedule")
 h("Item IV \u2013 Cost for GIS Operations & Maintenance for four (4) Years", 67, 3, "Annexure-IV: Format for Price Schedule")
+h("Note:", 68, 3, "Annexure-IV: Format for Price Schedule")
+for n, text in [
+    (1, "Successful bidder (L1) will be declared on the basis of grand total amount."),
+    (2, "Grand total amount should be same in both words & figures."),
+    (3, "The total amount quoted against Line Item 1 & Item 3 (Oracle ERP Version Upgrade)"),
+    (4, "It may be noted that Payment for services to be performed under this Contract"),
+    (5, "GST as applicable shall be paid extra."),
+    (6, "The financial evaluation shall be done as per procedure prescribed in Section III"),
+    (7, "Only blank fields are mandatory to be filled."),
+    (8, "In case of discrepancy in the price quoted by the Bidder"),
+    (9, "The UNIT of measurement lump sum (LS) for quoting rate of the item specified"),
+    (10, "It is to certify that the relevant portion of Input Tax Credit"),
+    (11, "If user wants to enter any decimal value than please enter as per given example"),
+]:
+    h(f"{n}. {text}", 68, 4, "Note:")
 h("Annex-V: Performa for Conflict of Interest", 69, 2, S7)
 h("Annex-VI: Performa for Blacklisting", 70, 2, S7)
 h("Annex-VII: Performa for Pending Litigation", 71, 2, S7)
@@ -759,6 +847,7 @@ h("I. Project Management", 77, 4, "e. General principle of Service Level Agreeme
 h("II. Availability Management", 78, 4, "e. General principle of Service Level Agreements")
 h("III. Service Management", 79, 4, "e. General principle of Service Level Agreements")
 h("IV. Application Performance Management", 80, 4, "e. General principle of Service Level Agreements")
+h("Note:", 81, 4, "e. General principle of Service Level Agreements")
 h("f. Breach of SLA", 81, 3, _SLA)
 h("g. Monitoring & Auditing", 81, 3, _SLA)
 h("h. Reporting Procedure", 81, 3, _SLA)
@@ -853,6 +942,19 @@ h("4. Technology & Interoperability", 129, 3, _A13A)
 h("5. Functional Continuity", 129, 3, _A13A)
 
 h("Annexure-XVI: Check List", 130, 2, S7)
+for n, criteria, page in [
+    (1, "The Sole Bidder/Lead Bidder and Consortium Partner (in case of consortium) shall be a company registered", 130),
+    (2, "The bidder should be registered in India with GST", 130),
+    (3, "Bidder should not have been blacklisted by any entity of GoMP", 130),
+    (4, "The Sole bidder/Lead bidder should have a Minimum Average Annual Turnover", 130),
+    (5, "The bidder must have positive net worth during last all three (03) financial years", 130),
+    (6, "The Sole bidder/Lead bidder should have successfully executed at least three projects", 130),
+    (7, "The Sole Bidder, in case of an individual bid, or the Lead Bidder/Lead Consortium Member, in case of", 130),
+    (8, "The Sole bidder/Lead bidder and Consortium Partner (in case of consortium) must have ISO 9001:2015", 131),
+    (9, "The Sole Bidder/Lead Bidder shall be an active Oracle PartnerNetwork (OPN) member", 131),
+    (10, "The Sole bidder/Lead bidder should have at least 50 Full-Time Technical Professionals", 131),
+]:
+    h(f"{n}. {criteria}", page, 3, "Annexure-XVI: Check List")
 
 h("Annexure-XVII", 132, 2, S7)
 h("Consortium Agreement", 132, 3, "Annexure-XVII")

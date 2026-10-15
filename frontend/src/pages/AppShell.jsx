@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
 import { useAuth } from '../utils/AuthContext';
 import { loadPersistedSettings, savePersistedSettings } from '../utils/persistedSettings';
 import Header from '../components/Header';
+import SettingsModal from '../components/SettingsModal';
 import IdleBanner from '../components/IdleBanner';
 import ControlBar from '../components/ControlBar';
-import UploadPanel from '../components/UploadPanel';
-import AdvancedSettingsPanel from '../components/AdvancedSettingsPanel';
-import HistoryPanel from '../components/HistoryPanel';
-import ViewerPanel from '../components/ViewerPanel';
 import { createReferenceStore, mergeDelta } from '../utils/referenceStore';
+
+// AppShell is the parent layout route (see App.jsx): it owns every piece of
+// state the old monolithic Dashboard.jsx used to own directly (job list +
+// polling, the idle timer, settings, the active document's viewer state,
+// structure-tree overrides, the reference-index store, etc.) and stays
+// mounted across navigation between LibraryHome ("/") and StudioView
+// ("/studio/:docId"), which is the whole point of this split: none of that
+// state (job-list polling, the idle timer, ...) is lost when the user
+// navigates between the two pages. It renders the chrome that's always
+// visible (Header/IdleBanner/ControlBar) plus an <Outlet> that hands every
+// piece of state and handler function below to whichever page is active via
+// React Router's useOutletContext() pattern.
 
 const DEFAULT_FORM = {
   engine: 'unlimited',
@@ -29,8 +39,9 @@ const DEFAULT_FORM = {
   escalateBeforeFlagging: true,
 };
 
-export default function Dashboard() {
+export default function AppShell() {
   const { isAdmin } = useAuth();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [form, setForm] = useState(() => {
     const persisted = loadPersistedSettings().form || {};
@@ -42,6 +53,13 @@ export default function Dashboard() {
   const [file, setFile] = useState(null);
   const [localPreviewUrl, setLocalPreviewUrl] = useState(null);
   const [remoteFileUrl, setRemoteFileUrl] = useState(null);
+  // True while the /file blob fetch below is in flight for the current
+  // activeJobId — lets the PDF pane show an honest "loading" state instead
+  // of either the *previous* document (remoteFileUrl isn't cleared until the
+  // new blob replaces it, to avoid a flash to "No document selected") or a
+  // static empty-state message, which is what made clicking a document in
+  // the Library feel like it needed 2-3 clicks to "register."
+  const [fileLoading, setFileLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [prompts, setPrompts] = useState({});
@@ -66,6 +84,12 @@ export default function Dashboard() {
   // whenever reference_index_version moves (the endpoint itself is cached
   // server-side by that same version, so this is cheap to re-issue).
   const [scopeRanges, setScopeRanges] = useState([]);
+
+  // Guided Review Queue (Sprint 6): the job's own flagged pages, re-fetched
+  // whenever the job's review_pages count changes (bumped by
+  // refresh_job_page_counts on every status transition and by
+  // confirm-correct/retry) rather than on every 2.5s poll tick regardless.
+  const [reviewPages, setReviewPages] = useState([]);
 
   // Add/edit/delete/reorder overrides on top of the auto-detected Structure
   // tree — { parents: {item_key: new_parent_key}, order: {scope_key:
@@ -232,7 +256,14 @@ export default function Dashboard() {
     if (!resp.ok) return;
     const data = await resp.json();
     setJobs(data);
-    setActiveJobId((prev) => prev ?? (data.length ? data[0].job_id : null));
+    // Deliberately does NOT auto-select the first job (the old monolithic
+    // Dashboard did, via setActiveJobId((prev) => prev ?? data[0]?.job_id),
+    // so the single-screen layout always showed a document). Now that
+    // Library ("/") and Studio ("/studio/:docId") are separate routes, the
+    // user should land on the list, not get auto-redirected into a
+    // document — activeJobId only ever changes via an explicit action
+    // (submitting a job, resuming one, or StudioView syncing it from the
+    // :docId URL param).
   }, []);
 
   function startAutoPolling() {
@@ -352,6 +383,18 @@ export default function Dashboard() {
   }, [activeJobId, jobDetails?.reference_index_version]);
 
   useEffect(() => {
+    if (!activeJobId) { setReviewPages([]); return; }
+    let cancelled = false;
+    (async () => {
+      const resp = await apiFetch(`/api/jobs/${activeJobId}/review-pages?limit=200`);
+      if (!resp.ok || cancelled) return;
+      const body = await resp.json();
+      if (!cancelled) setReviewPages(body.pages || []);
+    })();
+    return () => { cancelled = true; };
+  }, [activeJobId, jobDetails?.review_pages]);
+
+  useEffect(() => {
     if (!reindexState || reindexState.jobId !== activeJobId) return;
     const currentVersion = jobDetails?.reference_index_version || 0;
     if (currentVersion > reindexState.startVersion) {
@@ -434,12 +477,15 @@ export default function Dashboard() {
     let cancelled = false;
 
     if (!activeJobId) {
+      setFileLoading(false);
       setRemoteFileUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
       return;
     }
+
+    setFileLoading(true);
 
     (async () => {
       try {
@@ -465,6 +511,8 @@ export default function Dashboard() {
           if (prev) URL.revokeObjectURL(prev);
           return null;
         });
+      } finally {
+        if (!cancelled) setFileLoading(false);
       }
     })();
 
@@ -576,6 +624,46 @@ export default function Dashboard() {
     } finally {
       setRetryingPage(null);
     }
+  }
+
+  async function handleSavePageText(pageNum, text) {
+    if (!activeJobId) return;
+    const resp = await apiFetch(`/api/jobs/${activeJobId}/pages/${pageNum}/text`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert(`Save failed: ${err.detail || resp.statusText}`);
+      return;
+    }
+    const updated = await resp.json();
+    setJobDetails((jd) => jd ? {
+      ...jd,
+      pages_data: jd.pages_data.map((p) => (p.page_num === updated.page_num ? { ...p, ...updated } : p)),
+    } : jd);
+  }
+
+  // Guided Review Queue's "[✓ Mark Verified & Next]" — closes out a flagged
+  // page with no reason required (confirm-correct), then removes it from the
+  // locally-held queue immediately rather than waiting for the next
+  // review_pages-keyed refetch, so the queue list and the "next" jump
+  // ViewerPanel computes from it both update in the same tick.
+  async function handleConfirmCorrectPage(pageNum) {
+    if (!activeJobId) return;
+    const resp = await apiFetch(`/api/jobs/${activeJobId}/pages/${pageNum}/confirm-correct`, { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert(`Could not mark verified: ${err.detail || resp.statusText}`);
+      return;
+    }
+    const updated = await resp.json();
+    setJobDetails((jd) => jd ? {
+      ...jd,
+      pages_data: jd.pages_data.map((p) => (p.page_num === updated.page_num ? { ...p, ...updated } : p)),
+    } : jd);
+    setReviewPages((pages) => pages.filter((p) => p.page_num !== updated.page_num));
   }
 
   async function handleRetryPages(scope) {
@@ -769,6 +857,14 @@ export default function Dashboard() {
   function handleDownloadResult(jobId) {
     _downloadViaAuthedFetch(`/api/jobs/${jobId}/download-result`, `${jobId}_ocr_result.md`);
   }
+  function handleExportDocument(jobId, { format, scope, includeMetadata, pageNum, pageRange }) {
+    if (!jobId) return;
+    const params = new URLSearchParams({ format, scope });
+    if (scope === 'page' && pageNum) params.set('page_num', String(pageNum));
+    if (scope === 'range' && pageRange) params.set('page_range', pageRange);
+    params.set('include_metadata', includeMetadata ? 'true' : 'false');
+    _downloadViaAuthedFetch(`/api/jobs/${jobId}/export?${params.toString()}`, `${jobId}_export.${format}`);
+  }
   async function handleStopAll() {
     if (!confirm('Stop all running OCR extractions? Pages extracted so far are preserved.')) return;
     await apiFetch('/api/jobs/stop-all', { method: 'POST' });
@@ -873,87 +969,78 @@ export default function Dashboard() {
 
   const pdfSrc = file ? localPreviewUrl : remoteFileUrl;
   const pdfStatusLabel = file ? `${file.name} (local preview)` : (jobDetails ? `${jobDetails.filename} (${jobDetails.total_pages}p)` : 'No document selected');
+  const hasSelection = !!(file || activeJobId);
+  const reindexing = !!(reindexState && reindexState.jobId === activeJobId) || !!jobDetails?.reference_index_reindexing;
+
+  const location = useLocation();
+  const isStudio = location.pathname.startsWith('/studio');
 
   return (
-    <div className="container">
-      <Header idleState={idle} gpuStatus={gpuStatus} onExit={handleExit} />
-      <IdleBanner visible={idleBanner.visible} expired={idleBanner.expired} message={idleBanner.message} onKeepAlive={handleKeepAlive} />
-      <ControlBar visible={hasActiveJobs} onPauseCurrent={() => activeJobId && handlePause(activeJobId)} onStopAll={handleStopAll} />
+    <div className={`container app-shell-container${isStudio ? ' is-studio' : ''}`}>
+      <Header onOpenSettings={() => setSettingsOpen(true)} />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        idleState={idle}
+        gpuStatus={gpuStatus}
+        onExit={handleExit}
+        form={form}
+        updateForm={updateForm}
+        prompts={prompts}
+        defaults={defaults}
+        onSavePrompt={handleSavePrompt}
+        onResetPrompt={handleResetPrompt}
+        settings={settings}
+        onSaveOutputPath={handleSaveOutputPath}
+        onSaveIdleTimeout={handleSaveIdleTimeout}
+        onSaveLongPrompts={handleSaveLongPrompts}
+        onSaveGrounding={handleSaveGrounding}
+        onSaveAiIndexing={handleSaveAiIndexing}
+        onSaveAiChunkPages={handleSaveAiChunkPages}
+        onSaveAiReviewRulePrior={handleSaveAiReviewRulePrior}
+        onSaveAiChunkOverlapPages={handleSaveAiChunkOverlapPages}
+        aiIndexStatus={aiIndexStatus}
+        onTestAiConnection={handleTestAiConnection}
+      />
+      {!isStudio && <IdleBanner visible={idleBanner.visible} expired={idleBanner.expired} message={idleBanner.message} onKeepAlive={handleKeepAlive} />}
+      {!isStudio && <ControlBar visible={hasActiveJobs} onPauseCurrent={() => activeJobId && handlePause(activeJobId)} onStopAll={handleStopAll} />}
 
-      <div className={`dashboard${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
-        <div className="sidebar">
-          <UploadPanel
-            file={file}
-            onFileSelected={handleFileSelected}
-            onClearFile={handleClearFile}
-            form={form}
-            updateForm={updateForm}
-            onSubmit={handleSubmit}
-            submitting={submitting}
-          />
-          <AdvancedSettingsPanel
-            form={form}
-            updateForm={updateForm}
-            prompts={prompts}
-            defaults={defaults}
-            onSavePrompt={handleSavePrompt}
-            onResetPrompt={handleResetPrompt}
-            settings={settings}
-            onSaveOutputPath={handleSaveOutputPath}
-            onSaveIdleTimeout={handleSaveIdleTimeout}
-            onSaveLongPrompts={handleSaveLongPrompts}
-            onSaveGrounding={handleSaveGrounding}
-            onSaveAiIndexing={handleSaveAiIndexing}
-            onSaveAiChunkPages={handleSaveAiChunkPages}
-            onSaveAiReviewRulePrior={handleSaveAiReviewRulePrior}
-            onSaveAiChunkOverlapPages={handleSaveAiChunkOverlapPages}
-            aiIndexStatus={aiIndexStatus}
-            onTestAiConnection={handleTestAiConnection}
-          />
-          <HistoryPanel
-            jobs={jobs}
-            activeJobId={activeJobId}
-            onSelect={setActiveJobId}
-            onPause={handlePause}
-            onRetry={handleRetry}
-            onDownloadFile={handleDownloadFile}
-            onDownloadResult={handleDownloadResult}
-            onDelete={handleDelete}
-            onRefresh={loadJobsList}
-          />
-        </div>
-
-        <ViewerPanel
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-          pdfSrc={pdfSrc}
-          pdfStatusLabel={pdfStatusLabel}
-          jobDetails={jobDetails}
-          hasSelection={!!(file || activeJobId)}
-          onPause={() => activeJobId && handlePause(activeJobId)}
-          onResume={() => activeJobId && handleRetry(activeJobId)}
-          onDownloadPdf={() => activeJobId && handleDownloadFile(activeJobId)}
-          onDownloadResult={() => activeJobId && handleDownloadResult(activeJobId)}
-          sidebarCollapsed={sidebarCollapsed}
-          onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
-          onRetryPage={handleRetryPage}
-          retryingPage={retryingPage}
-          onRetryPages={handleRetryPages}
-          onReindexReferences={(textSource) => activeJobId && handleReindexReferences(activeJobId, textSource)}
-          reindexing={!!(reindexState && reindexState.jobId === activeJobId) || !!jobDetails?.reference_index_reindexing}
-          referenceStore={referenceStoreRef.current}
-          scopeRanges={scopeRanges}
-          onCurrentPageChange={setCurrentPdfPage}
-          structureContent={structureContent}
-          onRequestStructureContent={handleRequestStructureContent}
-          parentOverrides={structureHierarchy.parents}
-          sortOverrides={structureHierarchy.order}
-          onAddStructureItem={handleAddStructureItem}
-          onEditStructureItem={handleEditStructureItem}
-          onDeleteStructureItem={handleDeleteStructureItem}
-          onMoveStructureItem={handleMoveStructureItem}
-        />
-      </div>
+      <Outlet
+        context={{
+          onOpenSettings: () => setSettingsOpen(true),
+          // Upload / submit (LibraryHome)
+          file, onFileSelected: handleFileSelected, onClearFile: handleClearFile,
+          form, updateForm, onSubmit: handleSubmit, submitting,
+          // Advanced settings (LibraryHome)
+          prompts, defaults, onSavePrompt: handleSavePrompt, onResetPrompt: handleResetPrompt,
+          settings, onSaveOutputPath: handleSaveOutputPath, onSaveIdleTimeout: handleSaveIdleTimeout,
+          onSaveLongPrompts: handleSaveLongPrompts, onSaveGrounding: handleSaveGrounding,
+          onSaveAiIndexing: handleSaveAiIndexing, onSaveAiChunkPages: handleSaveAiChunkPages,
+          onSaveAiReviewRulePrior: handleSaveAiReviewRulePrior, onSaveAiChunkOverlapPages: handleSaveAiChunkOverlapPages,
+          aiIndexStatus, onTestAiConnection: handleTestAiConnection,
+          // Job list / history (LibraryHome)
+          jobs, activeJobId, onPause: handlePause, onRetry: handleRetry,
+          onDownloadFile: handleDownloadFile, onDownloadResult: handleDownloadResult,
+          onDelete: handleDelete, onRefresh: loadJobsList,
+          // Shared layout state (LibraryHome's .dashboard grid class + StudioView's viewer toggle)
+          sidebarCollapsed, setSidebarCollapsed,
+          // Active-document sync (StudioView sets this from its :docId URL param)
+          setActiveJobId,
+          // Viewer (StudioView → ViewerPanel)
+          viewMode, setViewMode, pdfSrc, pdfStatusLabel, jobDetails, hasSelection, fileLoading,
+          handlePause, handleRetry, handleDownloadFile, handleDownloadResult,
+          handleSavePageText, handleExportDocument,
+          handleRetryPage, retryingPage, handleRetryPages,
+          handleReindexReferences, reindexing,
+          reviewPages, handleConfirmCorrectPage,
+          referenceStore: referenceStoreRef.current,
+          scopeRanges,
+          setCurrentPdfPage,
+          structureContent, handleRequestStructureContent,
+          parentOverrides: structureHierarchy.parents, sortOverrides: structureHierarchy.order,
+          handleAddStructureItem, handleEditStructureItem, handleDeleteStructureItem, handleMoveStructureItem,
+        }}
+      />
     </div>
   );
 }

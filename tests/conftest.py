@@ -98,6 +98,14 @@ def user_token():
 
 
 @pytest.fixture()
+def other_user_token():
+    """A second, distinct non-admin user — for ownership tests, where
+    `user_token` (dev-user-001) and this one (dev-user-002) must each see
+    only their own jobs, never each other's."""
+    return _make_dev_token("dev-user-002", ["user"])
+
+
+@pytest.fixture()
 def auth_headers(admin_token):
     return {"Authorization": f"Bearer {admin_token}"}
 

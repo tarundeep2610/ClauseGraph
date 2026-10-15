@@ -166,3 +166,58 @@ def test_download_result_clean_tables_no_op_when_overlap_disabled(client, auth_h
     resp = client.get(f"/api/jobs/{job_id}/download-result?clean_tables=true", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.text.count("## Page") == 2, "clean_tables must not merge anything when stitching is disabled"
+
+
+# ─── PATCH .../pages/{page_num}/text — WYSIWYG editor autosave ──────────────
+
+def test_update_page_text_saves_to_both_text_and_formatted_text(client, auth_headers, tmp_path):
+    job_id = _job_with_pages(tmp_path)
+    resp = client.patch(
+        f"/api/jobs/{job_id}/pages/1/text", json={"text": "# Edited Heading\n\nNew body text."}, headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["text"] == "# Edited Heading\n\nNew body text."
+    assert body["formatted_text"] == "# Edited Heading\n\nNew body text."
+
+    page = database.get_page(job_id, 1)
+    assert page["text"] == "# Edited Heading\n\nNew body text."
+    assert page["formatted_text"] == "# Edited Heading\n\nNew body text."
+
+
+def test_update_page_text_bumps_reference_index_version(client, auth_headers, tmp_path):
+    job_id = _job_with_pages(tmp_path)
+    before = database.get_job(job_id, include_pages=False)["reference_index_version"]
+    resp = client.patch(f"/api/jobs/{job_id}/pages/1/text", json={"text": "edited"}, headers=auth_headers)
+    assert resp.status_code == 200
+    after = database.get_job(job_id, include_pages=False)["reference_index_version"]
+    assert after > before
+
+
+def test_update_page_text_missing_page_404s(client, auth_headers, tmp_path):
+    job_id = _job_with_pages(tmp_path)
+    resp = client.patch(f"/api/jobs/{job_id}/pages/99/text", json={"text": "x"}, headers=auth_headers)
+    assert resp.status_code == 404
+
+
+def test_update_page_text_requires_text_field(client, auth_headers, tmp_path):
+    job_id = _job_with_pages(tmp_path)
+    resp = client.patch(f"/api/jobs/{job_id}/pages/1/text", json={}, headers=auth_headers)
+    assert resp.status_code == 400
+
+
+def test_update_page_text_allowed_for_non_admin_owner(client, user_token, tmp_path):
+    import database as db
+    job_id = _job_with_pages(tmp_path)
+    # _job_with_pages doesn't set an owner — directly set it so the ownership
+    # check (admin bypasses, user must own) actually exercises the "owner" path.
+    conn = db.get_db_connection()
+    conn.execute("UPDATE ocr_jobs SET owner_id = ? WHERE job_id = ?", ("dev-user-001", job_id))
+    conn.commit()
+    conn.close()
+
+    resp = client.patch(
+        f"/api/jobs/{job_id}/pages/1/text", json={"text": "proofread by a regular user"},
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert resp.status_code == 200, "a non-admin must be able to save their own in-place edits — this is the general user's primary review action"

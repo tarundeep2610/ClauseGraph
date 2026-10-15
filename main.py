@@ -29,12 +29,13 @@ import ai_indexing
 import gpu_ocr_client
 import chunking
 import confidence
-import seam_stitching
-from auth_deps import Principal, UserRole, require_role
+import export_service
+from auth_deps import Principal, UserRole, require_role, require_job_access
 from auth_router import router as auth_router
 
 _require_admin = require_role([UserRole.ADMIN])
 _require_user = require_role([UserRole.ADMIN, UserRole.USER])
+_require_job_access = require_job_access
 
 # ─── Unlimited-OCR native engine ────────────────────────────────────────────
 try:
@@ -123,8 +124,13 @@ app.add_middleware(_ActivityMiddleware)
 _CSP = (
     "default-src 'self'; "
     "script-src 'self'; "
-    "style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline'; "
-    "font-src https://cdnjs.cloudflare.com; "
+    # Inter (frontend/index.html) is loaded from Google Fonts the same way
+    # Font Awesome is loaded from cdnjs: the stylesheet comes from
+    # fonts.googleapis.com, the actual font files it @font-face's in from
+    # fonts.gstatic.com — both need an explicit allow or the browser silently
+    # drops the font and falls back to the next item in the font-family stack.
+    "style-src 'self' https://cdnjs.cloudflare.com https://fonts.googleapis.com 'unsafe-inline'; "
+    "font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
     "img-src 'self' data: blob:; "
     "frame-src 'self' blob:; "
     "connect-src 'self' blob:; "
@@ -641,6 +647,7 @@ async def submit_ocr_job(
         batch_size=effective_batch_size,
         enable_overlap=enable_overlap,
         escalate_before_flagging=escalate_before_flagging,
+        owner_id=principal.subject,
     )
 
     _glm_runner, _unlimited_runner, _unlimited_multi_runner = _build_runners(engine_params)
@@ -668,8 +675,10 @@ async def submit_ocr_job(
 
 @app.get("/api/jobs")
 def list_ocr_jobs(limit: int = Query(50, ge=1, le=200), principal: Principal = Depends(_require_user)):
-    """Lists all past and current OCR jobs for the UI Document History Panel."""
-    return database.list_jobs(limit=limit)
+    """Lists OCR jobs for the UI Document History Panel — every job for an
+    admin (oversight), only the caller's own uploads for a `user`."""
+    owner_id = None if principal.role.lower() == UserRole.ADMIN.value else principal.subject
+    return database.list_jobs(limit=limit, owner_id=owner_id)
 
 @app.post("/api/jobs/stop-all")
 async def stop_all_ocr_jobs(principal: Principal = Depends(_require_admin)):
@@ -718,7 +727,7 @@ def get_ocr_job(
     page_from: int = Query(None, ge=1),
     page_to: int = Query(None, ge=1),
     accept_partial: bool = Query(False, description="Return base-pass results even if escalation is still pending"),
-    principal: Principal = Depends(_require_user)
+    principal: Principal = Depends(_require_job_access)
 ):
     """Retrieves full details, live progress, and extracted text for a specific job."""
     job = database.get_job(job_id, include_pages=False)
@@ -745,7 +754,7 @@ def get_ocr_job(
 @app.post("/api/jobs/{job_id}/reindex-references")
 async def reindex_job_references(
     job_id: str, mode: Optional[str] = None,
-    principal: Principal = Depends(_require_user),
+    principal: Principal = Depends(_require_job_access),
 ):
     """Rebuilds the cross-reference index for a job from its already-stored
     page text — for a job OCR'd before this feature existed (so it has zero
@@ -797,6 +806,12 @@ async def reindex_job_references(
     review_rule_prior_override = current_settings.get("ai_index_review_rule_prior")
     overlap_pages_override = current_settings.get("ai_index_chunk_overlap_pages")
 
+    # Stamped on request, not completion — this flag means "the user asked
+    # for this," not "the rebuild has finished" (the existing
+    # reference_index_reindexing / reindexing UI state already covers the
+    # in-flight window). See database.mark_index_built's docstring: this is
+    # the only place that ever sets it.
+    database.mark_index_built(job_id)
     asyncio.create_task(reference_index.reindex_job(
         job_id, force_mode=resolved_mode, chunk_pages_override=chunk_pages_override,
         review_rule_prior_override=review_rule_prior_override,
@@ -835,7 +850,7 @@ async def ai_index_test_endpoint(principal: Principal = Depends(_require_admin))
         return {"ok": False, "detail": redact_secrets(str(e))}
 
 @app.get("/api/jobs/{job_id}/scope-ranges")
-def get_job_scope_ranges(job_id: str, principal: Principal = Depends(_require_user)):
+def get_job_scope_ranges(job_id: str, principal: Principal = Depends(_require_job_access)):
     """Part B: for every container that was ever the active structural
     ancestor on some page, the contiguous physical-page range(s) it spans —
     derived from each page's persisted end_of_page_scope stack, cached per
@@ -866,7 +881,7 @@ def get_job_scope_ranges(job_id: str, principal: Principal = Depends(_require_us
 def get_job_references(
     job_id: str,
     since_version: int = Query(0, ge=0),
-    principal: Principal = Depends(_require_user),
+    principal: Principal = Depends(_require_job_access),
 ):
     """Page-delta cross-reference index fetch: returns only the pages whose
     candidate targets changed since since_version, each with its complete
@@ -911,7 +926,7 @@ def get_job_references(
 
 
 @app.get("/api/jobs/{job_id}/references/rule-diff")
-def get_job_references_rule_diff(job_id: str, principal: Principal = Depends(_require_user)):
+def get_job_references_rule_diff(job_id: str, principal: Principal = Depends(_require_job_access)):
     """Compares current active reference targets against stored rule-detection snapshot."""
     job = database.get_job(job_id, include_pages=False)
     if not job:
@@ -964,7 +979,7 @@ def get_job_references_rule_diff(job_id: str, principal: Principal = Depends(_re
 
 
 @app.post("/api/jobs/{job_id}/references/revert-to-rule")
-async def revert_job_references_to_rule(job_id: str, principal: Principal = Depends(_require_user)):
+async def revert_job_references_to_rule(job_id: str, principal: Principal = Depends(_require_job_access)):
     """Reverts reference targets to the rule-detected baseline snapshot and rebuilds mentions."""
     job = database.get_job(job_id, include_pages=False)
     if not job:
@@ -1021,7 +1036,7 @@ async def revert_job_references_to_rule(job_id: str, principal: Principal = Depe
 
 
 @app.post("/api/jobs/{job_id}/references/build-mentions")
-def build_job_mentions(job_id: str, principal: Principal = Depends(_require_user)):
+def build_job_mentions(job_id: str, principal: Principal = Depends(_require_job_access)):
     """Manual/backfill trigger to compute and persist mentions for a job."""
     job = database.get_job(job_id, include_pages=False)
     if not job:
@@ -1040,7 +1055,7 @@ def build_job_mentions(job_id: str, principal: Principal = Depends(_require_user
 # construction). ──────────────────────────────────────────────────────────
 
 @app.post("/api/jobs/{job_id}/structure-items", status_code=201)
-def create_structure_item(job_id: str, body: dict, principal: Principal = Depends(_require_user)):
+def create_structure_item(job_id: str, body: dict, principal: Principal = Depends(_require_job_access)):
     """Adds a user-created ("manual") node to the Structure tree."""
     job = database.get_job(job_id, include_pages=False)
     if not job:
@@ -1073,7 +1088,7 @@ def create_structure_item(job_id: str, body: dict, principal: Principal = Depend
 def update_structure_item(
     job_id: str, item_key: str, body: dict,
     page: Optional[int] = Query(None), occurrence_index: int = Query(0),
-    principal: Principal = Depends(_require_user),
+    principal: Principal = Depends(_require_job_access),
 ):
     """Edits a structure item's heading and/or page range — either a
     detected row (identified by key+page+occurrence_index, stored as an
@@ -1172,7 +1187,7 @@ def update_structure_item(
 def delete_structure_item(
     job_id: str, item_key: str,
     page: Optional[int] = Query(None), occurrence_index: int = Query(0),
-    principal: Principal = Depends(_require_user),
+    principal: Principal = Depends(_require_job_access),
 ):
     job = database.get_job(job_id, include_pages=False)
     if not job:
@@ -1204,7 +1219,7 @@ def delete_structure_item(
 
 
 @app.post("/api/jobs/{job_id}/structure-items/move")
-def move_structure_item(job_id: str, body: dict, principal: Principal = Depends(_require_user)):
+def move_structure_item(job_id: str, body: dict, principal: Principal = Depends(_require_job_access)):
     """Reparents and/or reorders an item in the Structure tree. Never
     touches any page's own detected candidates — only how the client nests
     already-existing keys — so unlike every other mutation above, no
@@ -1283,7 +1298,7 @@ def move_structure_item(job_id: str, body: dict, principal: Principal = Depends(
 
 
 @app.get("/api/jobs/{job_id}/structure-hierarchy-overrides")
-def get_structure_hierarchy_overrides(job_id: str, principal: Principal = Depends(_require_user)):
+def get_structure_hierarchy_overrides(job_id: str, principal: Principal = Depends(_require_job_access)):
     """Plain passthrough of the parent/sort override tables — no merge
     logic, the frontend applies these on top of the natural scope_chain-
     derived tree itself. Returned as flat row lists, not pre-grouped maps —
@@ -1304,7 +1319,7 @@ def get_structure_hierarchy_overrides(job_id: str, principal: Principal = Depend
 def get_job_uploaded_file(
     job_id: str,
     download: bool = Query(False, description="Set to true to force file download"),
-    principal: Principal = Depends(_require_user)
+    principal: Principal = Depends(_require_job_access)
 ):
     """Serves the original uploaded PDF or image file for preview or downloading."""
     job = database.get_job(job_id)
@@ -1326,7 +1341,7 @@ def get_job_file_page_range(
     job_id: str,
     start: int = Query(..., ge=1),
     end: int = Query(..., ge=1),
-    principal: Principal = Depends(_require_user),
+    principal: Principal = Depends(_require_job_access),
 ):
     """Part C3: extracts a contiguous page range from the original uploaded
     PDF into a small standalone PDF — the "chunk" the Structure sidebar
@@ -1362,7 +1377,7 @@ def download_ocr_result(
     job_id: str,
     include: str = Query("all", pattern="^(all|clean|review)$", description="'all' (with review banners), 'clean' (flagged pages omitted), or 'review' (only flagged pages)"),
     clean_tables: bool = Query(False, description="Merge detected table continuations into one table for structured-data consumers, dropping page anchors at the seam"),
-    principal: Principal = Depends(_require_user)
+    principal: Principal = Depends(_require_job_access)
 ):
     """Downloads the extracted OCR result text as a formatted Markdown (.md) document."""
     job = database.get_job(job_id, include_pages=False)
@@ -1370,53 +1385,12 @@ def download_ocr_result(
         raise HTTPException(status_code=404, detail="Job not found")
 
     pages = database.get_pages(job_id)
-    filename = job['filename']
-    base_name = os.path.splitext(filename)[0]
+    base_name = os.path.splitext(job['filename'])[0]
 
-    flagged = [p for p in pages if p.get('needs_review')]
-    if include == "clean":
-        pages = [p for p in pages if not p.get('needs_review')]
-    elif include == "review":
-        pages = flagged
-
-    header_lines = [
-        f"# OCR Extraction Report: {filename}",
-        f"- **Engine**: {job['engine'].upper()}",
-        f"- **Pages**: {job['total_pages']}",
-        f"- **Status**: {job['status'].upper()}",
-        f"- **Created At**: {job['created_at']}",
-    ]
-    if job['status'] == 'escalating':
-        header_lines.append("- **⚠️ Note**: escalation is still in progress for some pages — this snapshot may improve once it finishes.")
-    if include == "all" and flagged:
-        header_lines.append(f"\n## Review Summary ({len(flagged)} page(s) flagged)\n")
-        for p in flagged:
-            header_lines.append(f"- Page {p['page_num']}: confidence {round((p.get('confidence') or 0) * 100)}% — {p.get('review_reason') or 'flagged'}")
-
-    # Stitching follows the job's own overlap setting — single-page mode never has
-    # overlap so it never stitches; batch mode stitches only when it opted in.
-    stitch = job.get('processing_mode') == 'batch' and bool(job.get('enable_overlap', True))
-
-    # formatted_text (headings/tables/columns) is preferred when present,
-    # same fallback contract as the viewer. Batch-mode/stitched exports never
-    # populate it today (batch processing doesn't thread raw_text through to
-    # the formatter), so this never interacts with seam_stitching's own
-    # overlap/seam detection in practice — that path always sees plain text.
-    export_pages = [{"page": p["page_num"], "text": p.get("formatted_text") or p.get("text", "")} for p in pages]
-    body = seam_stitching.render_export(export_pages, clean_tables=clean_tables, stitch=stitch)
-
-    if include == "all":
-        # Banner each flagged page's own block so it's never silently blended in.
-        for p in flagged:
-            marker = f"## Page {p['page_num']}\n\n"
-            banner = (
-                f"## Page {p['page_num']}\n\n> ⚠️ **NEEDS HUMAN REVIEW** — confidence "
-                f"{round((p.get('confidence') or 0) * 100)}% ({p.get('review_reason') or 'flagged'}). "
-                f"This transcript may be incomplete.\n\n"
-            )
-            body = body.replace(marker, banner, 1)
-
-    markdown_content = "\n".join(header_lines) + "\n\n---\n\n" + body
+    # Content/banner logic now lives in export_service.build_markdown, shared
+    # with the multi-format GET .../export endpoint below so .md/.docx/.pdf
+    # can never drift out of sync with each other.
+    markdown_content = export_service.build_markdown(job, pages, include=include, clean_tables=clean_tables)
     out_filename = f"{base_name}_ocr_result.md"
 
     return Response(
@@ -1425,8 +1399,49 @@ def download_ocr_result(
         headers={"Content-Disposition": _content_disposition("attachment", out_filename)}
     )
 
+@app.get("/api/jobs/{job_id}/export")
+def export_job_document(
+    job_id: str,
+    format: str = Query(..., pattern="^(md|docx|pdf)$", description="'md', 'docx', or 'pdf'"),
+    scope: str = Query("full", pattern="^(full|page|range)$", description="'full' document, a single 'page' (needs page_num), or a custom 'range' (needs page_range)"),
+    page_num: Optional[int] = Query(None, ge=1, description="Required when scope=page"),
+    page_range: Optional[str] = Query(None, description="Required when scope=range, e.g. '1-5,12,19-24'"),
+    include: str = Query("all", pattern="^(all|clean|review)$"),
+    clean_tables: bool = Query(False),
+    include_metadata: bool = Query(True, description="Include the report header (engine/pages/status) and review-summary banners"),
+    principal: Principal = Depends(_require_job_access),
+):
+    """Multi-format export (Markdown / Word / PDF) with page-scope selection —
+    the Studio redesign's `[Export Document ▾]` action. Renders through the
+    exact same Markdown content as GET .../download-result (see
+    export_service.build_markdown), so every format is guaranteed identical
+    in substance; only the container format differs."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    pages = database.get_pages(job_id)
+    base_name = os.path.splitext(job['filename'])[0]
+
+    try:
+        data, content_type, ext = export_service.export_document(
+            job, pages, fmt=format, scope=scope, page_num=page_num, page_range=page_range,
+            include=include, clean_tables=clean_tables, include_metadata=include_metadata,
+        )
+    except export_service.ExportError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    scope_suffix = f"_p{page_num}" if scope == "page" else (f"_range" if scope == "range" else "")
+    out_filename = f"{base_name}_ocr_result{scope_suffix}.{ext}"
+
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Content-Disposition": _content_disposition("attachment", out_filename)}
+    )
+
 @app.post("/api/jobs/{job_id}/pause")
-def pause_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
+def pause_ocr_job(job_id: str, principal: Principal = Depends(_require_job_access)):
     """Pause a running OCR job after its current page completes."""
     job = database.get_job(job_id)
     if not job:
@@ -1437,7 +1452,7 @@ def pause_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
     return {"message": f"Job {job_id} will pause after the current page.", "status": "pausing"}
 
 @app.post("/api/jobs/{job_id}/retry")
-async def retry_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
+async def retry_ocr_job(job_id: str, principal: Principal = Depends(_require_job_access)):
     """Retries or resumes a failed or stuck OCR job."""
     _check_rate_limit(principal.rate_limit_key)
     job = database.get_job(job_id)
@@ -1464,7 +1479,7 @@ async def retry_ocr_job(job_id: str, principal: Principal = Depends(_require_use
 # ─── Human review queue & manual per-page retry ───────────────────────────────
 
 @app.get("/api/jobs/{job_id}/review-pages")
-def get_job_review_pages(job_id: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), principal: Principal = Depends(_require_user)):
+def get_job_review_pages(job_id: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), principal: Principal = Depends(_require_job_access)):
     """Flagged pages for one job, ordered by confidence ascending (worst first)."""
     if not database.get_job(job_id, include_pages=False):
         raise HTTPException(status_code=404, detail="Job not found")
@@ -1477,7 +1492,8 @@ def get_review_queue(limit: int = Query(50, ge=1, le=200), offset: int = Query(0
     pages are intentionally indistinguishable here from genuine low-confidence
     flags (see the confidence-calibration design notes) — review_reason is never
     surfaced as 'audit_sample' to this endpoint's caller for that reason."""
-    pages = database.list_review_pages(limit=limit, offset=offset)
+    owner_id = None if principal.role.lower() == UserRole.ADMIN.value else principal.subject
+    pages = database.list_review_pages(limit=limit, offset=offset, owner_id=owner_id)
     for p in pages:
         _annotate_page_confidence(p)
         if p.get("review_reason") == "audit_sample":
@@ -1485,7 +1501,7 @@ def get_review_queue(limit: int = Query(50, ge=1, le=200), offset: int = Query(0
     return {"pages": pages}
 
 @app.get("/api/jobs/{job_id}/pages/{page_num}/attempts")
-def get_page_attempts(job_id: str, page_num: int, principal: Principal = Depends(_require_user)):
+def get_page_attempts(job_id: str, page_num: int, principal: Principal = Depends(_require_job_access)):
     if not database.get_job(job_id, include_pages=False):
         raise HTTPException(status_code=404, detail="Job not found")
     return {"attempts": database.get_page_attempts(job_id, page_num)}
@@ -1494,7 +1510,7 @@ def get_page_attempts(job_id: str, page_num: int, principal: Principal = Depends
 async def retry_ocr_page(
     job_id: str, page_num: int,
     escalate: bool = Query(False, description="true = try the other engine instead of the same one"),
-    principal: Principal = Depends(_require_user)
+    principal: Principal = Depends(_require_admin)
 ):
     """Manual per-page retry — same engine by default, or the other engine with
     ?escalate=true. Safe to call on an already-completed job (only this page's row
@@ -1528,7 +1544,7 @@ async def retry_ocr_page(
 async def retry_job_pages(
     job_id: str,
     scope: str = Query(..., pattern="^(all|failed|review)$", description="'all' = every page, 'failed' = only hard-failed pages, 'review' = only low-confidence/needs-review pages"),
-    principal: Principal = Depends(_require_user)
+    principal: Principal = Depends(_require_admin)
 ):
     """Bulk manual retry - re-runs the selected pages at escalation quality
     (max scale + tiling + 1.5x timeout, keeping whichever result scores
@@ -1560,7 +1576,7 @@ async def retry_job_pages(
     return {"message": f"Bulk retry ({scope}) started for job {job_id}.", "status": "escalating"}
 
 @app.post("/api/jobs/{job_id}/pages/{page_num}/confirm-correct")
-def confirm_page_correct(job_id: str, page_num: int, principal: Principal = Depends(_require_user)):
+def confirm_page_correct(job_id: str, page_num: int, principal: Principal = Depends(_require_job_access)):
     """Fast 'nothing wrong here' close-out for a review-queue item — no reason
     required, so a reviewer who finds nothing wrong can close it out immediately,
     exactly as fast as if they'd known in advance it was fine."""
@@ -1571,8 +1587,33 @@ def confirm_page_correct(job_id: str, page_num: int, principal: Principal = Depe
     database.refresh_job_page_counts(job_id)
     return _annotate_page_confidence(database.get_page(job_id, page_num))
 
+@app.patch("/api/jobs/{job_id}/pages/{page_num}/text")
+def update_page_text(job_id: str, page_num: int, body: dict, principal: Principal = Depends(_require_job_access)):
+    """Saves a manual edit from the WYSIWYG editor (debounced autosave on the
+    frontend) — available to both roles, since direct in-place proofreading is
+    the general user's primary review action per the Studio redesign (only
+    GPU re-extraction/'Rerun' is admin-gated, not ordinary text correction).
+
+    Writes the same Markdown string to both `text` and `formatted_text`: once
+    a human has edited a page, that edit IS the page's content regardless of
+    which field a reader prefers (ViewerPanel's own fallback is
+    `formatted_text || text`), and every other consumer (reference indexing,
+    structure detection, exports) should see the edit too."""
+    text = body.get("text")
+    if text is None or not isinstance(text, str):
+        raise HTTPException(status_code=400, detail="'text' (string) is required")
+    page = database.get_page(job_id, page_num)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    database.upsert_page(job_id, page_num, text=text, formatted_text=text)
+    # A manual edit can add/remove/alter cross-reference mentions on this
+    # page — bump the version so the existing reindex-staleness machinery
+    # (the same one structure-item CRUD already uses) picks it up.
+    database.bump_reference_index_version(job_id)
+    return _annotate_page_confidence(database.get_page(job_id, page_num))
+
 @app.delete("/api/jobs/{job_id}")
-async def delete_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
+async def delete_ocr_job(job_id: str, principal: Principal = Depends(_require_job_access)):
     """Deletes an OCR job and removes its associated uploaded file from disk."""
     if task_queue.is_job_active(job_id):
         task_queue.cancel_job(job_id)

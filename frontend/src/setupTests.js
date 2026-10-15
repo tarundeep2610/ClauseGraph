@@ -17,3 +17,19 @@ if (typeof HTMLCanvasElement !== 'undefined') {
     return {};
   };
 }
+
+// jsdom has no real layout engine, so Range/Element never report real
+// geometry — ProseMirror (the engine behind the WYSIWYG editor) calls
+// Range.getClientRects()/getBoundingClientRect() on every selection change
+// (e.g. to scroll the caret into view), which otherwise throws
+// "getClientRects is not a function" and aborts the whole editor command
+// mid-chain. Zero-rect stubs are enough: tests assert on editor state/DOM
+// content, never on actual pixel positions.
+if (typeof Range !== 'undefined') {
+  const zeroRect = () => ({ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON() { return this; } });
+  Range.prototype.getClientRects = function () { return [zeroRect()]; };
+  Range.prototype.getBoundingClientRect = zeroRect;
+}
+if (typeof Element !== 'undefined' && typeof Element.prototype.getClientRects !== 'function') {
+  Element.prototype.getClientRects = function () { return []; };
+}

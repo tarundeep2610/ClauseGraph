@@ -218,15 +218,25 @@ frontend/src/
 
 ## 5. Optimized Implementation Roadmap (Sprint Sequencing)
 
+*See [Section 9](#9-gap-analysis-vs-current-codebase-added-2026-10-14) for which items below already exist in the current codebase vs. are net-new.*
+
 ```mermaid
 graph LR
-    P1[Sprint 1: Shell & Routing] --> P2[Sprint 2: TipTap WYSIWYG]
+    P0[Sprint 0: Document Ownership & RBAC] --> P1[Sprint 1: Shell & Routing]
+    P1 --> P2[Sprint 2: TipTap WYSIWYG]
     P2 --> P3[Sprint 3: Top Badges & Dual PDF]
     P3 --> P4[Sprint 4: Structure Tree & Modal]
     P4 --> P5[Sprint 5: Multi-Format Export]
     P5 --> P6[Sprint 6: Review QA & Library Hub]
     P6 --> P7[Sprint 7: Perf & Testing]
 ```
+
+### Sprint 0: Document Ownership & RBAC
+- [ ] Add `owner_id` column to `ocr_jobs` (via the existing `_OCR_JOBS_NEW_COLUMNS` migration pattern in `database.py`); stamp it from `principal.sub` at job-creation time.
+- [ ] Add a `require_owner_or_admin(job_id, principal)` check (admin always passes; `user` must own the job) and apply it to every per-job route (get/delete, file/pages, retry, structure CRUD, reindex, export, review-pages).
+- [ ] Filter `GET /api/jobs` by `owner_id` unless the caller is admin. **Decided**: `admin` sees every user's documents; `user` sees only their own. A legacy job with `owner_id IS NULL` is admin-only visible.
+- [ ] Fix a confirmed regression: gate the per-page Retry button and bulk Retry Pages modal in `ViewerPanel.jsx` behind `isAdmin` — today any authenticated user can trigger OCR re-runs.
+- [ ] Extend `tests/test_routes_rbac.py` with ownership-based cases (owner access, non-owner denial, admin bypass).
 
 ### Sprint 1: Studio Container Shell & Routing Decoupling
 - [ ] Split monolithic `Dashboard.jsx` into `pages/LibraryHome.jsx` and `pages/StudioView.jsx`.
@@ -401,6 +411,42 @@ The living prototype and design walkthrough are organized chronologically to mat
 
 *All streamlined screens, interaction states, and the interactive theme switcher are documented in:*  
 **[OCR Studio — Streamlined UX Redesign Mockups.html](file:///c:/Users/Tarundeep/Desktop/ocr-services/OCR%20Studio%20%E2%80%94%20Streamlined%20UX%20Redesign%20Mockups.html)**
+
+---
+
+## 9. Gap Analysis vs. Current Codebase (Added 2026-10-14)
+
+Before implementation began, the current frontend/backend were audited against this plan. **Headline correction**: §8.1.4 above frames "end-user vs admin role separation" as new work — it isn't. The app already has a full two-role OIDC auth system (`admin`/`user`) wired end-to-end on the backend (`auth_core.py`, `auth_deps.py`, `role_utils.py`, `auth_router.py`) and partially on the frontend (`AuthContext.jsx`'s `isAdmin` already gates `Header.jsx`, `ControlBar.jsx`, `AdvancedSettingsPanel.jsx`). That layer should be reused, not rebuilt.
+
+### 9.1 Already built — reuse, don't rebuild
+- **Auth & roles**: full OIDC (Zitadel-style, PKCE) + dev-persona login; `isAdmin` pattern ready to reuse everywhere.
+- **Dark/light theme + design tokens**: `frontend/src/index.css` already defines a complete CSS-custom-property token system for both themes, switched live via `ThemeContext.jsx`.
+- **PDF rendering**: `PdfCanvasViewer.jsx` already uses raw `pdfjs-dist` with WASM decoders configured — exactly what §7.2 recommends retaining.
+- **Structure tree**: `StructureTree.jsx` (871 lines) already does hierarchical outline, drag-and-drop via `@dnd-kit/core`, add/edit/delete via `StructureItemModal.jsx`/`StructureDeleteConfirmModal.jsx`. Backend CRUD fully built in `structure_overrides.py`.
+- **Cross-reference badges & disambiguation**: `PageReferenceBadges.jsx` + `PageReferenceCandidatesModal.jsx` already implement citation pills and an exact/approximate candidate picker.
+- **Reference indexing backend**: `ai_reference_index.py` / `reference_index.py` / `POST /api/jobs/{id}/reindex-references` fully built, including rule-diff/revert endpoints beyond what this plan asks for.
+- **Basic dual-pane PDF compare**: `ViewerPanel.jsx` already "pins" a target page in place of the text pane (`pinnedPdfPage`/`showPinnedPdf`) with a close button — a working first version of Feature 3.
+- **Page retry/rerun OCR**: `POST /api/jobs/{id}/pages/{page}/retry`, bulk `/retry-pages`, `/attempts` all exist and are wired to `RetryPagesModal.jsx`.
+- **Export**: Markdown export exists end-to-end (`GET /api/jobs/{id}/download-result`).
+
+### 9.2 Confirmed gaps, mapped to Features 1–7
+1. **WYSIWYG Rich Editor** — does not exist at all. OCR text is read-only (`marked` → `DOMPurify.sanitize` → `dangerouslySetInnerHTML`). No TipTap, no `contentEditable`, no bbox hover-sync anywhere in the frontend.
+2. **On-demand indexing** — behavioral gap, not a missing endpoint. `main.py` currently auto-triggers reindexing right after OCR completes; this plan wants it off by default until `[⚡ Build Index & Citations]` is clicked.
+3. **Dual PDF Compare** — partially exists (single pinned page); missing true 50/50 full-width mode, multi-target tabs, sync-zoom, amber target highlight.
+4. **Structure Tree** — functionally complete; only needs to move from permanent sidebar into the new collapsible drawer shell.
+5. **Multi-Format Export** — only `.md` exists; no `python-docx`/PDF-generation code anywhere in the repo.
+6. **Guided Review Queue** — backend ready (`/api/jobs/{id}/review-pages`, `/api/review-queue`) but **zero frontend consumes it**. Also: the existing Retry controls are **not** currently `isAdmin`-gated (a real regression vs. this plan's intent — any user can trigger OCR re-runs today).
+7. **Library Home Hub** — `App.jsx` has no route split; everything lives in one 959-line `Dashboard.jsx`.
+8. Also missing: draggable split resizer with presets, `Ctrl+F` dual-pane search, floating bottom-center HUD (current nav is a conventional `PageNavBar.jsx`).
+
+### 9.3 Additional gap found: no per-user document ownership/RBAC (outside this plan's original scope)
+
+This plan never addresses *document-visibility* (which documents each role can see) — only *feature-visibility* (which controls each role sees). Checked directly against the code:
+- `ocr_jobs` (`database.py`) has **no owner/`user_id` column**. A job is identified only by `job_id`; nothing records who uploaded it.
+- `GET /api/jobs` returns every document to every authenticated user, with no identity-based filter.
+- Every per-job route (`_require_user`) checks only role, never ownership — any logged-in `user` can open, edit, retry, export, or delete **any other user's** document today.
+
+**Decided**: `admin` sees every user's documents (oversight); `user` sees only documents they uploaded. This is now **Sprint 0** above, since it's a backend prerequisite nothing else in this roadmap anticipated — most notably the Library Hub (Sprint 1/6), whose whole job is listing "your" documents.
 
 
 

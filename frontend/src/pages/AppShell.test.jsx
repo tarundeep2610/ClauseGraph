@@ -1,15 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
+import { screen, waitFor, fireEvent, act, within } from '@testing-library/react';
 import { apiFetch } from '../utils/api';
-import Dashboard from './Dashboard';
+import { renderApp } from './testRouteHelpers';
 
 vi.mock('../utils/api', () => ({
   apiFetch: vi.fn(),
 }));
 
+let mockAuth = { isAdmin: false };
 vi.mock('../utils/AuthContext', () => ({
-  useAuth: () => ({ isAdmin: false }),
+  useAuth: () => mockAuth,
 }));
+
+beforeEach(() => {
+  mockAuth = { isAdmin: false };
+});
 
 vi.mock('../utils/ThemeContext', () => ({
   useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() }),
@@ -33,7 +38,7 @@ vi.mock('../components/PdfCanvasViewer', () => ({
   ),
 }));
 
-describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
+describe('AppShell/StudioView — PDF Remote Blob Preview & Regressions', () => {
   let originalCreateObjectURL;
   let originalRevokeObjectURL;
   let createObjectURLMock;
@@ -124,11 +129,11 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
       return { ok: false };
     });
 
-    render(<Dashboard />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('history-card')).toBeInTheDocument();
-    });
+    // Navigating straight to /studio/job-101 is what a real user does now
+    // (via a history-list click or a direct link) — Library and Studio are
+    // separate routes, so there's no "history-card" to wait for on this
+    // screen; waiting on the file fetch below is the real readiness signal.
+    renderApp('/studio/job-101');
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith('/api/jobs/job-101/file');
@@ -193,17 +198,20 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
       return { ok: false };
     });
 
-    render(<Dashboard />);
-
-    await waitFor(() => {
-      expect(screen.getAllByTestId('history-card')).toHaveLength(2);
-    });
+    // Start already viewing job-1 in Studio (as a real user would, having
+    // navigated there from a history-list click).
+    renderApp('/studio/job-1');
 
     await waitFor(() => {
       expect(createObjectURLMock).toHaveBeenCalledTimes(1);
     });
 
-    const cards = screen.getAllByTestId('history-card');
+    // Switching documents is now a two-step trip through Library (Studio no
+    // longer renders the history list next to the viewer) rather than a
+    // click on a card that was already on screen.
+    fireEvent.click(screen.getByTestId('back-to-library-btn'));
+    const cards = await screen.findAllByTestId('history-card');
+    expect(cards).toHaveLength(2);
     fireEvent.click(cards[1]);
 
     await waitFor(() => {
@@ -256,11 +264,7 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
       return { ok: false };
     });
 
-    render(<Dashboard />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('history-card')).toBeInTheDocument();
-    });
+    renderApp('/studio/job-fail');
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith('/api/jobs/job-fail/file');
@@ -311,21 +315,31 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
       return { ok: false };
     });
 
-    render(<Dashboard />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('history-card')).toBeInTheDocument();
-    });
+    // Start on Library, navigate into Studio for job-remote (as a real user
+    // would via the history list), confirm the remote PDF shows there.
+    renderApp('/');
+    const firstCards = await screen.findAllByTestId('history-card');
+    fireEvent.click(firstCards[0]);
 
     await waitFor(() => {
       const viewer = screen.getByTestId('mock-pdf-canvas-viewer');
       expect(viewer.dataset.pdfSrc).toBe('blob:fake-url-1');
     });
 
-    const fileInput = screen.getByTestId('file-input');
+    // Go back to Library and stage a local file WITHOUT submitting it — file
+    // selection lives only on Library now (UploadPanel isn't rendered in
+    // Studio), but the `file` state itself is owned by AppShell and shared
+    // across both pages.
+    fireEvent.click(screen.getByTestId('back-to-library-btn'));
+    const fileInput = await screen.findByTestId('file-input');
     const localFile = new File(['local pdf content'], 'local_doc.pdf', { type: 'application/pdf' });
-
     fireEvent.change(fileInput, { target: { files: [localFile] } });
+
+    // Re-entering Studio for the same job proves the precedence logic is
+    // unchanged: the staged local file still wins over job-remote's own
+    // remote file, even though upload and viewing are now different pages.
+    const secondCards = await screen.findAllByTestId('history-card');
+    fireEvent.click(secondCards[0]);
 
     await waitFor(() => {
       const viewer = screen.getByTestId('mock-pdf-canvas-viewer');
@@ -333,50 +347,82 @@ describe('Dashboard — PDF Remote Blob Preview & Regressions', () => {
     });
   });
 
-  it('5. Shows no document selected when no jobs and no local file are present', async () => {
-    render(<Dashboard />);
-
+  // REWRITTEN (premise obsolete): the old monolithic Dashboard always showed
+  // the viewer, so "no jobs and no file" meant an empty viewer on the same
+  // screen as the sidebar. Now Library ("/") and Studio are separate routes,
+  // and Studio is only ever reached via a document id — with no jobs and no
+  // staged file there's nothing to navigate to, so the correct landing state
+  // is simply the (empty) Library page, not a viewer showing "No document
+  // selected".
+  it('5. With no jobs and no local file, shows the Library page — there is no reachable empty-viewer state anymore', async () => {
+    renderApp('/');
     await waitFor(() => {
-      expect(screen.getAllByText('No document selected').length).toBeGreaterThan(0);
+      expect(screen.getByTestId('file-input')).toBeInTheDocument();
     });
     expect(screen.queryByTestId('mock-pdf-canvas-viewer')).not.toBeInTheDocument();
+    expect(screen.queryByText('No document selected')).not.toBeInTheDocument();
   });
 
   it('6. Sidebar wrapper carries the "sidebar" class (layout/scroll fix depends on it)', async () => {
-    render(<Dashboard />);
+    renderApp('/');
     await waitFor(() => {
       expect(document.querySelector('.sidebar')).toBeInTheDocument();
     });
   });
 
-  it('7. Clicking the sidebar toggle adds/removes the "sidebar-collapsed" class on .dashboard', async () => {
-    render(<Dashboard />);
-    await waitFor(() => {
-      expect(document.querySelector('.dashboard')).toBeInTheDocument();
+  // REWRITTEN (premise obsolete): the sidebar-collapsed toggle button lives
+  // in ViewerPanel's own toolbar (Studio-only), while the `.dashboard`
+  // element it used to affect lives in LibraryHome — the two are never on
+  // screen together anymore. What's actually worth testing post-split is the
+  // reason AppShell exists at all: that sidebarCollapsed state survives
+  // navigating away from and back to Library, instead of resetting.
+  it('7. The sidebar-collapsed toggle (Studio) persists across navigation and is reflected on Library\'s .dashboard wrapper', async () => {
+    const job = {
+      job_id: 'job-x', filename: 'x.pdf', status: 'completed',
+      total_pages: 1, processed_pages: 1, engine: 'unlimited', created_at: new Date().toISOString(),
+    };
+    apiFetch.mockImplementation(async (url) => {
+      if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
+      if (url === '/api/jobs') return { ok: true, json: async () => [job] };
+      if (url.split('?')[0] === '/api/jobs/job-x') return { ok: true, json: async () => ({ ...job, pages_data: [] }) };
+      if (url === '/api/jobs/job-x/file') return { ok: true, blob: async () => new Blob(['x'], { type: 'application/pdf' }) };
+      return { ok: false };
     });
-    expect(document.querySelector('.dashboard').className).not.toContain('sidebar-collapsed');
+
+    renderApp('/studio/job-x');
+    await screen.findByTestId('sidebar-toggle-btn');
 
     fireEvent.click(screen.getByTestId('sidebar-toggle-btn'));
+    fireEvent.click(screen.getByTestId('back-to-library-btn'));
     await waitFor(() => {
       expect(document.querySelector('.dashboard').className).toContain('sidebar-collapsed');
     });
 
+    const card = await screen.findByTestId('history-card');
+    fireEvent.click(card);
+    await screen.findByTestId('sidebar-toggle-btn');
     fireEvent.click(screen.getByTestId('sidebar-toggle-btn'));
+    fireEvent.click(screen.getByTestId('back-to-library-btn'));
     await waitFor(() => {
       expect(document.querySelector('.dashboard').className).not.toContain('sidebar-collapsed');
     });
   });
 });
 
-describe('Dashboard — GPU status polling', () => {
+describe('AppShell/StudioView — GPU status polling', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // GPU status now lives in the admin-only section of SettingsModal (see
+    // Header.jsx round-4 rewrite) rather than always-visible in the header.
+    mockAuth = { isAdmin: true };
   });
 
-  it('polls GET /health on mount and passes the result down to the Header pill', async () => {
+  it('polls GET /health on mount and passes the result down to the Settings modal\'s GPU pill', async () => {
     apiFetch.mockImplementation(async (url) => {
       if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
       if (url === '/api/jobs') return { ok: true, json: async () => [] };
+      if (url === '/api/settings') return { ok: true, json: async () => ({ output_path: '', idle_timeout_minutes: 15 }) };
+      if (url === '/api/ai-index/status') return { ok: true, json: async () => ({}) };
       if (url === '/health') {
         return {
           ok: true,
@@ -389,35 +435,41 @@ describe('Dashboard — GPU status polling', () => {
       return { ok: false };
     });
 
-    render(<Dashboard />);
+    renderApp('/');
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith('/health');
     });
+    fireEvent.click(screen.getByTestId('open-settings-btn'));
     await waitFor(() => {
       expect(screen.getByTestId('gpu-status-pill')).toHaveTextContent('GPU: Ready');
     });
   });
 
-  it('shows no GPU pill when the health check fails, without crashing the page', async () => {
+  it('shows no GPU pill in Settings when the health check fails, without crashing the page', async () => {
     apiFetch.mockImplementation(async (url) => {
       if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
       if (url === '/api/jobs') return { ok: true, json: async () => [] };
+      if (url === '/api/settings') return { ok: true, json: async () => ({ output_path: '', idle_timeout_minutes: 15 }) };
+      if (url === '/api/ai-index/status') return { ok: true, json: async () => ({}) };
       if (url === '/health') return { ok: false };
       return { ok: false };
     });
 
-    expect(() => render(<Dashboard />)).not.toThrow();
+    expect(() => renderApp('/')).not.toThrow();
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith('/health');
     });
+    fireEvent.click(screen.getByTestId('open-settings-btn'));
+    await screen.findByTestId('settings-modal');
     expect(screen.queryByTestId('gpu-status-pill')).not.toBeInTheDocument();
   });
 });
 
-describe('Dashboard — settings persistence (localStorage)', () => {
+describe('AppShell/StudioView — settings persistence (localStorage)', () => {
   beforeEach(() => {
+    mockAuth = { isAdmin: true };
     vi.clearAllMocks();
     localStorage.clear();
     apiFetch.mockImplementation(async (url) => {
@@ -436,18 +488,39 @@ describe('Dashboard — settings persistence (localStorage)', () => {
       'ocr-ui-settings',
       JSON.stringify({ form: { engine: 'glm', unlimitedBaseSize: '2048' }, viewMode: 'pdf' })
     );
+    // engine-select is Library-side; the view-mode toggle it also checks is
+    // Studio-side (ViewerPanel's own toolbar) — one job so there's a history
+    // card to navigate in with and confirm both pieces of restored state.
+    const job = {
+      job_id: 'job-1', filename: 'a.pdf', status: 'completed',
+      total_pages: 1, processed_pages: 1, engine: 'unlimited', created_at: new Date().toISOString(),
+    };
+    apiFetch.mockImplementation(async (url) => {
+      if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
+      if (url === '/api/jobs') return { ok: true, json: async () => [job] };
+      if (url.split('?')[0] === '/api/jobs/job-1') return { ok: true, json: async () => ({ ...job, pages_data: [] }) };
+      if (url === '/api/jobs/job-1/file') return { ok: true, blob: async () => new Blob(['x'], { type: 'application/pdf' }) };
+      return { ok: false };
+    });
 
-    render(<Dashboard />);
+    renderApp('/');
 
+    fireEvent.click(await screen.findByTestId('open-settings-btn'));
     await waitFor(() => {
       expect(screen.getByTestId('engine-select').value).toBe('glm');
     });
-    expect(screen.getByRole('button', { name: /PDF Only/i })).toHaveClass('active');
+    fireEvent.click(screen.getByTestId('settings-modal-close-btn'));
+
+    fireEvent.click(await screen.findByTestId('history-card'));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /PDF Only/i })).toHaveClass('active');
+    });
   });
 
   it('persists a form change to localStorage', async () => {
-    render(<Dashboard />);
+    renderApp('/');
 
+    fireEvent.click(await screen.findByTestId('open-settings-btn'));
     const engineSelect = await screen.findByTestId('engine-select');
     fireEvent.change(engineSelect, { target: { value: 'glm' } });
 
@@ -458,8 +531,9 @@ describe('Dashboard — settings persistence (localStorage)', () => {
   });
 
   it('never persists customPrompt or pageRange (per-document/session state, not a user preference)', async () => {
-    render(<Dashboard />);
+    renderApp('/');
 
+    fireEvent.click(await screen.findByTestId('open-settings-btn'));
     const engineSelect = await screen.findByTestId('engine-select');
     fireEvent.change(engineSelect, { target: { value: 'glm' } });
 
@@ -476,7 +550,8 @@ describe('Dashboard — settings persistence (localStorage)', () => {
       JSON.stringify({ form: { engine: 'not-a-real-engine', bogusKey: 'x' } })
     );
 
-    expect(() => render(<Dashboard />)).not.toThrow();
+    expect(() => renderApp('/')).not.toThrow();
+    fireEvent.click(await screen.findByTestId('open-settings-btn'));
     await waitFor(() => {
       expect(screen.getByTestId('engine-select')).toBeInTheDocument();
     });
@@ -485,7 +560,7 @@ describe('Dashboard — settings persistence (localStorage)', () => {
   it('restores a persisted collapsed sidebar on mount', async () => {
     localStorage.setItem('ocr-ui-settings', JSON.stringify({ sidebarCollapsed: true }));
 
-    render(<Dashboard />);
+    renderApp('/');
 
     await waitFor(() => {
       expect(document.querySelector('.dashboard').className).toContain('sidebar-collapsed');
@@ -493,7 +568,9 @@ describe('Dashboard — settings persistence (localStorage)', () => {
   });
 
   it('persists sidebarCollapsed to localStorage when the toggle is clicked', async () => {
-    render(<Dashboard />);
+    // The toggle button lives in ViewerPanel's own toolbar (Studio-only) —
+    // the job itself doesn't need to exist for the toolbar to render.
+    renderApp('/studio/any-doc');
     await screen.findByTestId('sidebar-toggle-btn');
 
     fireEvent.click(screen.getByTestId('sidebar-toggle-btn'));
@@ -505,7 +582,7 @@ describe('Dashboard — settings persistence (localStorage)', () => {
   });
 });
 
-describe('Dashboard — jobDetails is cleared immediately on any job switch (regression)', () => {
+describe('AppShell/StudioView — jobDetails is cleared immediately on any job switch (regression)', () => {
   // Regression coverage for: the OCR results panel kept showing the
   // previously-selected document's text for a moment after uploading a new
   // PDF or switching to a different job in history, because jobDetails was
@@ -550,10 +627,13 @@ describe('Dashboard — jobDetails is cleared immediately on any job switch (reg
       return { ok: false };
     });
 
-    render(<Dashboard />);
+    renderApp('/studio/job-a');
     await screen.findByText('Job A text');
 
-    const cards = screen.getAllByTestId('history-card');
+    // Switching documents now goes through Library (Studio no longer shows
+    // the history list alongside the viewer).
+    fireEvent.click(screen.getByTestId('back-to-library-btn'));
+    const cards = await screen.findAllByTestId('history-card');
     fireEvent.click(cards[1]); // switch to job-b, whose detail fetch is still pending
 
     await waitFor(() => {
@@ -591,13 +671,27 @@ describe('Dashboard — jobDetails is cleared immediately on any job switch (reg
       return { ok: false };
     });
 
-    render(<Dashboard />);
+    // REWRITTEN (premise changed, intent preserved): the old test watched
+    // "Old job text" disappear on the SAME screen right after submitting,
+    // because upload and viewer lived together. Now upload is Library-only
+    // and the viewer is Studio-only, so the regression has to be exercised
+    // across that boundary: view job-old in Studio, go back to Library and
+    // submit a new file (handleSubmit sets AppShell's activeJobId to the new
+    // job immediately on success, even while still on Library — this is the
+    // actual regression path), then navigate to the new job's history entry
+    // and confirm job-old's stale text never leaks into it.
+    renderApp('/studio/job-old');
     await screen.findByText('Old job text');
 
-    const fileInput = screen.getByTestId('file-input');
+    fireEvent.click(screen.getByTestId('back-to-library-btn'));
+    const fileInput = await screen.findByTestId('file-input');
     const localFile = new File(['pdf content'], 'new.pdf', { type: 'application/pdf' });
     fireEvent.change(fileInput, { target: { files: [localFile] } });
     fireEvent.click(screen.getByTestId('submit-btn'));
+
+    const historyList = screen.getByTestId('history-list');
+    const newCard = await within(historyList).findByText('new.pdf');
+    fireEvent.click(newCard.closest('[data-testid="history-card"]'));
 
     await waitFor(() => {
       expect(screen.queryByText('Old job text')).not.toBeInTheDocument();
@@ -610,9 +704,12 @@ describe('Dashboard — jobDetails is cleared immediately on any job switch (reg
   });
 });
 
-describe('Dashboard — per-page and bulk Retry actions', () => {
+describe('AppShell/StudioView — per-page and bulk Retry actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Retry/Rerun controls are admin-only (Studio redesign Sprint 0) — these
+    // tests exercise the retry wiring itself, not role-gating, so run as admin.
+    mockAuth = { isAdmin: true };
   });
 
   function _jobWithOnePage(status) {
@@ -637,7 +734,7 @@ describe('Dashboard — per-page and bulk Retry actions', () => {
       return { ok: false };
     });
 
-    render(<Dashboard />);
+    renderApp('/studio/job-r');
     await screen.findByTestId('retry-page-1');
 
     fireEvent.click(screen.getByTestId('retry-page-1'));
@@ -662,7 +759,7 @@ describe('Dashboard — per-page and bulk Retry actions', () => {
       return { ok: false };
     });
 
-    render(<Dashboard />);
+    renderApp('/studio/job-r');
     await screen.findByTestId('retry-pages-btn');
     fireEvent.click(screen.getByTestId('retry-pages-btn'));
     fireEvent.click(screen.getByTestId('retry-option-all'));
@@ -686,7 +783,7 @@ describe('Dashboard — per-page and bulk Retry actions', () => {
       return { ok: false };
     });
 
-    render(<Dashboard />);
+    renderApp('/studio/job-r');
     await screen.findByTestId('retry-pages-btn');
     fireEvent.click(screen.getByTestId('retry-pages-btn'));
     fireEvent.click(screen.getByTestId('retry-option-failed'));
@@ -710,7 +807,7 @@ describe('Dashboard — per-page and bulk Retry actions', () => {
       return { ok: false };
     });
 
-    render(<Dashboard />);
+    renderApp('/studio/job-r');
     await screen.findByTestId('retry-pages-btn');
     fireEvent.click(screen.getByTestId('retry-pages-btn'));
     fireEvent.click(screen.getByTestId('retry-option-review'));
@@ -731,7 +828,7 @@ describe('Dashboard — per-page and bulk Retry actions', () => {
       return { ok: false };
     });
 
-    render(<Dashboard />);
+    renderApp('/studio/job-r');
     await screen.findByTestId('retry-pages-btn');
     fireEvent.click(screen.getByTestId('retry-pages-btn'));
     fireEvent.click(screen.getByTestId('retry-modal-cancel'));
@@ -753,7 +850,7 @@ describe('Dashboard — per-page and bulk Retry actions', () => {
     });
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
 
-    render(<Dashboard />);
+    renderApp('/studio/job-r');
     await screen.findByTestId('retry-pages-btn');
     fireEvent.click(screen.getByTestId('retry-pages-btn'));
     fireEvent.click(screen.getByTestId('retry-option-failed'));
@@ -764,7 +861,7 @@ describe('Dashboard — per-page and bulk Retry actions', () => {
   });
 });
 
-describe('Dashboard — resuming a job no longer needs a lucky poll to notice it (regression)', () => {
+describe('AppShell/StudioView — resuming a job no longer needs a lucky poll to notice it (regression)', () => {
   // Regression coverage for: redeploy pauses a job -> user clicks resume ->
   // the backend confirms success in its own logs, but the frontend never
   // shows new pages because polling was gated on hasActiveJobs, which only
@@ -813,7 +910,7 @@ describe('Dashboard — resuming a job no longer needs a lucky poll to notice it
     // findByTestId/waitFor's own internal polling still works normally.
     vi.useFakeTimers({ shouldAdvanceTime: true });
 
-    render(<Dashboard />);
+    renderApp('/');
     await screen.findByTestId('history-card');
     const callsBeforeResume = jobsListCalls;
 
@@ -850,20 +947,30 @@ describe('Dashboard — resuming a job no longer needs a lucky poll to notice it
         const page1Text = detailCalls < 3 ? 'first page text (partial)' : 'first page text (final)';
         return { ok: true, json: async () => ({ ...job, pages_data: [{ page: 1, text: page1Text }] }) };
       }
+      // The WysiwygEditor Result pane re-syncs its content whenever a poll
+      // brings in different page text (see WysiwygEditor.jsx's resync
+      // effect) — ProseMirror's setContent() emits its own update event on
+      // that resync, which schedules the editor's normal ~800ms debounced
+      // autosave (onSavePageText) exactly as if the reader had typed it.
+      // This test advances fake timers far enough for that to fire, so it
+      // must be handled here too, not just the detail/jobs endpoints.
+      if (url === '/api/jobs/job-resume/pages/1/text' && opts?.method === 'PATCH') {
+        return { ok: true, json: async () => ({ page_num: 1, text: JSON.parse(opts.body).text }) };
+      }
       return { ok: false };
     });
 
     // See test 1 for why fake timers must be installed before render.
     vi.useFakeTimers({ shouldAdvanceTime: true });
 
-    render(<Dashboard />);
-    await screen.findByTestId('history-card');
+    // Resuming is exercised via ViewerPanel's own "Resume" button (Studio's
+    // toolbar) instead of the history-list icon (Library-side) — both call
+    // the same handleRetry, and this keeps the whole test on one page since
+    // it's really about per-job polling, not about navigation.
+    renderApp('/studio/job-resume');
     await screen.findByText('first page text (partial)');
 
-    const card = screen.getByTestId('history-card');
-    const resumeBtn = card.querySelector('.fa-rotate-right').closest('button');
-
-    fireEvent.click(resumeBtn);
+    fireEvent.click(screen.getByRole('button', { name: /Resume/i }));
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
@@ -871,7 +978,15 @@ describe('Dashboard — resuming a job no longer needs a lucky poll to notice it
     expect(screen.getByText('first page text (final)')).toBeInTheDocument();
   });
 
-  it('3. resuming from the history list actually switches the viewer to that job', async () => {
+  // REWRITTEN (premise changed): the old assertion was "the active card's
+  // highlight moves to the resumed job" because resuming just flipped local
+  // state on the same screen. Now resuming from Library must actually
+  // navigate into Studio for that job (per the redesign — HistoryPanel's
+  // resume/select actions navigate rather than calling setActiveJobId
+  // directly), so this checks for that navigation instead. It also no
+  // longer asserts an auto-selected first job on mount, since that
+  // auto-select was intentionally removed (see AppShell.jsx's loadJobsList).
+  it('3. resuming from the history list navigates into Studio and shows that job', async () => {
     const jobs = [
       {
         job_id: 'job-active', filename: 'active.pdf', status: 'completed',
@@ -900,14 +1015,15 @@ describe('Dashboard — resuming a job no longer needs a lucky poll to notice it
       return { ok: false };
     });
 
-    render(<Dashboard />);
+    renderApp('/');
     await waitFor(() => {
       expect(screen.getAllByTestId('history-card')).toHaveLength(2);
     });
 
-    // Default activeJobId falls back to jobs[0] ('job-active') on mount.
+    // No auto-selected/active job on initial mount anymore — activeJobId
+    // only ever changes via an explicit action (see AppShell.jsx).
     const cards = screen.getAllByTestId('history-card');
-    expect(cards[0].className).toContain('active');
+    expect(cards[0].className).not.toContain('active');
     expect(cards[1].className).not.toContain('active');
 
     const resumeBtn = cards[1].querySelector('.fa-rotate-right').closest('button');
@@ -916,15 +1032,17 @@ describe('Dashboard — resuming a job no longer needs a lucky poll to notice it
     await waitFor(() => {
       expect(retriedPaused).toBe(true);
     });
+    // Resuming navigated into Studio for job-paused.
     await waitFor(() => {
-      const refreshedCards = screen.getAllByTestId('history-card');
-      expect(refreshedCards[1].className).toContain('active');
-      expect(refreshedCards[0].className).not.toContain('active');
+      expect(screen.getByTestId('back-to-library-btn')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/paused\.pdf/)).toBeInTheDocument();
     });
   });
 });
 
-describe('Dashboard — Rebuild Cross-References button', () => {
+describe('AppShell/StudioView — Rebuild Cross-References button', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -969,6 +1087,9 @@ describe('Dashboard — Rebuild Cross-References button', () => {
             ...baseJob,
             reference_index_version: version,
             reference_index_reindexing: false, // never observed live as true
+            // The real backend stamps index_built_at immediately on the
+            // POST request (not on completion) — see database.mark_index_built.
+            index_built_at: fetchesSinceReindex !== null ? new Date().toISOString() : null,
           }),
         };
       }
@@ -980,7 +1101,7 @@ describe('Dashboard — Rebuild Cross-References button', () => {
 
     vi.useFakeTimers({ shouldAdvanceTime: true });
 
-    render(<Dashboard />);
+    renderApp("/studio/job-r");
     await screen.findByTestId('reindex-references-btn');
 
     fireEvent.click(screen.getByTestId('reindex-references-btn'));
@@ -998,7 +1119,7 @@ describe('Dashboard — Rebuild Cross-References button', () => {
   });
 });
 
-describe('Dashboard — windowed pages_data fetch centered on the current page', () => {
+describe('AppShell/StudioView — windowed pages_data fetch centered on the current page', () => {
   let originalCreateObjectURL;
   let originalRevokeObjectURL;
 
@@ -1038,7 +1159,7 @@ describe('Dashboard — windowed pages_data fetch centered on the current page',
 
     vi.useFakeTimers({ shouldAdvanceTime: true });
 
-    render(<Dashboard />);
+    renderApp("/studio/job-window");
     await screen.findByTestId('mock-pdf-canvas-viewer');
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 
@@ -1057,7 +1178,7 @@ describe('Dashboard — windowed pages_data fetch centered on the current page',
   });
 });
 
-describe('Dashboard — Structure-tab reading modal + content cache', () => {
+describe('AppShell/StudioView — Structure-tab reading modal + content cache', () => {
   let originalCreateObjectURL;
   let originalRevokeObjectURL;
   let createObjectURLMock;
@@ -1124,7 +1245,7 @@ describe('Dashboard — Structure-tab reading modal + content cache', () => {
       return { ok: false };
     });
 
-    render(<Dashboard />);
+    renderApp("/studio/job-chunk");
     await screen.findByTestId('mock-pdf-canvas-viewer');
     // Captured before the modal ever opens, while there's still exactly one
     // PdfCanvasViewer instance — the main pane's own element, reused by
@@ -1198,7 +1319,7 @@ describe('Dashboard — Structure-tab reading modal + content cache', () => {
       return { ok: false };
     });
 
-    render(<Dashboard />);
+    renderApp("/studio/job-cache");
     await screen.findByTestId('mock-pdf-canvas-viewer');
     fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
     await screen.findByText('Annexure A-1');
@@ -1215,7 +1336,7 @@ describe('Dashboard — Structure-tab reading modal + content cache', () => {
   });
 });
 
-describe('Dashboard — Structure item edit only sends fields that actually changed', () => {
+describe('AppShell/StudioView — Structure item edit only sends fields that actually changed', () => {
   let originalCreateObjectURL;
   let originalRevokeObjectURL;
 
@@ -1270,7 +1391,7 @@ describe('Dashboard — Structure item edit only sends fields that actually chan
       return { ok: false };
     });
 
-    render(<Dashboard />);
+    renderApp("/studio/job-edit");
     await screen.findByTestId('mock-pdf-canvas-viewer');
     fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
     await screen.findByText('Annexure A-2');
@@ -1284,7 +1405,7 @@ describe('Dashboard — Structure item edit only sends fields that actually chan
   });
 });
 
-describe('Dashboard — add-as-child chains create with one move', () => {
+describe('AppShell/StudioView — add-as-child chains create with one move', () => {
   let originalCreateObjectURL;
   let originalRevokeObjectURL;
 
@@ -1344,7 +1465,7 @@ describe('Dashboard — add-as-child chains create with one move', () => {
       return { ok: false };
     });
 
-    render(<Dashboard />);
+    renderApp("/studio/job-add-child");
     await screen.findByTestId('mock-pdf-canvas-viewer');
     fireEvent.click(screen.getByTestId('structure-sidebar-toggle-btn'));
     await screen.findByText('Annexure A-2');

@@ -233,18 +233,9 @@ def _labeled_diff(
     }
 
 
-def evaluate_run(
-    job_id: str,
-    gold: Dict[str, Any],
-    return_diff: bool = False,
-) -> Dict[str, Any]:
+def _load_actual_targets(job_id: str) -> List[Dict[str, Any]]:
     resolved = structure_overrides.resolve_structure_for_job(job_id)
-    actual_mentions = database.get_all_reference_mentions_for_job(job_id)
-
-    gold_targets = gold.get("targets", [])
-    gold_mentions = gold.get("mentions", [])
-
-    act_t_list = [{
+    return [{
         "page": r.get("page"),
         "key": r.get("key"),
         "occurrence_index": r.get("occurrence_index", 0),
@@ -252,6 +243,102 @@ def evaluate_run(
         "label": r.get("own_label") or "",
         "detection_source": r.get("detection_source") or "rule",
     } for r in resolved]
+
+
+def score_chunks(job_id: str, gold: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Per-chunk precision/recall + the chunk's own processing metadata
+    (status/error/timing), so a trial's weak spots are visible at page-range
+    granularity instead of only as one whole-document score. A target is
+    attributed to whichever chunk's page range contains its own `page`
+    field, regardless of which chunk's AI call actually produced it — this
+    separates "this page range is genuinely hard" from chunk-boundary
+    artifacts like the documented subdoc-ordinal cascade."""
+    report = database.get_ai_index_report(job_id)
+    chunks_log = report.get("chunks") or []
+    # The real planned total — NOT len(chunks_log), which only ever counts
+    # chunks completed so far and made every live-progress line read "N/N"
+    # (confirmed bug: every row showed total == its own index while a trial
+    # was still running).
+    total_chunks = report.get("total_chunks") or len(chunks_log)
+    gold_targets = gold.get("targets", [])
+    act_t_list = _load_actual_targets(job_id)
+
+    rows = []
+    for idx, c in enumerate(chunks_log, start=1):
+        first_page, last_page = c["first_page"], c["last_page"]
+        g_sub = [t for t in gold_targets if first_page <= (t.get("page") or -1) <= last_page]
+        a_sub = [t for t in act_t_list if first_page <= (t.get("page") or -1) <= last_page]
+        scores = _score_target_slice(g_sub, a_sub)
+        rows.append({
+            "chunk_index": idx, "total_chunks": total_chunks,
+            "first_page": first_page, "last_page": last_page,
+            "status": c.get("status"), "error_kind": c.get("error_kind"), "error": c.get("error"),
+            "duration_seconds": c.get("duration_seconds"), "provider_duration_ms": c.get("provider_duration_ms"),
+            "heading_count": c.get("heading_count"),
+            "precision": scores["precision"], "recall": scores["recall"],
+            "gold_count": scores["gold_count"], "act_count": scores["act_count"], "matched_count": scores["matched_count"],
+        })
+    return rows
+
+
+def _format_chunk_row(row: Dict[str, Any]) -> str:
+    reason = f" error_kind={row['error_kind']}" if row.get("error_kind") else ""
+    if row.get("error"):
+        reason += f" ({row['error']})"
+    dur = row.get("duration_seconds")
+    dur_str = f"{dur:.1f}s" if dur is not None else "?"
+    return (
+        f"[chunk {row['chunk_index']}/{row['total_chunks']}] pages {row['first_page']}-{row['last_page']} | "
+        f"status={row['status']}{reason} duration={dur_str} | "
+        f"gold={row['gold_count']} act={row['act_count']} matched={row['matched_count']} "
+        f"P={row['precision']:.3f} R={row['recall']:.3f}"
+    )
+
+
+async def _monitor_chunks(job_id: str, gold: Dict[str, Any], printed: List[int]) -> None:
+    """Polls the job's ai_index_report every 5s and prints any newly-completed
+    chunk's status/timing/precision-recall immediately, so a long trial shows
+    live progress instead of going silent until the whole run finishes."""
+    while True:
+        await asyncio.sleep(5)
+        _print_new_chunk_rows(job_id, gold, printed)
+
+
+def _print_new_chunk_rows(job_id: str, gold: Dict[str, Any], printed: List[int]) -> None:
+    rows = score_chunks(job_id, gold)
+    for row in rows[printed[0]:]:
+        print(_format_chunk_row(row), flush=True)
+        printed[0] += 1
+
+
+def _print_worst_chunks(job_id: str, gold: Dict[str, Any]) -> None:
+    rows = score_chunks(job_id, gold)
+    if not rows:
+        return
+    failed = [r for r in rows if r["status"] != "ok"]
+    if failed:
+        print("  Failed/fallback chunks:")
+        for r in failed:
+            print("   ", _format_chunk_row(r))
+    print("  Worst 10 chunks by recall:")
+    for r in sorted(rows, key=lambda r: (r["recall"], r["first_page"]))[:10]:
+        print("   ", _format_chunk_row(r))
+    print("  Worst 10 chunks by precision:")
+    for r in sorted(rows, key=lambda r: (r["precision"], r["first_page"]))[:10]:
+        print("   ", _format_chunk_row(r))
+
+
+def evaluate_run(
+    job_id: str,
+    gold: Dict[str, Any],
+    return_diff: bool = False,
+) -> Dict[str, Any]:
+    actual_mentions = database.get_all_reference_mentions_for_job(job_id)
+
+    gold_targets = gold.get("targets", [])
+    gold_mentions = gold.get("mentions", [])
+
+    act_t_list = _load_actual_targets(job_id)
 
     gold_rule = [t for t in gold_targets if _family(t.get("key")) in RULE_FAMILIES]
     gold_ai = [t for t in gold_targets if _family(t.get("key")) not in RULE_FAMILIES]
@@ -337,6 +424,7 @@ async def run_trial(
     chunk_pages: "int | None" = None,
     pleading_points_via_ai: "bool | None" = None,
     overlap_pages: "int | None" = None,
+    chunk_chars_max: "int | None" = None,
     record_dir: "str | None" = None,
     replay_file: "str | None" = None,
     compact_prompt: bool = False,
@@ -351,6 +439,8 @@ async def run_trial(
             engine_param_updates["ai_index_pleading_points_via_ai"] = pleading_points_via_ai
         if overlap_pages is not None:
             engine_param_updates["ai_index_chunk_overlap_pages"] = overlap_pages
+        if chunk_chars_max is not None:
+            engine_param_updates["ai_index_chunk_chars_max"] = chunk_chars_max
         if engine_param_updates:
             _set_engine_params(dup_id, engine_param_updates)
 
@@ -379,8 +469,18 @@ async def run_trial(
             scope = nullcontext()
 
         import ai_reference_index
-        with scope:
-            res = await ai_reference_index.reindex_job_with_ai(dup_id)
+        printed = [0]
+        monitor_task = asyncio.create_task(_monitor_chunks(dup_id, gold, printed))
+        try:
+            with scope:
+                res = await ai_reference_index.reindex_job_with_ai(dup_id)
+        finally:
+            monitor_task.cancel()
+            try:
+                await monitor_task
+            except asyncio.CancelledError:
+                pass
+            _print_new_chunk_rows(dup_id, gold, printed)  # catch any chunks that finished after the last poll
 
         scores = evaluate_run(dup_id, gold, return_diff=return_diff)
         print(
@@ -391,6 +491,7 @@ async def run_trial(
             f"DriftTax={scores['drift_tax']:+.3f} (ContentR={scores['labeled_content_recall']:.3f} vs KeyR={scores['labeled_key_recall']:.3f})",
             flush=True,
         )
+        _print_worst_chunks(dup_id, gold)
         return scores
     finally:
         database.delete_job(dup_id)
@@ -417,6 +518,7 @@ async def main_async():
     parser.add_argument("--enable-review", action="store_true", help="Enable ai_index_review_rule_prior flag")
     parser.add_argument("--chunk-pages", type=int, default=None, help="Override ai_index_chunk_pages on each duplicate")
     parser.add_argument("--overlap-pages", type=int, default=None, help="Override ai_index_chunk_overlap_pages on each duplicate (0 disables overlap)")
+    parser.add_argument("--chunk-chars-max", type=int, default=None, help="Override ai_index_chunk_chars_max on each duplicate")
     parser.add_argument("--compact-prompt", action="store_true", help="Use condensed compact prompt variant")
     parser.add_argument("--record-dir", default=None, help="Directory to save AI completion recordings")
     parser.add_argument("--replay-file", default=None, help="Path to recording JSON to replay offline")
@@ -455,6 +557,7 @@ async def main_async():
     print(
         f"Running {args.trials} trial(s) with review_flag={args.enable_review}, "
         f"chunk_pages={args.chunk_pages}, overlap_pages={args.overlap_pages}, "
+        f"chunk_chars_max={args.chunk_chars_max}, "
         f"pleading_points_via_ai={args.pleading_points_via_ai}, "
         f"compact_prompt={args.compact_prompt}, record_dir={args.record_dir}, replay_file={args.replay_file}..."
     )
@@ -465,7 +568,7 @@ async def main_async():
         need_diff = bool(args.dump_diff and i == args.trials)
         res = await run_trial(
             args.job_id, gold, i, args.enable_review, args.chunk_pages,
-            args.pleading_points_via_ai, args.overlap_pages,
+            args.pleading_points_via_ai, args.overlap_pages, args.chunk_chars_max,
             record_dir=args.record_dir, replay_file=args.replay_file,
             compact_prompt=args.compact_prompt, return_diff=need_diff,
         )

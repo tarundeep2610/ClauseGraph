@@ -68,3 +68,46 @@ def test_oversized_carried_pages_make_forward_progress_and_reseed_chars_accurate
     assert chunks[1].total_chars == 120
     assert chunks[2].page_nums == [1, 2, 3]
     assert chunks[2].total_chars == 180
+
+
+def test_sparse_pages_pack_into_a_single_chunk():
+    pages = [PageInput(page_num=i, text="x" * 500) for i in range(1, 5)]
+    chunks = plan_chunks(pages, max_pages=4, max_chars=7000)
+    assert len(chunks) == 1
+    assert chunks[0].page_nums == [1, 2, 3, 4]
+
+
+def test_dense_pages_split_on_char_budget_before_page_cap():
+    # Two 3000-char pages fit the 7000 budget (6000), a third would not
+    # (9000) -> splits at 2 pages, well short of the 4-page cap.
+    pages = [PageInput(page_num=i, text="x" * 3000) for i in range(1, 4)]
+    chunks = plan_chunks(pages, max_pages=4, max_chars=7000)
+    assert len(chunks) == 2
+    assert chunks[0].page_nums == [1, 2]
+    assert chunks[1].page_nums == [3]
+
+
+def test_oversized_page_isolates_itself_whole_and_untruncated():
+    huge_text = "x" * 20000
+    pages = [
+        PageInput(page_num=1, text="small page one"),
+        PageInput(page_num=2, text=huge_text),
+        PageInput(page_num=3, text="small page three"),
+    ]
+    chunks = plan_chunks(pages, max_pages=4, max_chars=7000)
+    assert len(chunks) == 3
+    assert chunks[1].page_nums == [2]
+    assert chunks[1].pages[0].text == huge_text
+    assert len(chunks[1].pages[0].text) == 20000
+    assert "truncated" not in chunks[1].pages[0].text
+
+
+def test_pages_never_split_across_chunk_boundaries():
+    pages = [PageInput(page_num=i, text="x" * 1000) for i in range(1, 11)]
+    chunks = plan_chunks(pages, max_pages=4, max_chars=2500)
+    assert len(chunks) > 1
+    seen = []
+    for c in chunks:
+        seen.extend(c.page_nums)
+    assert seen == list(range(1, 11))
+    assert len(seen) == len(set(seen))

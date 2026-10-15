@@ -1,87 +1,44 @@
-import { useEffect, useRef, useState } from 'react';
-import { useAuth } from '../utils/AuthContext';
-import { useTheme } from '../utils/ThemeContext';
+import UserMenu from './UserMenu';
 import { APP_NAME } from '../utils/appInfo';
 
-// Presentational only - the actual health check lives on the backend
-// (gpu_ocr_client.check_health(), surfaced via GET /health); this just maps
-// the already-computed connection/model state to a label/style, the same
-// way ViewerPanel's confidence badge maps backend-computed tiers.
-function gpuStatusDisplay(gpuStatus) {
-  if (!gpuStatus) return null; // no poll has resolved yet - render nothing rather than guess
-  if (gpuStatus.gpu_ocr_service_connection !== 'online') {
-    return { className: 'offline', text: 'GPU: Offline' };
-  }
-  if (!gpuStatus.gpu_model_loaded) {
-    return { className: 'warn', text: 'GPU: Idle' };
-  }
-  return { className: '', text: 'GPU: Ready' };
-}
-
-export default function Header({ idleState, gpuStatus, onExit }) {
-  const { isAdmin, user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
-  const { label, className, text } = idleState;
-  const gpuDisplay = gpuStatusDisplay(gpuStatus);
-
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    function handleOutsideClick(e) {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
-    }
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [menuOpen]);
-
-  const accountLabel = user?.profile?.email ?? user?.profile?.sub ?? 'Account';
-
+// The single top bar used for LibraryHome (StudioView uses StudioAppBar) —
+// per the mockup, there is only one flat .top-file-bar per screen.
+//
+// The logomark/Settings icons are drawn inline (not FontAwesome glyphs) to
+// match the research-backed "sophisticated tool" header pass: a unicode/icon-
+// font glyph floating next to a refined type system reads as a placeholder,
+// a drawn mark reads as considered (see plan: Header "Sophisticated Tool"
+// Overhaul, round 5b).
+export default function Header({ onOpenSettings }) {
   return (
-    <header>
-      <div className="badge"><i className="fa-solid fa-shield-halved" /> Fail-Safe Persistent Service</div>
-      <h1>{APP_NAME}</h1>
-      <p className="tagline">Turns scanned documents into searchable, cross-referenced structure.</p>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <div id="idlePill" className={className}>
-          <i className="fa-solid fa-circle" style={{ fontSize: '0.5rem' }} /> {text ?? label}
-        </div>
-        {gpuDisplay && (
-          <div className={`gpu-status-pill ${gpuDisplay.className}`} data-testid="gpu-status-pill">
-            <i className="fa-solid fa-circle" style={{ fontSize: '0.5rem' }} /> {gpuDisplay.text}
-          </div>
-        )}
-        {isAdmin && (
-          <button id="exitBtn" onClick={onExit}>
-            <i className="fa-solid fa-power-off" /> Exit &amp; Free Memory
-          </button>
-        )}
-        <button
-          type="button"
-          className="theme-toggle-btn"
-          onClick={toggleTheme}
-          title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-          data-testid="theme-toggle-btn"
+    <header className="top-file-bar app-header">
+      <div className="bar-left">
+        <a
+          href="/"
+          className="app-header-wordmark"
+          style={{ textDecoration: 'none' }}
+          title="Return to Library Home"
         >
-          <i className={`fa-solid ${theme === 'light' ? 'fa-moon' : 'fa-sun'}`} />
+          <span className="app-header-logo" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="5" y="3" width="14" height="18" rx="2" />
+              <line x1="8.5" y1="8" x2="15.5" y2="8" />
+              <line x1="8.5" y1="12" x2="15.5" y2="12" />
+              <line x1="8.5" y1="16" x2="13" y2="16" />
+            </svg>
+          </span>
+          {APP_NAME}
+        </a>
+      </div>
+      <div className="bar-right">
+        <button type="button" className="btn-header-ghost" onClick={onOpenSettings} data-testid="open-settings-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          Settings
         </button>
-        {user && (
-          <div className="user-menu" ref={menuRef}>
-            <button id="userMenuBtn" onClick={() => setMenuOpen((v) => !v)}>
-              <i className="fa-solid fa-circle-user" /> {accountLabel}
-              <i className="fa-solid fa-chevron-down" style={{ fontSize: '0.65rem' }} />
-            </button>
-            {menuOpen && (
-              <div className="user-menu-dropdown">
-                <div className="user-menu-email">{accountLabel}</div>
-                <button className="user-menu-item" onClick={logout}>
-                  <i className="fa-solid fa-right-from-bracket" /> Logout
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+        <UserMenu />
       </div>
     </header>
   );

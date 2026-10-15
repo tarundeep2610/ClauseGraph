@@ -4,25 +4,53 @@
   "total_pages": 135,
   "targets": [
     {
-      "page": 2,
-      "key": "term:gcc",
+      "page": 3,
+      "key": "point:1",
       "occurrence_index": 0,
-      "label": "General Conditions of Contract (GCC)",
-      "scope_key": ""
+      "label": "(1) Other details can be seen in the complete tender documents",
+      "scope_key": "subdoc:tender-notice/subdoc:note"
     },
     {
-      "page": 2,
-      "key": "term:itb",
+      "page": 3,
+      "key": "point:2",
       "occurrence_index": 0,
-      "label": "Instructions To Bidders (ITB)",
-      "scope_key": ""
+      "label": "(2) Tender Documents can be downloaded from main portal",
+      "scope_key": "subdoc:tender-notice/subdoc:note"
     },
     {
-      "page": 2,
-      "key": "term:scc",
+      "page": 3,
+      "key": "point:3",
       "occurrence_index": 0,
-      "label": "Special Conditions of Contract (SCC)",
-      "scope_key": ""
+      "label": "(3) The bid data should be filled in and the bid seals",
+      "scope_key": "subdoc:tender-notice/subdoc:note"
+    },
+    {
+      "page": 3,
+      "key": "point:4",
+      "occurrence_index": 0,
+      "label": "(4) The relevant portion of tender which tenderers have to fill online",
+      "scope_key": "subdoc:tender-notice/subdoc:note"
+    },
+    {
+      "page": 3,
+      "key": "point:5",
+      "occurrence_index": 0,
+      "label": "(5) Since the online bidders are required to sign their bids online",
+      "scope_key": "subdoc:tender-notice/subdoc:note"
+    },
+    {
+      "page": 3,
+      "key": "point:6",
+      "occurrence_index": 0,
+      "label": "(6) Bidders intending to participate in the Tender are required",
+      "scope_key": "subdoc:tender-notice/subdoc:note"
+    },
+    {
+      "page": 3,
+      "key": "subdoc:note",
+      "occurrence_index": 0,
+      "label": "NOTE: -",
+      "scope_key": "subdoc:tender-notice"
     },
     {
       "page": 3,
@@ -32,11 +60,270 @@
       "scope_key": ""
     },
     {
+      "page": 4,
+      "key": "point:10",
+      "occurrence_index": 0,
+      "label": "(10) Last date for online submission of bid documents",
+      "scope_key": "subdoc:tender-notice/subdoc:note"
+    },
+    {
+      "page": 4,
+      "key": "point:11",
+      "occurrence_index": 0,
+      "label": "(11) The Tender document will be available on portal",
+      "scope_key": "subdoc:tender-notice/subdoc:note"
+    },
+    {
+      "page": 4,
+      "key": "point:12",
+      "occurrence_index": 0,
+      "label": "(12) The Pre-bid meeting will be held on 09.10.2026",
+      "scope_key": "subdoc:tender-notice/subdoc:note"
+    },
+    {
+      "page": 4,
+      "key": "point:13",
+      "occurrence_index": 0,
+      "label": "(13) Only online bids will be considered as valid.",
+      "scope_key": "subdoc:tender-notice/subdoc:note"
+    },
+    {
+      "page": 4,
+      "key": "point:7",
+      "occurrence_index": 0,
+      "label": "(7) The required amount of EMD shall be accepted through online payment only",
+      "scope_key": "subdoc:tender-notice/subdoc:note"
+    },
+    {
+      "page": 4,
+      "key": "point:8",
+      "occurrence_index": 0,
+      "label": "(8) No offer will be accepted without valid Earnest Money Deposit",
+      "scope_key": "subdoc:tender-notice/subdoc:note"
+    },
+    {
+      "page": 4,
+      "key": "point:9",
+      "occurrence_index": 0,
+      "label": "(9) The corrigendum or addendum to the bidding documents",
+      "scope_key": "subdoc:tender-notice/subdoc:note"
+    },
+    {
+      "page": 5,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "(1) The Tenderers are required to submit all the desired documents",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2"
+    },
+    {
+      "page": 5,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "(2) The Tenderers have to upload following documents online",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2"
+    },
+    {
+      "page": 5,
+      "key": "point:i",
+      "occurrence_index": 0,
+      "label": "(I) IN COVER-1: -",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2/point:2"
+    },
+    {
+      "page": 5,
+      "key": "point:i",
+      "occurrence_index": 1,
+      "label": "i. TENDER Forms - upload duly sealed, signed & dated scan copy",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2/point:2"
+    },
+    {
+      "page": 5,
+      "key": "point:i",
+      "occurrence_index": 2,
+      "label": "i. Annex-I Performa for Bid Form",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2/point:2"
+    },
+    {
+      "page": 5,
+      "key": "point:ii",
+      "occurrence_index": 0,
+      "label": "(II) IN COVER-2: -",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2/point:2"
+    },
+    {
+      "page": 5,
+      "key": "point:ii",
+      "occurrence_index": 1,
+      "label": "ii. Annex-II Performa for No Deviations from Terms and Conditions of Bid Documen",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2/point:2"
+    },
+    {
+      "page": 5,
+      "key": "point:iii",
+      "occurrence_index": 0,
+      "label": "iii. Annex-III Performa for Undertakings",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2/point:2"
+    },
+    {
+      "page": 5,
+      "key": "point:iv",
+      "occurrence_index": 0,
+      "label": "iv. Annex-V Performa for Conflict of Interest",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2/point:2"
+    },
+    {
+      "page": 5,
+      "key": "point:v",
+      "occurrence_index": 0,
+      "label": "v. Annex-VI Format for blacklisting",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2/point:2"
+    },
+    {
+      "page": 5,
+      "key": "point:vi",
+      "occurrence_index": 0,
+      "label": "vi. Annex-VII Performa for Pending Litigation",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2/point:2"
+    },
+    {
       "page": 5,
       "key": "subdoc:key-dates-and-basic-tender-information",
       "occurrence_index": 0,
       "label": "Key Dates and Basic Tender Information",
       "scope_key": ""
+    },
+    {
+      "page": 5,
+      "key": "subdoc:note-2",
+      "occurrence_index": 0,
+      "label": "Note: - (2)",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information"
+    },
+    {
+      "page": 6,
+      "key": "point:3",
+      "occurrence_index": 0,
+      "label": "(3) In case of any of above dates is declared as holiday",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2"
+    },
+    {
+      "page": 6,
+      "key": "point:ii",
+      "occurrence_index": 0,
+      "label": "ii. Documents required against eligibility criteria of the tender",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2/point:2"
+    },
+    {
+      "page": 6,
+      "key": "point:iii",
+      "occurrence_index": 0,
+      "label": "(III) IN COVER -3: -",
+      "scope_key": "subdoc:key-dates-and-basic-tender-information/subdoc:note-2/point:2"
+    },
+    {
+      "page": 7,
+      "key": "numheading:1",
+      "occurrence_index": 0,
+      "label": "1 Name of works/services to be procured",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:10",
+      "occurrence_index": 0,
+      "label": "10 Availability of TENDER documents ends on",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:11",
+      "occurrence_index": 0,
+      "label": "11 TENDER submission ends on",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:12",
+      "occurrence_index": 0,
+      "label": "12 TENDER opens on",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:13",
+      "occurrence_index": 0,
+      "label": "13 Pre-Bid Meeting/Conference if applicable",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:14",
+      "occurrence_index": 0,
+      "label": "14 TENDER validity period (in days)",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:15",
+      "occurrence_index": 0,
+      "label": "15 Purchaser address for Correspondence",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:2",
+      "occurrence_index": 0,
+      "label": "2 Purchaser",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:3",
+      "occurrence_index": 0,
+      "label": "3 TENDER/TENDER Specification Number",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:4",
+      "occurrence_index": 0,
+      "label": "4 TENDER Type",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:5",
+      "occurrence_index": 0,
+      "label": "5 Contract Period",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:6",
+      "occurrence_index": 0,
+      "label": "6 TENDER/TENDER Currency Settings",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:7",
+      "occurrence_index": 0,
+      "label": "7 Non-refundable TENDER document fee/TENDER fee (INR)",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:8",
+      "occurrence_index": 0,
+      "label": "8 Earnest Money Deposit (INR)",
+      "scope_key": "subdoc:section-i-essential-tender-information"
+    },
+    {
+      "page": 7,
+      "key": "numheading:9",
+      "occurrence_index": 0,
+      "label": "9 Availability of TENDER/TENDER documents starts on",
+      "scope_key": "subdoc:section-i-essential-tender-information"
     },
     {
       "page": 7,
@@ -54,44 +341,86 @@
     },
     {
       "page": 8,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. The Sole Bidder/Lead Bidder and the Consortium Partner",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
+    },
+    {
+      "page": 8,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. The bidder should be registered in India with GST",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
+    },
+    {
+      "page": 8,
+      "key": "point:3",
+      "occurrence_index": 0,
+      "label": "3. The Sole bidder/Lead bidder and Consortium Partner (in case of consortium) sh",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
+    },
+    {
+      "page": 8,
+      "key": "point:4",
+      "occurrence_index": 0,
+      "label": "4. The Sole bidder/Lead bidder should have a Minimum Average Annual Turnover",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
+    },
+    {
+      "page": 8,
+      "key": "point:5",
+      "occurrence_index": 0,
+      "label": "5. The Sole bidder/Lead bidder and Consortium Partner (in case of consortium) mu",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
+    },
+    {
+      "page": 8,
       "key": "point:i",
       "occurrence_index": 0,
       "label": "i. The RFP/Bid intends to consider only those organizations that have the requis",
-      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend"
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
     },
     {
       "page": 8,
       "key": "point:ii",
       "occurrence_index": 0,
       "label": "ii. Keeping this requirement in mind, eligibility criteria has been formulated t",
-      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend"
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
     },
     {
       "page": 8,
       "key": "point:iii",
       "occurrence_index": 0,
       "label": "iii. The bids of only those bidders who meet the eligibility criteria will be ev",
-      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend"
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
     },
     {
       "page": 8,
       "key": "point:iv",
       "occurrence_index": 0,
       "label": "iv. The following conditions are prescribed as eligibility criteria for bidders ",
-      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend"
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
     },
     {
       "page": 8,
       "key": "point:v",
       "occurrence_index": 0,
       "label": "v. Purchaser reserves the right-to independently verify the authenticity of the ",
-      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend"
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
     },
     {
       "page": 8,
       "key": "point:vi",
       "occurrence_index": 0,
       "label": "vi. The invitation to bid is open to all bidders who qualify the eligibility cri",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
+    },
+    {
+      "page": 8,
+      "key": "subdoc:1-the-essential-eligibility-criteria-for",
+      "occurrence_index": 0,
+      "label": "(1) The essential eligibility criteria for Tenderers have be",
       "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend"
     },
     {
@@ -100,6 +429,41 @@
       "occurrence_index": 0,
       "label": "Section-II: Eligibility Criteria for Tenderers",
       "scope_key": ""
+    },
+    {
+      "page": 9,
+      "key": "point:10",
+      "occurrence_index": 0,
+      "label": "10. The Sole bidder/Lead bidder should have at least 50",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
+    },
+    {
+      "page": 9,
+      "key": "point:6",
+      "occurrence_index": 0,
+      "label": "6. The Sole bidder/Lead bidder should have successfully executed at least three ",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
+    },
+    {
+      "page": 9,
+      "key": "point:7",
+      "occurrence_index": 0,
+      "label": "7. The Sole Bidder, in case of an individual bid, or the Lead Bidder/Lead Consor",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
+    },
+    {
+      "page": 9,
+      "key": "point:8",
+      "occurrence_index": 0,
+      "label": "8. The Sole bidder/Lead bidder and Consortium Partner (in case of consortium) mu",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
+    },
+    {
+      "page": 9,
+      "key": "point:9",
+      "occurrence_index": 0,
+      "label": "9. The Sole Bidder/Lead Bidder shall be an active Oracle Partner Network (OPN) m",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:1-the-essential-eligibility-criteria-for"
     },
     {
       "page": 9,
@@ -114,6 +478,34 @@
       "occurrence_index": 0,
       "label": "Oracle Partner Network (OPN)",
       "scope_key": ""
+    },
+    {
+      "page": 10,
+      "key": "point:i",
+      "occurrence_index": 0,
+      "label": "(i) Bidders needs to mention page no. of the documents attached in the offer",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:note"
+    },
+    {
+      "page": 10,
+      "key": "point:ii",
+      "occurrence_index": 0,
+      "label": "(ii) For the purpose of eligibility criteria work order executed in India",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend/subdoc:note"
+    },
+    {
+      "page": 10,
+      "key": "subdoc:note",
+      "occurrence_index": 0,
+      "label": "Note",
+      "scope_key": "subdoc:section-ii-eligibility-criteria-for-tend"
+    },
+    {
+      "page": 11,
+      "key": "numheading:1",
+      "occurrence_index": 0,
+      "label": "1 Definition(s)",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 11,
@@ -271,13 +663,6 @@
     },
     {
       "page": 11,
-      "key": "point:1",
-      "occurrence_index": 0,
-      "label": "1 Definition(s)",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 11,
       "key": "subdoc:section-iii-instructions-to-bidders",
       "occurrence_index": 0,
       "label": "Section-III: Instructions to Bidders",
@@ -355,79 +740,79 @@
     },
     {
       "page": 12,
-      "key": "point:2",
+      "key": "numheading:2",
       "occurrence_index": 0,
       "label": "2 Availability of Bid documents",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 12,
-      "key": "point:2.1",
+      "key": "numheading:2.1",
       "occurrence_index": 0,
-      "label": "2.1. The bid document will be uploaded",
+      "label": "2.1 The bid document will be uploaded",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 12,
-      "key": "point:3",
+      "key": "numheading:3",
       "occurrence_index": 0,
       "label": "3 Invitation of Bids",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 12,
-      "key": "point:3.1",
+      "key": "numheading:3.1",
       "occurrence_index": 0,
-      "label": "3.1. The Purchaser is hereby inviting unconditional bids",
+      "label": "3.1 The Purchaser is hereby inviting unconditional bids",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 12,
-      "key": "point:4",
+      "key": "numheading:4",
       "occurrence_index": 0,
       "label": "4 Responsibility of bidder(s)",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 12,
-      "key": "point:4.1",
+      "key": "numheading:4.1",
       "occurrence_index": 0,
-      "label": "4.1. The Purchaser will not assume any responsibility",
+      "label": "4.1 The Purchaser will not assume any responsibility",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 12,
-      "key": "point:4.2",
+      "key": "numheading:4.2",
       "occurrence_index": 0,
-      "label": "4.2. Verbal agreement or conversation",
+      "label": "4.2 Verbal agreement or conversation",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 12,
-      "key": "point:4.3",
+      "key": "numheading:4.3",
       "occurrence_index": 0,
-      "label": "4.3. It shall be the sole responsibility of bidders",
+      "label": "4.3 It shall be the sole responsibility of bidders",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 12,
-      "key": "point:5",
+      "key": "numheading:5",
       "occurrence_index": 0,
       "label": "5 Eligibility criteria",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 12,
-      "key": "point:5.1",
+      "key": "numheading:5.1",
       "occurrence_index": 0,
-      "label": "5.1. The bidder(s) shall furnish",
+      "label": "5.1 The bidder(s) shall furnish",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 12,
-      "key": "point:5.2",
+      "key": "numheading:5.2",
       "occurrence_index": 0,
-      "label": "5.2. Notwithstanding anything stated therein",
+      "label": "5.2 Notwithstanding anything stated therein",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
@@ -446,93 +831,114 @@
     },
     {
       "page": 13,
-      "key": "point:6",
+      "key": "numheading:6",
       "occurrence_index": 0,
       "label": "6 Project site visit",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 13,
-      "key": "point:6.1",
+      "key": "numheading:6.1",
       "occurrence_index": 0,
-      "label": "6.1. The bidder is advised to visit and examine the site",
+      "label": "6.1 The bidder is advised to visit and examine the site",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 13,
-      "key": "point:6.2",
+      "key": "numheading:6.2",
       "occurrence_index": 0,
-      "label": "6.2. The bidder and any of its authorized personnel",
+      "label": "6.2 The bidder and any of its authorized personnel",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 13,
-      "key": "point:7",
+      "key": "numheading:7",
       "occurrence_index": 0,
       "label": "7 Process to be Confidential",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 13,
-      "key": "point:7.1",
+      "key": "numheading:7.1",
       "occurrence_index": 0,
-      "label": "7.1. This bid document and any other document(s) released",
+      "label": "7.1 This bid document and any other document(s) released",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 13,
-      "key": "point:8",
+      "key": "numheading:8",
       "occurrence_index": 0,
       "label": "8 Clarifications on bid documents",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 13,
-      "key": "point:8.1",
+      "key": "numheading:8.1",
       "occurrence_index": 0,
-      "label": "8.1. The bidders are expected to be fully conversant",
+      "label": "8.1 The bidders are expected to be fully conversant",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 13,
-      "key": "point:8.2",
+      "key": "numheading:8.2",
       "occurrence_index": 0,
-      "label": "8.2. The queries shall be accepted only from the accredited",
+      "label": "8.2 The queries shall be accepted only from the accredited",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 13,
-      "key": "point:8.3",
+      "key": "numheading:8.3",
       "occurrence_index": 0,
-      "label": "8.3. The Purchaser will respond only to those queries",
+      "label": "8.3 The Purchaser will respond only to those queries",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 13,
-      "key": "point:8.4",
+      "key": "numheading:8.4",
       "occurrence_index": 0,
-      "label": "8.4. The Purchaser reserves the right to defer/decline",
+      "label": "8.4 The Purchaser reserves the right to defer/decline",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 13,
-      "key": "point:8.5",
+      "key": "numheading:8.5",
       "occurrence_index": 0,
-      "label": "8.5. The copies of all the replies/clarifications",
+      "label": "8.5 The copies of all the replies/clarifications",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 13,
-      "key": "point:9",
+      "key": "numheading:9",
       "occurrence_index": 0,
       "label": "9 Preparation of Bids",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 13,
-      "key": "point:9.1",
+      "key": "numheading:9.1",
       "occurrence_index": 0,
-      "label": "9.1. Bidder shall submit only one (1) unconditional bid",
+      "label": "9.1 Bidder shall submit only one (1) unconditional bid",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 14,
+      "key": "numheading:10",
+      "occurrence_index": 0,
+      "label": "10 Deviations from terms and conditions of the bid",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 14,
+      "key": "numheading:10.1",
+      "occurrence_index": 0,
+      "label": "10.1 The bidder/Agency must upload Annex-II",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 14,
+      "key": "numheading:11",
+      "occurrence_index": 0,
+      "label": "11 Bid Forms",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
@@ -544,261 +950,240 @@
     },
     {
       "page": 14,
-      "key": "point:10",
+      "key": "numheading:11.2",
       "occurrence_index": 0,
-      "label": "10 Deviations from terms and conditions of the bid",
+      "label": "11.2 For all other cases, the bidder shall design a form",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:10.1",
+      "key": "numheading:11.3",
       "occurrence_index": 0,
-      "label": "10.1. The bidder/Agency must upload Annex-II",
+      "label": "11.3 Purchaser shall in no case be bound",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:11",
-      "occurrence_index": 0,
-      "label": "11 Bid Forms",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 14,
-      "key": "point:11.2",
-      "occurrence_index": 0,
-      "label": "11.2. For all other cases, the bidder shall design a form",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 14,
-      "key": "point:11.3",
-      "occurrence_index": 0,
-      "label": "11.3. Purchaser shall in no case be bound",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 14,
-      "key": "point:12",
+      "key": "numheading:12",
       "occurrence_index": 0,
       "label": "12 Conditional Bid",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:12.1",
+      "key": "numheading:12.1",
       "occurrence_index": 0,
-      "label": "12.1. The bidders shall offer only unconditional bid(s)",
+      "label": "12.1 The bidders shall offer only unconditional bid(s)",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:12.2",
+      "key": "numheading:12.2",
       "occurrence_index": 0,
-      "label": "12.2. Bidder's terms & conditions enclosed",
+      "label": "12.2 Bidder's terms & conditions enclosed",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:13",
+      "key": "numheading:13",
       "occurrence_index": 0,
       "label": "13 Deadline for submission of bids",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:13.1",
+      "key": "numheading:13.1",
       "occurrence_index": 0,
-      "label": "13.1. Bids must be submitted online",
+      "label": "13.1 Bids must be submitted online",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:13.2",
+      "key": "numheading:13.2",
       "occurrence_index": 0,
-      "label": "13.2. The Purchaser may, at its discretion",
+      "label": "13.2 The Purchaser may, at its discretion",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:14",
+      "key": "numheading:14",
       "occurrence_index": 0,
       "label": "14 Late Bid",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:14.1",
+      "key": "numheading:14.1",
       "occurrence_index": 0,
-      "label": "14.1. Bid(s) received by the Purchaser after the bid submission",
+      "label": "14.1 Bid(s) received by the Purchaser after the bid submission",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:9.2",
+      "key": "numheading:9.2",
       "occurrence_index": 0,
-      "label": "9.2. The transfer of bid document(s) purchased",
+      "label": "9.2 The transfer of bid document(s) purchased",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:9.3",
+      "key": "numheading:9.3",
       "occurrence_index": 0,
-      "label": "9.3. The price bid should be duly filled",
+      "label": "9.3 The price bid should be duly filled",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:9.4",
+      "key": "numheading:9.4",
       "occurrence_index": 0,
-      "label": "9.4. All pages of the bid document(s)",
+      "label": "9.4 All pages of the bid document(s)",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:9.5",
+      "key": "numheading:9.5",
       "occurrence_index": 0,
-      "label": "9.5. No corrections, even with signature",
+      "label": "9.5 No corrections, even with signature",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:9.6",
+      "key": "numheading:9.6",
       "occurrence_index": 0,
-      "label": "9.6. Bid documents shall be written legibly",
+      "label": "9.6 Bid documents shall be written legibly",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 14,
-      "key": "point:9.7",
+      "key": "numheading:9.7",
       "occurrence_index": 0,
-      "label": "9.7. General information, which is not specifically requested",
+      "label": "9.7 General information, which is not specifically requested",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:15",
+      "key": "numheading:15",
       "occurrence_index": 0,
       "label": "15 Withdrawal of Bids",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:15.1",
+      "key": "numheading:15.1",
       "occurrence_index": 0,
-      "label": "15.1. The bidder shall not be permitted to withdraw",
+      "label": "15.1 The bidder shall not be permitted to withdraw",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:16",
+      "key": "numheading:16",
       "occurrence_index": 0,
       "label": "16 Associated cost of bid preparation and submission",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:16.1",
+      "key": "numheading:16.1",
       "occurrence_index": 0,
-      "label": "16.1. The bidder shall bear all the cost and expenses",
+      "label": "16.1 The bidder shall bear all the cost and expenses",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:16.2",
+      "key": "numheading:16.2",
       "occurrence_index": 0,
-      "label": "16.2. The Purchaser shall in no case be responsible",
+      "label": "16.2 The Purchaser shall in no case be responsible",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:17",
+      "key": "numheading:17",
       "occurrence_index": 0,
       "label": "17 Pre-bid conference",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:17.1",
+      "key": "numheading:17.1",
       "occurrence_index": 0,
-      "label": "17.1. The bidders may request for clarification",
+      "label": "17.1 The bidders may request for clarification",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:17.2",
+      "key": "numheading:17.2",
       "occurrence_index": 0,
-      "label": "17.2. The Purchaser may modify the bid documents",
+      "label": "17.2 The Purchaser may modify the bid documents",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:18",
+      "key": "numheading:18",
       "occurrence_index": 0,
       "label": "18 Language of the bid",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:18.1",
+      "key": "numheading:18.1",
       "occurrence_index": 0,
-      "label": "18.1. The bid prepared by the bidder",
+      "label": "18.1 The bid prepared by the bidder",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:19",
+      "key": "numheading:19",
       "occurrence_index": 0,
       "label": "19 Amendment(s) to bid documents",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:19.1",
+      "key": "numheading:19.1",
       "occurrence_index": 0,
-      "label": "19.1. At any time prior to the deadline for submission",
+      "label": "19.1 At any time prior to the deadline for submission",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:19.2",
+      "key": "numheading:19.2",
       "occurrence_index": 0,
-      "label": "19.2. The amendment(s) to bid documents shall be binding",
+      "label": "19.2 The amendment(s) to bid documents shall be binding",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:19.3",
+      "key": "numheading:19.3",
       "occurrence_index": 0,
-      "label": "19.3. In a scenario where the interested bidder",
+      "label": "19.3 In a scenario where the interested bidder",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:20",
+      "key": "numheading:20",
       "occurrence_index": 0,
       "label": "20 Earnest Money Deposit (EMD)",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:20.1",
+      "key": "numheading:20.1",
       "occurrence_index": 0,
-      "label": "20.1. No offer will be accepted without earnest money deposit",
+      "label": "20.1 No offer will be accepted without earnest money deposit",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:20.2",
+      "key": "numheading:20.2",
       "occurrence_index": 0,
-      "label": "20.2. Any bid proposal/offer not accompanied by the EMD",
+      "label": "20.2 Any bid proposal/offer not accompanied by the EMD",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 15,
-      "key": "point:20.3",
+      "key": "numheading:20.3",
       "occurrence_index": 0,
-      "label": "20.3. If on opening of bid any discrepancy in EMD",
+      "label": "20.3 If on opening of bid any discrepancy in EMD",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
@@ -824,44 +1209,44 @@
     },
     {
       "page": 16,
-      "key": "point:20.4",
+      "key": "numheading:20.4",
       "occurrence_index": 0,
-      "label": "20.4. In case of unsuccessful bidders, the EMD",
+      "label": "20.4 In case of unsuccessful bidders, the EMD",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 16,
-      "key": "point:20.5",
+      "key": "numheading:20.5",
       "occurrence_index": 0,
-      "label": "20.5. If the successful bidder fails to furnish",
+      "label": "20.5 If the successful bidder fails to furnish",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 16,
-      "key": "point:20.6",
+      "key": "numheading:20.6",
       "occurrence_index": 0,
-      "label": "20.6. In case the bidder is likely to be awarded",
+      "label": "20.6 In case the bidder is likely to be awarded",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 16,
-      "key": "point:20.7",
+      "key": "numheading:20.7",
       "occurrence_index": 0,
-      "label": "20.7. The Purchaser reserves the right to forfeit EMD",
+      "label": "20.7 The Purchaser reserves the right to forfeit EMD",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 16,
-      "key": "point:20.8",
+      "key": "numheading:20.8",
       "occurrence_index": 0,
-      "label": "20.8. The bank charges (if any) shall be attributable",
+      "label": "20.8 The bank charges (if any) shall be attributable",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 16,
-      "key": "point:20.9",
+      "key": "numheading:20.9",
       "occurrence_index": 0,
-      "label": "20.9. EMD shall be forfeited in case of withdrawal",
+      "label": "20.9 EMD shall be forfeited in case of withdrawal",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
@@ -880,6 +1265,55 @@
     },
     {
       "page": 17,
+      "key": "numheading:21",
+      "occurrence_index": 0,
+      "label": "21 Documents comprising the bid",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 17,
+      "key": "numheading:21.1",
+      "occurrence_index": 0,
+      "label": "21.1 Part-I: Cover-1",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 17,
+      "key": "numheading:21.2",
+      "occurrence_index": 0,
+      "label": "21.2 Part-2: Cover-2",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 17,
+      "key": "numheading:21.3",
+      "occurrence_index": 0,
+      "label": "21.3 Part-3: Cover-3 Price Bid",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 17,
+      "key": "numheading:22",
+      "occurrence_index": 0,
+      "label": "22 Submission of bid",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 17,
+      "key": "numheading:22.1",
+      "occurrence_index": 0,
+      "label": "22.1 The bidders are requested to ensure that they furnish the Covers 1 and 2",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 17,
+      "key": "numheading:22.10",
+      "occurrence_index": 0,
+      "label": "22.10 No Post Bid development shall be allowed",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 17,
       "key": "numheading:22.2",
       "occurrence_index": 0,
       "label": "22.2 The Bidders are requested to ensure that all required schedules",
@@ -887,100 +1321,100 @@
     },
     {
       "page": 17,
-      "key": "point:21",
+      "key": "numheading:22.3",
       "occurrence_index": 0,
-      "label": "21 Documents comprising the bid",
+      "label": "22.3 Transfer of online purchased documents",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 17,
-      "key": "point:21.1",
+      "key": "numheading:22.4",
       "occurrence_index": 0,
-      "label": "21.1. Part-I: Cover-1",
+      "label": "22.4 The submission of a tender by the bidder implies",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 17,
-      "key": "point:21.2",
+      "key": "numheading:22.5",
       "occurrence_index": 0,
-      "label": "21.2. Part-2: Cover-2",
+      "label": "22.5 Nobody is authorized to receive or issue receipt",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 17,
-      "key": "point:21.3",
+      "key": "numheading:22.6",
       "occurrence_index": 0,
-      "label": "21.3. Part-3: Cover-3 Price Bid",
+      "label": "22.6 Post/Couriered/Telegraphic/Tele Fax/Telex/E-mail bids",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 17,
-      "key": "point:22",
+      "key": "numheading:22.7",
       "occurrence_index": 0,
-      "label": "22 Submission of bid",
+      "label": "22.7 An authorized representative of the bidder shall initial",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 17,
-      "key": "point:22.1",
+      "key": "numheading:22.8",
       "occurrence_index": 0,
-      "label": "22.1. The bidders are requested to ensure that they furnish the Covers 1 and 2",
+      "label": "22.8 Bid shall be submitted in the forms attached herein",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 17,
-      "key": "point:22.10",
+      "key": "numheading:22.9",
       "occurrence_index": 0,
-      "label": "22.10. No Post Bid development shall be allowed",
+      "label": "22.9 The bidder should quote the prices strictly online",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
-      "page": 17,
-      "key": "point:22.3",
+      "page": 18,
+      "key": "numheading:22.11",
       "occurrence_index": 0,
-      "label": "22.3. Transfer of online purchased documents",
+      "label": "22.11 The bid documents include certain statements",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
-      "page": 17,
-      "key": "point:22.4",
+      "page": 18,
+      "key": "numheading:23.1",
       "occurrence_index": 0,
-      "label": "22.4. The submission of a tender by the bidder implies",
+      "label": "23.1 The Purchaser shall open online bids",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
-      "page": 17,
-      "key": "point:22.5",
+      "page": 18,
+      "key": "numheading:23.2",
       "occurrence_index": 0,
-      "label": "22.5. Nobody is authorized to receive or issue receipt",
+      "label": "23.2 The bidders' names, bid prices",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
-      "page": 17,
-      "key": "point:22.6",
+      "page": 18,
+      "key": "numheading:23.2.1",
       "occurrence_index": 0,
-      "label": "22.6. Post/Couriered/Telegraphic/Tele Fax/Telex/E-mail bids",
+      "label": "23.2.1 Opening of Cover-1",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
-      "page": 17,
-      "key": "point:22.7",
+      "page": 18,
+      "key": "numheading:23.2.2",
       "occurrence_index": 0,
-      "label": "22.7. An authorized representative of the bidder shall initial",
+      "label": "23.2.2 Opening of Cover-C- Price bid",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
-      "page": 17,
-      "key": "point:22.8",
+      "page": 18,
+      "key": "numheading:23.3",
       "occurrence_index": 0,
-      "label": "22.8. Bid shall be submitted in the forms attached herein",
+      "label": "23.3 In the event, the Purchaser, in its discretion, decides not to open the bid",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
-      "page": 17,
-      "key": "point:22.9",
+      "page": 18,
+      "key": "numheading:23.4",
       "occurrence_index": 0,
-      "label": "22.9. The bidder should quote the prices strictly online",
+      "label": "23.4 It is to be noted that the bid evaluation",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
@@ -992,79 +1426,93 @@
     },
     {
       "page": 18,
-      "key": "point:22.11",
-      "occurrence_index": 0,
-      "label": "22.11. The bid documents include certain statements",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 18,
-      "key": "point:23.1",
-      "occurrence_index": 0,
-      "label": "23.1. The Purchaser shall open online bids",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 18,
-      "key": "point:23.2",
-      "occurrence_index": 0,
-      "label": "23.2. The bidders' names, bid prices",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 18,
-      "key": "point:23.2.1",
-      "occurrence_index": 0,
-      "label": "23.2.1. Opening of Cover-1",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 18,
-      "key": "point:23.2.2",
-      "occurrence_index": 0,
-      "label": "23.2.2. Opening of Cover-C- Price bid",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 18,
-      "key": "point:23.3",
-      "occurrence_index": 0,
-      "label": "23.3. In the event, the Purchaser, in its discretion, decides not to open the bi",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 18,
-      "key": "point:23.4",
-      "occurrence_index": 0,
-      "label": "23.4. It is to be noted that the bid evaluation",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 18,
-      "key": "point:24",
+      "key": "numheading:24",
       "occurrence_index": 0,
       "label": "24 Bid Evaluation",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 18,
-      "key": "point:24.1",
+      "key": "numheading:24.1",
       "occurrence_index": 0,
-      "label": "24.1. Preliminary Examination",
+      "label": "24.1 Preliminary Examination",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 18,
-      "key": "point:24.1.1",
+      "key": "numheading:24.1.1",
       "occurrence_index": 0,
-      "label": "24.1.1. The Purchaser will examine the bids",
+      "label": "24.1.1 The Purchaser will examine the bids",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 18,
-      "key": "point:24.1.2",
+      "key": "numheading:24.1.2",
       "occurrence_index": 0,
-      "label": "24.1.2. The Purchaser may waive any minor informality",
+      "label": "24.1.2 The Purchaser may waive any minor informality",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 19,
+      "key": "numheading:24.2",
+      "occurrence_index": 0,
+      "label": "24.2 Examination of Substantive responsiveness and Qualification requirement",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 19,
+      "key": "numheading:24.2.1",
+      "occurrence_index": 0,
+      "label": "24.2.1 Prior to the detailed evaluation",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 19,
+      "key": "numheading:24.2.2",
+      "occurrence_index": 0,
+      "label": "24.2.2 During bid evaluation, the Purchaser may",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 19,
+      "key": "numheading:24.2.3",
+      "occurrence_index": 0,
+      "label": "24.2.3 Bids containing deviations from critical provisions",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 19,
+      "key": "numheading:24.2.4",
+      "occurrence_index": 0,
+      "label": "24.2.4 If a bid is not substantially responsive",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 19,
+      "key": "numheading:24.2.5",
+      "occurrence_index": 0,
+      "label": "24.2.5 The Purchaser will ascertain to its satisfaction",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 19,
+      "key": "numheading:24.2.6",
+      "occurrence_index": 0,
+      "label": "24.2.6 The determination will take into account the Bidder's financial",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 19,
+      "key": "numheading:24.2.7",
+      "occurrence_index": 0,
+      "label": "24.2.7 An affirmative determination will be a prerequisite",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 19,
+      "key": "numheading:24.2.8",
+      "occurrence_index": 0,
+      "label": "24.2.8 The bid from those bidders shall not be accepted",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
@@ -1075,150 +1523,87 @@
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
-      "page": 19,
-      "key": "point:24.2",
+      "page": 20,
+      "key": "numheading:24.3",
       "occurrence_index": 0,
-      "label": "24.2. Examination of Substantive responsiveness and Qualification requirement",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 19,
-      "key": "point:24.2.1",
-      "occurrence_index": 0,
-      "label": "24.2.1. Prior to the detailed evaluation",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 19,
-      "key": "point:24.2.2",
-      "occurrence_index": 0,
-      "label": "24.2.2. During bid evaluation, the Purchaser may",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 19,
-      "key": "point:24.2.3",
-      "occurrence_index": 0,
-      "label": "24.2.3. Bids containing deviations from critical provisions",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 19,
-      "key": "point:24.2.4",
-      "occurrence_index": 0,
-      "label": "24.2.4. If a bid is not substantially responsive",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 19,
-      "key": "point:24.2.5",
-      "occurrence_index": 0,
-      "label": "24.2.5. The Purchaser will ascertain to its satisfaction",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 19,
-      "key": "point:24.2.6",
-      "occurrence_index": 0,
-      "label": "24.2.6. The determination will take into account the Bidder's financial",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 19,
-      "key": "point:24.2.7",
-      "occurrence_index": 0,
-      "label": "24.2.7. An affirmative determination will be a prerequisite",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 19,
-      "key": "point:24.2.8",
-      "occurrence_index": 0,
-      "label": "24.2.8. The bid from those bidders shall not be accepted",
+      "label": "24.3 Techno-commercial evaluation",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 20,
-      "key": "point:24.3",
+      "key": "numheading:24.3.1",
       "occurrence_index": 0,
-      "label": "24.3. Techno-commercial evaluation",
+      "label": "24.3.1 The bidders, whose bids are found to be substantially responsive",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 20,
-      "key": "point:24.3.1",
+      "key": "numheading:24.3.2",
       "occurrence_index": 0,
-      "label": "24.3.1. The bidders, whose bids are found to be substantially responsive",
+      "label": "24.3.2 The Purchaser will carry out a detailed evaluation",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 20,
-      "key": "point:24.3.2",
+      "key": "numheading:24.4",
       "occurrence_index": 0,
-      "label": "24.3.2. The Purchaser will carry out a detailed evaluation",
+      "label": "24.4 Technical Evaluation",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 20,
-      "key": "point:24.4",
+      "key": "numheading:24.5",
       "occurrence_index": 0,
-      "label": "24.4. Technical Evaluation",
+      "label": "24.5 Financial Evaluation",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 20,
-      "key": "point:24.5",
+      "key": "numheading:24.5.1",
       "occurrence_index": 0,
-      "label": "24.5. Financial Evaluation",
+      "label": "24.5.1 The financial bids shall be opened online",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 20,
-      "key": "point:24.5.1",
+      "key": "numheading:24.5.2",
       "occurrence_index": 0,
-      "label": "24.5.1. The financial bids shall be opened online",
+      "label": "24.5.2 A Financial Evaluation Committee (FEC)",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 20,
-      "key": "point:24.5.2",
+      "key": "numheading:24.5.3",
       "occurrence_index": 0,
-      "label": "24.5.2. A Financial Evaluation Committee (FEC)",
+      "label": "24.5.3 Financial bids will be evaluated on the basis of total price",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 20,
-      "key": "point:24.5.3",
+      "key": "numheading:24.5.4",
       "occurrence_index": 0,
-      "label": "24.5.3. Financial bids will be evaluated on the basis of total price",
+      "label": "24.5.4 COMPUTATION OF LOWEST ACCEPTABLE RATE (L-1)",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 20,
-      "key": "point:24.5.4",
+      "key": "numheading:24.5.5",
       "occurrence_index": 0,
-      "label": "24.5.4. COMPUTATION OF LOWEST ACCEPTABLE RATE (L-1)",
+      "label": "24.5.5 Based on the above criteria, the Purchaser will place Work order",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 20,
-      "key": "point:24.5.5",
-      "occurrence_index": 0,
-      "label": "24.5.5. Based on the above criteria, the Purchaser will place Work order",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
-    },
-    {
-      "page": 20,
-      "key": "point:25",
+      "key": "numheading:25",
       "occurrence_index": 0,
       "label": "25 Canvassing of bids",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 20,
-      "key": "point:25.1",
+      "key": "numheading:25.1",
       "occurrence_index": 0,
-      "label": "25.1. Bid shall be deemed to be under consideration",
+      "label": "25.1 Bid shall be deemed to be under consideration",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
@@ -1237,114 +1622,121 @@
     },
     {
       "page": 21,
-      "key": "point:26",
+      "key": "numheading:26",
       "occurrence_index": 0,
       "label": "26 Purchaser's right to accept any bid, and to reject any or all bids",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:26.1",
+      "key": "numheading:26.1",
       "occurrence_index": 0,
-      "label": "26.1. The Purchaser reserves the right to accept or reject any bid",
+      "label": "26.1 The Purchaser reserves the right to accept or reject any bid",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:27",
+      "key": "numheading:27",
       "occurrence_index": 0,
       "label": "27 Currency of Price Bid",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:27.1",
+      "key": "numheading:27.1",
       "occurrence_index": 0,
-      "label": "27.1. For the works/services required in the bid",
+      "label": "27.1 For the works/services required in the bid",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:28",
+      "key": "numheading:28",
       "occurrence_index": 0,
       "label": "28 Interpretation of conditions of bid(s)",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:28.1",
+      "key": "numheading:28.1",
       "occurrence_index": 0,
-      "label": "28.1. The Purchaser shall be the final authority",
+      "label": "28.1 The Purchaser shall be the final authority",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:29",
+      "key": "numheading:29",
       "occurrence_index": 0,
       "label": "29 Validity of bids",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:29.1",
+      "key": "numheading:29.1",
       "occurrence_index": 0,
-      "label": "29.1. The Bidder's proposal must remain valid for acceptance",
+      "label": "29.1 The Bidder's proposal must remain valid for acceptance",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:29.2",
+      "key": "numheading:29.2",
       "occurrence_index": 0,
-      "label": "29.2. The bid along with the rates and condition thereby",
+      "label": "29.2 The bid along with the rates and condition thereby",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:30",
+      "key": "numheading:30",
       "occurrence_index": 0,
       "label": "30 Issue of Letter of Award, Contract Signing and Issue of Work Order",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:30.1",
+      "key": "numheading:30.1",
       "occurrence_index": 0,
-      "label": "30.1. CGM (Store & Purchase) shall award the Contract",
+      "label": "30.1 CGM (Store & Purchase) shall award the Contract",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:30.2",
+      "key": "numheading:30.2",
       "occurrence_index": 0,
-      "label": "30.2. CGM (Store & Purchase) shall issue a detailed Letter of Award",
+      "label": "30.2 CGM (Store & Purchase) shall issue a detailed Letter of Award",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:30.3",
+      "key": "numheading:30.3",
       "occurrence_index": 0,
-      "label": "30.3. Within thirty (30) days from date of issue of letter of award, the success",
+      "label": "30.3 Within thirty (30) days from date of issue of letter of award, the successful bidder shall furnish requisite Contract performance",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:30.4",
+      "key": "numheading:30.4",
       "occurrence_index": 0,
-      "label": "30.4. Within thirty (30) days from date of issue of letter of award, the success",
+      "label": "30.4 Within thirty (30) days from date of issue of letter of award, the successful bidder shall register itself as Service Provider",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:31",
+      "key": "numheading:31",
       "occurrence_index": 0,
       "label": "31 Project kick-off/ Effective date of contract",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
       "page": 21,
-      "key": "point:31.1",
+      "key": "numheading:31.1",
       "occurrence_index": 0,
-      "label": "31.1. Effective date of contract shall 30 days",
+      "label": "31.1 Effective date of contract shall 30 days",
+      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+    },
+    {
+      "page": 22,
+      "key": "numheading:32",
+      "occurrence_index": 0,
+      "label": "32 Commercial Bid rejection Criteria",
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
@@ -1355,39 +1747,32 @@
       "scope_key": "subdoc:section-iii-instructions-to-bidders"
     },
     {
-      "page": 22,
-      "key": "point:32",
+      "page": 23,
+      "key": "numheading:4.1",
       "occurrence_index": 0,
-      "label": "32 Commercial Bid rejection Criteria",
-      "scope_key": "subdoc:section-iii-instructions-to-bidders"
+      "label": "4.1 Introduction",
+      "scope_key": "subdoc:section-iv-scope-of-work"
     },
     {
       "page": 23,
       "key": "numheading:4.1.1",
       "occurrence_index": 0,
       "label": "4.1.1 Existing Oracle License and Parallel Contract Baseline",
-      "scope_key": "subdoc:section-iv-scope-of-work"
-    },
-    {
-      "page": 23,
-      "key": "point:4.1",
-      "occurrence_index": 0,
-      "label": "4.1. Introduction",
-      "scope_key": "subdoc:section-iv-scope-of-work"
+      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1"
     },
     {
       "page": 23,
       "key": "point:a",
       "occurrence_index": 0,
       "label": "a. For execution and pricing of this Tender",
-      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1.1"
+      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1/numheading:4.1.1"
     },
     {
       "page": 23,
       "key": "point:b",
       "occurrence_index": 0,
       "label": "b. CSI No. 19320744 presently represents the Database",
-      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1.1"
+      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1/numheading:4.1.1"
     },
     {
       "page": 23,
@@ -1408,63 +1793,63 @@
       "key": "point:c",
       "occurrence_index": 0,
       "label": "c. Oracle application/middleware and other entitlements",
-      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1.1"
+      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1/numheading:4.1.1"
     },
     {
       "page": 24,
       "key": "point:d",
       "occurrence_index": 0,
       "label": "d. Existing ERPSI and other existing service arrangements",
-      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1.1"
+      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1/numheading:4.1.1"
     },
     {
       "page": 24,
       "key": "point:e",
       "occurrence_index": 0,
       "label": "e. Within the HOTO/Discovery period the SI shall prepare",
-      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1.1"
+      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1/numheading:4.1.1"
     },
     {
       "page": 25,
       "key": "numheading:4.1.2",
       "occurrence_index": 0,
       "label": "4.1.2 Handing Over Taking Over (HOTO)",
-      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1.1"
+      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1"
     },
     {
       "page": 25,
       "key": "point:a",
       "occurrence_index": 0,
       "label": "a. The SI would understand, analyse and examine",
-      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1.1/numheading:4.1.2"
+      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1/numheading:4.1.2"
     },
     {
       "page": 25,
       "key": "point:b",
       "occurrence_index": 0,
       "label": "b. The SI shall form and depute a transition team",
-      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1.1/numheading:4.1.2"
+      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1/numheading:4.1.2"
     },
     {
       "page": 25,
       "key": "point:c",
       "occurrence_index": 0,
       "label": "c. The SI shall undertake takeover of equipment",
-      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1.1/numheading:4.1.2"
+      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1/numheading:4.1.2"
     },
     {
       "page": 25,
       "key": "point:d",
       "occurrence_index": 0,
       "label": "d. The SI would be provided with the detailed exit management plan",
-      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1.1/numheading:4.1.2"
+      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1/numheading:4.1.2"
     },
     {
       "page": 25,
       "key": "point:e",
       "occurrence_index": 0,
       "label": "e. The SI would perform business process study",
-      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1.1/numheading:4.1.2"
+      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1/numheading:4.1.2"
     },
     {
       "page": 25,
@@ -1506,7 +1891,7 @@
       "key": "point:f",
       "occurrence_index": 0,
       "label": "f. The Transition Period which includes Handing Over",
-      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1.1/numheading:4.1.2"
+      "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.1/numheading:4.1.2"
     },
     {
       "page": 27,
@@ -1570,6 +1955,13 @@
       "occurrence_index": 0,
       "label": "l. Deployment of Development Environment at MPPKVVCL premises",
       "scope_key": "subdoc:section-iv-scope-of-work/numheading:4.2"
+    },
+    {
+      "page": 27,
+      "key": "term:scc",
+      "occurrence_index": 0,
+      "label": "Section VI Special Conditions of Contract (SCC)",
+      "scope_key": ""
     },
     {
       "page": 28,
@@ -2707,107 +3099,107 @@
     },
     {
       "page": 46,
-      "key": "point:1",
+      "key": "numheading:1",
       "occurrence_index": 0,
       "label": "1 Purchaser's Representative",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:1.1",
+      "key": "numheading:1.1",
       "occurrence_index": 0,
-      "label": "1.1. Purchaser shall appoint controlling Officer/Officer-in-charge",
+      "label": "1.1 Purchaser shall appoint controlling Officer/Officer-in-charge",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:1.2",
+      "key": "numheading:1.2",
       "occurrence_index": 0,
-      "label": "1.2. Any decision, instruction or approval given by the Controlling Officer",
+      "label": "1.2 Any decision, instruction or approval given by the Controlling Officer",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:1.3",
+      "key": "numheading:1.3",
       "occurrence_index": 0,
-      "label": "1.3. All notices, instructions, orders, consents, certificates",
+      "label": "1.3 All notices, instructions, orders, consents, certificates",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:1.4",
+      "key": "numheading:1.4",
       "occurrence_index": 0,
-      "label": "1.4. The Controlling Officer/ Officer-in-charge may authorize his representative",
+      "label": "1.4 The Controlling Officer/ Officer-in-charge may authorize his representative",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:2",
+      "key": "numheading:2",
       "occurrence_index": 0,
       "label": "2 Agency's Representative",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:2.1",
+      "key": "numheading:2.1",
       "occurrence_index": 0,
-      "label": "2.1. The Agency shall employ at least one competent representative",
+      "label": "2.1 The Agency shall employ at least one competent representative",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:2.2",
+      "key": "numheading:2.2",
       "occurrence_index": 0,
-      "label": "2.2. The Controlling Officer/officer-in-charge shall be at liberty to object",
+      "label": "2.2 The Controlling Officer/officer-in-charge shall be at liberty to object",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:3",
+      "key": "numheading:3",
       "occurrence_index": 0,
       "label": "3 Bankruptcy/Insolvency of the Agency",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:3.1",
+      "key": "numheading:3.1",
       "occurrence_index": 0,
-      "label": "3.1. If the Agency becomes insolvent, compound with his creditors",
+      "label": "3.1 If the Agency becomes insolvent, compound with his creditors",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:3.2",
+      "key": "numheading:3.2",
       "occurrence_index": 0,
-      "label": "3.2. To give such liquidate, received, or other person",
+      "label": "3.2 To give such liquidate, received, or other person",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:4",
+      "key": "numheading:4",
       "occurrence_index": 0,
       "label": "4 Duty and Behavior of Agency's Personnel",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:4.1",
+      "key": "numheading:4.1",
       "occurrence_index": 0,
-      "label": "4.1. The personnel deployed by the Agency must always carry their Photo-ID",
+      "label": "4.1 The personnel deployed by the Agency must always carry their Photo-ID",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:4.2",
+      "key": "numheading:4.2",
       "occurrence_index": 0,
-      "label": "4.2. The personnel deployed by the Agency shall maintain the decorum",
+      "label": "4.2 The personnel deployed by the Agency shall maintain the decorum",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 46,
-      "key": "point:4.3",
+      "key": "numheading:4.3",
       "occurrence_index": 0,
-      "label": "4.3. It shall be accepted as an inseparable part of the Contract",
+      "label": "4.3 It shall be accepted as an inseparable part of the Contract",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
@@ -2818,311 +3210,402 @@
       "scope_key": ""
     },
     {
+      "page": 46,
+      "key": "term:gcc",
+      "occurrence_index": 0,
+      "label": "General Conditions of Contract (GCC)",
+      "scope_key": ""
+    },
+    {
       "page": 47,
-      "key": "point:10",
+      "key": "numheading:10",
       "occurrence_index": 0,
       "label": "10 Damage to property and injury to personnel",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:10.1",
+      "key": "numheading:10.1",
       "occurrence_index": 0,
-      "label": "10.1. The Agency shall indemnify and keep indemnified the Purchaser",
+      "label": "10.1 The Agency shall indemnify and keep indemnified the Purchaser",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:10.2",
+      "key": "numheading:10.2",
       "occurrence_index": 0,
-      "label": "10.2. The Purchaser shall not be liable for damage or compensation",
+      "label": "10.2 The Purchaser shall not be liable for damage or compensation",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:10.3",
+      "key": "numheading:10.3",
       "occurrence_index": 0,
-      "label": "10.3. In the event of any accident and/or injury",
+      "label": "10.3 In the event of any accident and/or injury",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:10.4",
+      "key": "numheading:10.4",
       "occurrence_index": 0,
-      "label": "10.4. In case it is found that any theft or damage has occurred",
+      "label": "10.4 In case it is found that any theft or damage has occurred",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:10.5",
+      "key": "numheading:10.5",
       "occurrence_index": 0,
-      "label": "10.5. In case any personnel of the Agency is implicated in any law suit",
+      "label": "10.5 In case any personnel of the Agency is implicated in any law suit",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:10.6",
+      "key": "numheading:10.6",
       "occurrence_index": 0,
-      "label": "10.6. The Purchaser shall be deemed to be indemnified by the Agency",
+      "label": "10.6 The Purchaser shall be deemed to be indemnified by the Agency",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:10.7",
+      "key": "numheading:10.7",
       "occurrence_index": 0,
-      "label": "10.7. Claims arising due to \u201cany activity\u201d shall be liable for adjustment",
+      "label": "10.7 Claims arising due to \u201cany activity\u201d shall be liable for adjustment",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:5",
+      "key": "numheading:5",
       "occurrence_index": 0,
       "label": "5 Checks and Supervision by the Agency",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:5.1",
+      "key": "numheading:5.1",
       "occurrence_index": 0,
-      "label": "5.1. The Agency shall ensure that its personnel perform their duties efficiently",
+      "label": "5.1 The Agency shall ensure that its personnel perform their duties efficiently",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:6",
+      "key": "numheading:6",
       "occurrence_index": 0,
       "label": "6 Notices and Instructions",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:6.1",
+      "key": "numheading:6.1",
       "occurrence_index": 0,
-      "label": "6.1. The Agency shall furnish the complete address of its permanent office",
+      "label": "6.1 The Agency shall furnish the complete address of its permanent office",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:7",
+      "key": "numheading:7",
       "occurrence_index": 0,
       "label": "7 Health of the Personnel deployed",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:7.1",
+      "key": "numheading:7.1",
       "occurrence_index": 0,
-      "label": "7.1. All persons deployed by the Agency shall be of sound physical and mental he",
+      "label": "7.1 All persons deployed by the Agency shall be of sound physical and mental health",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:8",
+      "key": "numheading:8",
       "occurrence_index": 0,
       "label": "8 Issue of Photo-ID",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:8.1",
+      "key": "numheading:8.1",
       "occurrence_index": 0,
-      "label": "8.1. Each deputed person shall carry Photo-ID card issued by the Agency",
+      "label": "8.1 Each deputed person shall carry Photo-ID card issued by the Agency",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:9",
+      "key": "numheading:9",
       "occurrence_index": 0,
       "label": "9 Force Majeure",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:9.1",
+      "key": "numheading:9.1",
       "occurrence_index": 0,
-      "label": "9.1. Force Majeure means any event or circumstance or combination",
+      "label": "9.1 Force Majeure means any event or circumstance or combination",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:9.2",
+      "key": "numheading:9.2",
       "occurrence_index": 0,
-      "label": "9.2. Act of God, including, but not limited to lightning, drought, fire",
+      "label": "9.2 Act of God, including, but not limited to lightning, drought, fire",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:9.3",
+      "key": "numheading:9.3",
       "occurrence_index": 0,
-      "label": "9.3. A notification to this effect duly certified by statutory authorities",
+      "label": "9.3 A notification to this effect duly certified by statutory authorities",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 47,
-      "key": "point:9.4",
+      "key": "numheading:9.4",
       "occurrence_index": 0,
-      "label": "9.4. The authority as decided by the Purchaser (including committee, etc.) shall",
+      "label": "9.4 The authority as decided by the Purchaser (including committee, etc.) shall decide",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 48,
-      "key": "point:11",
+      "key": "numheading:11",
       "occurrence_index": 0,
       "label": "11 Settlement of Disputes and Arbitration",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 48,
-      "key": "point:11.1",
+      "key": "numheading:11.1",
       "occurrence_index": 0,
-      "label": "11.1. If any dispute or difference of any kind whatsoever arises",
+      "label": "11.1 If any dispute or difference of any kind whatsoever arises",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 48,
-      "key": "point:11.2",
+      "key": "numheading:11.2",
       "occurrence_index": 0,
-      "label": "11.2. The arbitration proceedings shall be conducted in accordance with the Madh",
+      "label": "11.2 The arbitration proceedings shall be conducted in accordance with the Madhya Pradesh",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 48,
-      "key": "point:11.3",
+      "key": "numheading:11.3",
       "occurrence_index": 0,
-      "label": "11.3. Notwithstanding any disputes with reference to the Contract pending for ar",
+      "label": "11.3 Notwithstanding any disputes with reference to the Contract pending for arbitration",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 48,
-      "key": "point:12",
+      "key": "numheading:12",
       "occurrence_index": 0,
       "label": "12 Jurisdiction",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 48,
-      "key": "point:12.1",
+      "key": "numheading:12.1",
       "occurrence_index": 0,
-      "label": "12.1. Any dispute or difference, arising under, out of, or in connection with Te",
+      "label": "12.1 Any dispute or difference, arising under, out of, or in connection with Tender/ Contract",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 48,
-      "key": "point:13",
+      "key": "numheading:13",
       "occurrence_index": 0,
       "label": "13 Blacklisting",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 48,
-      "key": "point:13.1",
+      "key": "numheading:13.1",
       "occurrence_index": 0,
-      "label": "13.1. In case(s) of severe default(s) by the Agency",
+      "label": "13.1 In case(s) of severe default(s) by the Agency",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14",
+      "key": "numheading:14",
       "occurrence_index": 0,
       "label": "14 Necessary Compliances (applicable in accordance with Eligibility Criteria)",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.1",
+      "key": "numheading:14.1",
       "occurrence_index": 0,
-      "label": "14.1. The Agency shall provide and be responsible for payment of wages",
+      "label": "14.1 The Agency shall provide and be responsible for payment of wages",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.10",
+      "key": "numheading:14.10",
       "occurrence_index": 0,
-      "label": "14.10. If any of the persons engaged by the Agency misbehaves",
+      "label": "14.10 If any of the persons engaged by the Agency misbehaves",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.11",
+      "key": "numheading:14.11",
       "occurrence_index": 0,
-      "label": "14.11. The Agency shall ensure that necessary information regarding the persons ",
+      "label": "14.11 The Agency shall ensure that necessary information regarding the persons engaged",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.12",
+      "key": "numheading:14.12",
       "occurrence_index": 0,
-      "label": "14.12. The Agency should comply with all the applicable laws in force",
+      "label": "14.12 The Agency should comply with all the applicable laws in force",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.13",
+      "key": "numheading:14.13",
       "occurrence_index": 0,
-      "label": "14.13. Agency shall furnish indemnity bond at time of signing of Contract Agreem",
+      "label": "14.13 Agency shall furnish indemnity bond at time of signing of Contract Agreement",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.14",
+      "key": "numheading:14.14",
       "occurrence_index": 0,
-      "label": "14.14. Manpower deployed by the Agency shall be entitled to 15 days leave",
+      "label": "14.14 Manpower deployed by the Agency shall be entitled to 15 days leave",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.2",
+      "key": "numheading:14.2",
       "occurrence_index": 0,
-      "label": "14.2. The Agency shall ensure all its employees are covered under national Accid",
+      "label": "14.2 The Agency shall ensure all its employees are covered under national Accidental Insurance",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.3",
+      "key": "numheading:14.3",
       "occurrence_index": 0,
-      "label": "14.3. All personnel engaged under this Contract by Agency shall be employees",
+      "label": "14.3 All personnel engaged under this Contract by Agency shall be employees",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.4",
+      "key": "numheading:14.4",
       "occurrence_index": 0,
-      "label": "14.4. The Agency shall at the time of execution of the Contract have PF code num",
+      "label": "14.4 The Agency shall at the time of execution of the Contract have PF code number",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.5",
+      "key": "numheading:14.5",
       "occurrence_index": 0,
-      "label": "14.5. The Agency shall maintain all records/registers",
+      "label": "14.5 The Agency shall maintain all records/registers",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.6",
+      "key": "numheading:14.6",
       "occurrence_index": 0,
-      "label": "14.6. The Agency shall also submit periodical reports on various labour laws",
+      "label": "14.6 The Agency shall also submit periodical reports on various labour laws",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.7",
+      "key": "numheading:14.7",
       "occurrence_index": 0,
-      "label": "14.7. The Agency shall pay the Minimum Wages (as applicable)",
+      "label": "14.7 The Agency shall pay the Minimum Wages (as applicable)",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.8",
+      "key": "numheading:14.8",
       "occurrence_index": 0,
-      "label": "14.8. The Agency shall provide their prescribed uniforms, identity card",
+      "label": "14.8 The Agency shall provide their prescribed uniforms, identity card",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 49,
-      "key": "point:14.9",
+      "key": "numheading:14.9",
       "occurrence_index": 0,
-      "label": "14.9. The Agency shall in the event of his workman / employees sustain any injur",
+      "label": "14.9 The Agency shall in the event of his workman / employees sustain any injury",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 50,
+      "key": "numheading:15",
+      "occurrence_index": 0,
+      "label": "15 Taxes",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 50,
+      "key": "numheading:15.1",
+      "occurrence_index": 0,
+      "label": "15.1 The Agency shall be responsible for payment of GST & other Statutory dues.",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 50,
+      "key": "numheading:16",
+      "occurrence_index": 0,
+      "label": "16 Patent Indemnity",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 50,
+      "key": "numheading:16.1",
+      "occurrence_index": 0,
+      "label": "16.1 The bidder shall indemnify and hold harmless the Purchaser",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 50,
+      "key": "numheading:17",
+      "occurrence_index": 0,
+      "label": "17 Conflict of Interest",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 50,
+      "key": "numheading:17.1",
+      "occurrence_index": 0,
+      "label": "17.1 Bidder shall not have a conflict of interest with one or more parties",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 50,
+      "key": "numheading:17.2",
+      "occurrence_index": 0,
+      "label": "17.2 Have controlling share holders as his / her family members",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 50,
+      "key": "numheading:17.3",
+      "occurrence_index": 0,
+      "label": "17.3 Have a relationship with each other, directly or through common third parties",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 50,
+      "key": "numheading:17.4",
+      "occurrence_index": 0,
+      "label": "17.4 Has a close business or family relationship",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 50,
+      "key": "numheading:18",
+      "occurrence_index": 0,
+      "label": "18 Corrupt or Fraudulent Practice(s)",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 50,
+      "key": "numheading:18.1",
+      "occurrence_index": 0,
+      "label": "18.1 The Purchaser requires that the bidders observe the highest standard of ethics",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 50,
+      "key": "numheading:18.2",
+      "occurrence_index": 0,
+      "label": "18.2 In pursuance of this policy, the Purchaser defines",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
@@ -3141,135 +3624,51 @@
     },
     {
       "page": 50,
-      "key": "point:15",
+      "key": "numheading:18.5",
       "occurrence_index": 0,
-      "label": "15 Taxes",
+      "label": "18.5 The Purchaser will reject a bid or cancel the Contract if already placed",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 50,
-      "key": "point:15.1",
+      "key": "numheading:18.6",
       "occurrence_index": 0,
-      "label": "15.1. The Agency shall be responsible for payment of GST & other Statutory dues.",
+      "label": "18.6 The Purchaser may declare a bidder ineligible for issue of Contract/Award",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 50,
-      "key": "point:16",
+      "key": "numheading:18.7",
       "occurrence_index": 0,
-      "label": "16 Patent Indemnity",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 50,
-      "key": "point:16.1",
-      "occurrence_index": 0,
-      "label": "16.1. The bidder shall indemnify and hold harmless the Purchaser",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 50,
-      "key": "point:17",
-      "occurrence_index": 0,
-      "label": "17 Conflict of Interest",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 50,
-      "key": "point:17.1",
-      "occurrence_index": 0,
-      "label": "17.1. Bidder shall not have a conflict of interest with one or more parties",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 50,
-      "key": "point:17.2",
-      "occurrence_index": 0,
-      "label": "17.2. Have controlling share holders as his / her family members",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 50,
-      "key": "point:17.3",
-      "occurrence_index": 0,
-      "label": "17.3. Have a relationship with each other, directly or through common third part",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 50,
-      "key": "point:17.4",
-      "occurrence_index": 0,
-      "label": "17.4. Has a close business or family relationship",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 50,
-      "key": "point:18",
-      "occurrence_index": 0,
-      "label": "18 Corrupt or Fraudulent Practice(s)",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 50,
-      "key": "point:18.1",
-      "occurrence_index": 0,
-      "label": "18.1. The Purchaser requires that the bidders observe the highest standard of et",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 50,
-      "key": "point:18.2",
-      "occurrence_index": 0,
-      "label": "18.2. In pursuance of this policy, the Purchaser defines",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 50,
-      "key": "point:18.5",
-      "occurrence_index": 0,
-      "label": "18.5. The Purchaser will reject a bid or cancel the Contract if already placed",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 50,
-      "key": "point:18.6",
-      "occurrence_index": 0,
-      "label": "18.6. The Purchaser may declare a bidder ineligible for issue of Contract/Award",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 50,
-      "key": "point:18.7",
-      "occurrence_index": 0,
-      "label": "18.7. Any act of fraudulence, which can be purported or being attempted",
+      "label": "18.7 Any act of fraudulence, which can be purported or being attempted",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 51,
-      "key": "point:19",
+      "key": "numheading:19",
       "occurrence_index": 0,
       "label": "19 Cancellation/termination of order",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 51,
-      "key": "point:19.1",
+      "key": "numheading:19.1",
       "occurrence_index": 0,
-      "label": "19.1. The Purchaser may upon written notice of default, terminate/cancel work or",
+      "label": "19.1 The Purchaser may upon written notice of default, terminate/cancel work order",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 51,
-      "key": "point:20",
+      "key": "numheading:20",
       "occurrence_index": 0,
       "label": "20 Correspondence",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
       "page": 51,
-      "key": "point:20.1",
+      "key": "numheading:20.1",
       "occurrence_index": 0,
-      "label": "20.1. Copies of all-important correspondence on subject should be sent",
+      "label": "20.1 Copies of all-important correspondence on subject should be sent",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
@@ -3281,52 +3680,80 @@
     },
     {
       "page": 52,
+      "key": "numheading:1.1",
+      "occurrence_index": 0,
+      "label": "1.1 Period of Contract",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 52,
+      "key": "numheading:1.1.1",
+      "occurrence_index": 0,
+      "label": "1.1.1 The contract period shall include initial two (2) weeks of resource deployment",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.1"
+    },
+    {
+      "page": 52,
+      "key": "numheading:1.1.2",
+      "occurrence_index": 0,
+      "label": "1.1.2 However, in case the performance during the currency of the Contract",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.1"
+    },
+    {
+      "page": 52,
+      "key": "numheading:1.1.3",
+      "occurrence_index": 0,
+      "label": "1.1.3 Total initial period of contract shall not be more than the period specified",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.1"
+    },
+    {
+      "page": 52,
+      "key": "numheading:1.1.4",
+      "occurrence_index": 0,
+      "label": "1.1.4 The SI shall maintain service continuity during the modernization period",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.1"
+    },
+    {
+      "page": 52,
+      "key": "numheading:1.2",
+      "occurrence_index": 0,
+      "label": "1.2 Quoting of Rates",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 52,
       "key": "numheading:1.2.1",
       "occurrence_index": 0,
       "label": "1.2.1 The Agency shall quote its rates/prices as per the Price Schedule",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.2"
+    },
+    {
+      "page": 52,
+      "key": "numheading:1.2.2",
+      "occurrence_index": 0,
+      "label": "1.2.2 OEM licenses/subscriptions, Oracle support, OCI/cloud consumption",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.2"
+    },
+    {
+      "page": 52,
+      "key": "numheading:1.2.3",
+      "occurrence_index": 0,
+      "label": "1.2.3 Existing Oracle license/support items under CSI Nos. 18310212",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.2"
+    },
+    {
+      "page": 52,
+      "key": "numheading:1.3",
+      "occurrence_index": 0,
+      "label": "1.3 Submission of Bills & Payment Procedure",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
     },
     {
       "page": 52,
-      "key": "point:1.1",
+      "key": "numheading:1.3.1",
       "occurrence_index": 0,
-      "label": "1.1. Period of Contract",
-      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
-    },
-    {
-      "page": 52,
-      "key": "point:1.1.1",
-      "occurrence_index": 0,
-      "label": "1.1.1. The contract period shall include initial two (2) weeks of resource deplo",
-      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
-    },
-    {
-      "page": 52,
-      "key": "point:1.1.2",
-      "occurrence_index": 0,
-      "label": "1.1.2. However, in case the performance during the currency of the Contract",
-      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
-    },
-    {
-      "page": 52,
-      "key": "point:1.1.3",
-      "occurrence_index": 0,
-      "label": "1.1.3. Total initial period of contract shall not be more than the period specif",
-      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
-    },
-    {
-      "page": 52,
-      "key": "point:1.1.4",
-      "occurrence_index": 0,
-      "label": "1.1.4. The SI shall maintain service continuity during the modernization period",
-      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
-    },
-    {
-      "page": 52,
-      "key": "point:1.2",
-      "occurrence_index": 0,
-      "label": "1.2. Quoting of Rates",
-      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+      "label": "1.3.1 Four copies of each invoice along with the respective documents",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.3"
     },
     {
       "page": 52,
@@ -3337,10 +3764,87 @@
     },
     {
       "page": 53,
+      "key": "numheading:1.3.2",
+      "occurrence_index": 0,
+      "label": "1.3.2 Nodal Officer shall issue acceptance certificates to the SI",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.3"
+    },
+    {
+      "page": 53,
+      "key": "numheading:1.3.3",
+      "occurrence_index": 0,
+      "label": "1.3.3 All payments shall be made after adjusting penalty amount payable",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.3"
+    },
+    {
+      "page": 53,
+      "key": "numheading:1.3.4",
+      "occurrence_index": 0,
+      "label": "1.3.4 Taxes, duties, levies etc. will be paid as per prevailing rate",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.3"
+    },
+    {
+      "page": 53,
+      "key": "numheading:1.3.5",
+      "occurrence_index": 0,
+      "label": "1.3.5 The Purchaser shall make above payment directly in the SI's Bank account",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.3"
+    },
+    {
+      "page": 53,
+      "key": "numheading:1.3.6",
+      "occurrence_index": 0,
+      "label": "1.3.6 Charges required by Bank in this regard will be debited to SI's Account",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.3"
+    },
+    {
+      "page": 53,
       "key": "numheading:1.4",
       "occurrence_index": 0,
       "label": "1.4 Project Schedule",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 54,
+      "key": "numheading:1.5",
+      "occurrence_index": 0,
+      "label": "1.5 Payment Terms",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 56,
+      "key": "numheading:1.5.1",
+      "occurrence_index": 0,
+      "label": "1.5.1 The first O&M payment after HOTO shall be subject to HOTO acceptance",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.5"
+    },
+    {
+      "page": 56,
+      "key": "numheading:1.5.2",
+      "occurrence_index": 0,
+      "label": "1.5.2 Price Escalation",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.5"
+    },
+    {
+      "page": 56,
+      "key": "numheading:1.6",
+      "occurrence_index": 0,
+      "label": "1.6 Contract Performance Guarantee (CPG)",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 56,
+      "key": "numheading:1.6.1",
+      "occurrence_index": 0,
+      "label": "1.6.1 The Agency shall furnish Bank Guarantee",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.6"
+    },
+    {
+      "page": 56,
+      "key": "numheading:1.6.2",
+      "occurrence_index": 0,
+      "label": "1.6.2 Within thirty (30) days from date of issue of letter of award, the successful bidder shall furnish requisite Contract performance guarantee and execute an agreement with the Controlling Officer",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.6"
     },
     {
       "page": 56,
@@ -3355,6 +3859,258 @@
       "occurrence_index": 0,
       "label": "Demand Draft/Fixed Deposit Receipt (FDR)",
       "scope_key": ""
+    },
+    {
+      "page": 57,
+      "key": "numheading:1.6.3",
+      "occurrence_index": 0,
+      "label": "1.6.3 Failure by the successful bidder to furnish the prescribed Contract performance guarantee",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.6"
+    },
+    {
+      "page": 57,
+      "key": "numheading:1.6.4",
+      "occurrence_index": 0,
+      "label": "1.6.4 The Contract performance guarantee shall only be released",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.6"
+    },
+    {
+      "page": 57,
+      "key": "numheading:1.7",
+      "occurrence_index": 0,
+      "label": "1.7 Termination of Contract",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 57,
+      "key": "numheading:1.7.1",
+      "occurrence_index": 0,
+      "label": "1.7.1 Event of Default",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.7"
+    },
+    {
+      "page": 57,
+      "key": "numheading:1.7.2",
+      "occurrence_index": 0,
+      "label": "1.7.2 If the Agency fails to start the works/services on specified date",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.7"
+    },
+    {
+      "page": 57,
+      "key": "numheading:1.7.3",
+      "occurrence_index": 0,
+      "label": "1.7.3 If at any stage during the period of the Contract any case involving moral turpitude",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.7"
+    },
+    {
+      "page": 57,
+      "key": "numheading:1.7.4",
+      "occurrence_index": 0,
+      "label": "1.7.4 Material default shall also include",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.7"
+    },
+    {
+      "page": 57,
+      "key": "numheading:1.8",
+      "occurrence_index": 0,
+      "label": "1.8 Termination upon occurrence of Event of Default",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 57,
+      "key": "numheading:1.8.1",
+      "occurrence_index": 0,
+      "label": "1.8.1 In case of occurrence of Event of default",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.8"
+    },
+    {
+      "page": 57,
+      "key": "numheading:1.8.2",
+      "occurrence_index": 0,
+      "label": "1.8.2 In case of non-mitigation, non-responsiveness",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.8"
+    },
+    {
+      "page": 57,
+      "key": "numheading:1.8.3",
+      "occurrence_index": 0,
+      "label": "1.8.3 For a critical cyber incident, data leakage",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.8"
+    },
+    {
+      "page": 57,
+      "key": "numheading:1.8.4",
+      "occurrence_index": 0,
+      "label": "1.8.4 Obligations on Termination",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.8"
+    },
+    {
+      "page": 58,
+      "key": "numheading:1.10",
+      "occurrence_index": 0,
+      "label": "1.10 Effect of Termination",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 58,
+      "key": "numheading:1.11",
+      "occurrence_index": 0,
+      "label": "1.11 Confidentiality of data or information",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 58,
+      "key": "numheading:1.11.1",
+      "occurrence_index": 0,
+      "label": "1.11.1 It is a condition of this Bid that the information provided herein",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.11"
+    },
+    {
+      "page": 58,
+      "key": "numheading:1.11.2",
+      "occurrence_index": 0,
+      "label": "1.11.2 Information relating to examination, clarification, evaluation",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.11"
+    },
+    {
+      "page": 58,
+      "key": "numheading:1.11.3",
+      "occurrence_index": 0,
+      "label": "1.11.3 Successful bidder shall be required to sign an undertaking",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.11"
+    },
+    {
+      "page": 58,
+      "key": "numheading:1.11.4",
+      "occurrence_index": 0,
+      "label": "1.11.4 Agency shall maintain full confidentiality of data",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.11"
+    },
+    {
+      "page": 58,
+      "key": "numheading:1.11.5",
+      "occurrence_index": 0,
+      "label": "1.11.5 8.5 All access to Purchaser data shall be role-based",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.11"
+    },
+    {
+      "page": 58,
+      "key": "numheading:1.11.6",
+      "occurrence_index": 0,
+      "label": "1.11.6 No Purchaser data, prompts, documents, embeddings, vectors",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.11"
+    },
+    {
+      "page": 58,
+      "key": "numheading:1.11.7",
+      "occurrence_index": 0,
+      "label": "1.11.7 The Agency shall notify Purchaser immediately upon becoming aware",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.11"
+    },
+    {
+      "page": 58,
+      "key": "numheading:1.9",
+      "occurrence_index": 0,
+      "label": "1.9 Termination for convenience",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 58,
+      "key": "numheading:1.9.1",
+      "occurrence_index": 0,
+      "label": "1.9.1 The Purchaser shall be entitled to terminate the Contract without assigning any reason",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.9"
+    },
+    {
+      "page": 58,
+      "key": "numheading:1.9.2",
+      "occurrence_index": 0,
+      "label": "1.9.2 The Agency shall continue essential services and transition support",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.9"
+    },
+    {
+      "page": 58,
+      "key": "numheading:1.9.3",
+      "occurrence_index": 0,
+      "label": "1.9.3 In the event of termination under Clause 6.9.1",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.9"
+    },
+    {
+      "page": 59,
+      "key": "numheading:1.11.8",
+      "occurrence_index": 0,
+      "label": "1.11.8 Confidentiality, data-protection and data-return/deletion obligations shall survive",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.11"
+    },
+    {
+      "page": 59,
+      "key": "numheading:1.11.9",
+      "occurrence_index": 0,
+      "label": "1.11.9 Any violation of confidentiality may attract financial penalty",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.11"
+    },
+    {
+      "page": 59,
+      "key": "numheading:1.12",
+      "occurrence_index": 0,
+      "label": "1.12 Acceptance or Rejection of bid/offer",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 59,
+      "key": "numheading:1.12.1",
+      "occurrence_index": 0,
+      "label": "1.12.1 The Purchaser reserves the right to accept or reject any or all bids",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.12"
+    },
+    {
+      "page": 59,
+      "key": "numheading:1.12.2",
+      "occurrence_index": 0,
+      "label": "1.12.2 Any Agency having an adverse performance/default history",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.12"
+    },
+    {
+      "page": 59,
+      "key": "numheading:1.13",
+      "occurrence_index": 0,
+      "label": "1.13 Subletting / Subcontracting",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 59,
+      "key": "numheading:1.13.1",
+      "occurrence_index": 0,
+      "label": "1.13.1 Subletting of work shall not be allowed under any circumstances",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.13"
+    },
+    {
+      "page": 59,
+      "key": "numheading:1.13.2",
+      "occurrence_index": 0,
+      "label": "1.13.2 Any subcontractor/sub-processor requiring access to Purchaser data",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.13"
+    },
+    {
+      "page": 59,
+      "key": "numheading:1.14",
+      "occurrence_index": 0,
+      "label": "1.14 Limitation of Liability",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 59,
+      "key": "numheading:1.14.1",
+      "occurrence_index": 0,
+      "label": "1.14.1 Except in cases of gross negligence or willful misconduct",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.14"
+    },
+    {
+      "page": 59,
+      "key": "numheading:1.14.2",
+      "occurrence_index": 0,
+      "label": "1.14.2 Indirect liabilities and consequential damages",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.14"
     },
     {
       "page": 59,
@@ -3617,7 +4373,7 @@
     },
     {
       "page": 65,
-      "key": "subdoc:a-regarding-conflicting-interest",
+      "key": "point:a",
       "occurrence_index": 0,
       "label": "(A) Regarding Conflicting Interest:-",
       "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking"
@@ -3655,6 +4411,90 @@
       "key": "subdoc:item-ii-cost-for-operations-and",
       "occurrence_index": 0,
       "label": "Item II - Cost for Operations and Maintenance for five (5) Y",
+      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule"
+    },
+    {
+      "page": 68,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. Successful bidder (L1) will be declared on the basis of grand total amount.",
+      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+    },
+    {
+      "page": 68,
+      "key": "point:10",
+      "occurrence_index": 0,
+      "label": "10. It is to certify that the relevant portion of Input Tax Credit",
+      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+    },
+    {
+      "page": 68,
+      "key": "point:11",
+      "occurrence_index": 0,
+      "label": "11. If user wants to enter any decimal value than please enter as per given exam",
+      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+    },
+    {
+      "page": 68,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. Grand total amount should be same in both words & figures.",
+      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+    },
+    {
+      "page": 68,
+      "key": "point:3",
+      "occurrence_index": 0,
+      "label": "3. The total amount quoted against Line Item 1 & Item 3 (Oracle ERP Version Upgr",
+      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+    },
+    {
+      "page": 68,
+      "key": "point:4",
+      "occurrence_index": 0,
+      "label": "4. It may be noted that Payment for services to be performed under this Contract",
+      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+    },
+    {
+      "page": 68,
+      "key": "point:5",
+      "occurrence_index": 0,
+      "label": "5. GST as applicable shall be paid extra.",
+      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+    },
+    {
+      "page": 68,
+      "key": "point:6",
+      "occurrence_index": 0,
+      "label": "6. The financial evaluation shall be done as per procedure prescribed in Section",
+      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+    },
+    {
+      "page": 68,
+      "key": "point:7",
+      "occurrence_index": 0,
+      "label": "7. Only blank fields are mandatory to be filled.",
+      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+    },
+    {
+      "page": 68,
+      "key": "point:8",
+      "occurrence_index": 0,
+      "label": "8. In case of discrepancy in the price quoted by the Bidder",
+      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+    },
+    {
+      "page": 68,
+      "key": "point:9",
+      "occurrence_index": 0,
+      "label": "9. The UNIT of measurement lump sum (LS) for quoting rate of the item specified",
+      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+    },
+    {
+      "page": 68,
+      "key": "subdoc:note-2",
+      "occurrence_index": 0,
+      "label": "Note (2)",
       "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule"
     },
     {
@@ -3743,13 +4583,6 @@
     },
     {
       "page": 77,
-      "key": "letterheading:I",
-      "occurrence_index": 0,
-      "label": "I. Project Management",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
-    },
-    {
-      "page": 77,
       "key": "point:a",
       "occurrence_index": 0,
       "label": "a. Purpose of this Agreement",
@@ -3785,6 +4618,13 @@
     },
     {
       "page": 77,
+      "key": "point:i",
+      "occurrence_index": 0,
+      "label": "I. Project Management",
+      "scope_key": ""
+    },
+    {
+      "page": 77,
       "key": "subdoc:annexure-xi-service-level-agreement",
       "occurrence_index": 0,
       "label": "Annexure-XI: Service Level Agreement",
@@ -3792,94 +4632,101 @@
     },
     {
       "page": 78,
-      "key": "subdoc:ii-availability-management",
+      "key": "point:ii",
       "occurrence_index": 0,
       "label": "II. Availability Management",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/letterheading:I"
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
     },
     {
       "page": 79,
-      "key": "subdoc:iii-service-management",
+      "key": "point:iii",
       "occurrence_index": 0,
       "label": "III. Service Management",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/letterheading:I"
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
     },
     {
       "page": 80,
-      "key": "subdoc:iv-application-performance-management",
+      "key": "point:iv",
       "occurrence_index": 0,
       "label": "IV. Application Performance Management",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/letterheading:I"
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
     },
     {
       "page": 81,
       "key": "point:f",
       "occurrence_index": 0,
       "label": "f. Breach of SLA",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/letterheading:I/subdoc:iv-application-performance-management"
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
     },
     {
       "page": 81,
       "key": "point:g",
       "occurrence_index": 0,
       "label": "g. Monitoring & Auditing",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/letterheading:I/subdoc:iv-application-performance-management"
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
     },
     {
       "page": 81,
       "key": "point:h",
       "occurrence_index": 0,
       "label": "h. Reporting Procedure",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/letterheading:I/subdoc:iv-application-performance-management"
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
     },
     {
       "page": 81,
       "key": "point:i",
       "occurrence_index": 0,
       "label": "i. Issue Management Procedures",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/letterheading:I/subdoc:iv-application-performance-management"
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
+    },
+    {
+      "page": 81,
+      "key": "subdoc:note-3",
+      "occurrence_index": 0,
+      "label": "Note (3)",
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
     },
     {
       "page": 82,
       "key": "point:a",
       "occurrence_index": 0,
       "label": "a) General",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/letterheading:I/subdoc:issue-management-process"
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/subdoc:note-3/subdoc:issue-management-process"
     },
     {
       "page": 82,
       "key": "point:b",
       "occurrence_index": 0,
       "label": "b) SLA Change Process",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/letterheading:I/subdoc:issue-management-process"
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/subdoc:note-3/subdoc:issue-management-process"
     },
     {
       "page": 82,
       "key": "point:c",
       "occurrence_index": 0,
       "label": "c) Version Control",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/letterheading:I/subdoc:issue-management-process"
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/subdoc:note-3/subdoc:issue-management-process"
     },
     {
       "page": 82,
       "key": "point:d",
       "occurrence_index": 0,
       "label": "d) Management Escalation Procedures",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/letterheading:I/subdoc:issue-management-process"
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/subdoc:note-3/subdoc:issue-management-process"
     },
     {
       "page": 82,
       "key": "point:j",
       "occurrence_index": 0,
       "label": "j. SLA Change Control",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/letterheading:I/subdoc:issue-management-process"
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/subdoc:note-3/subdoc:issue-management-process"
     },
     {
       "page": 82,
       "key": "subdoc:issue-management-process",
       "occurrence_index": 0,
       "label": "\u2022 Issue Management Process",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/letterheading:I"
+      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/subdoc:note-3"
     },
     {
       "page": 83,
@@ -4240,17 +5087,17 @@
     },
     {
       "page": 127,
-      "key": "numheading:1",
+      "key": "point:1",
       "occurrence_index": 0,
-      "label": "1 Objective",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations"
+      "label": "1. Objective",
+      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms/subdoc:seven-pay-matrix"
     },
     {
       "page": 127,
-      "key": "numheading:2",
+      "key": "point:2",
       "occurrence_index": 0,
-      "label": "2 Major GIS Functionalities",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations"
+      "label": "2. Major GIS Functionalities",
+      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms/subdoc:seven-pay-matrix"
     },
     {
       "page": 127,
@@ -4261,24 +5108,73 @@
     },
     {
       "page": 129,
-      "key": "numheading:3",
+      "key": "point:3",
       "occurrence_index": 0,
-      "label": "3 Data Migration & Reconciliation",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations"
+      "label": "3. Data Migration & Reconciliation",
+      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms/subdoc:seven-pay-matrix"
     },
     {
       "page": 129,
-      "key": "numheading:4",
+      "key": "point:4",
       "occurrence_index": 0,
-      "label": "4 Technology & Interoperability",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations"
+      "label": "4. Technology & Interoperability",
+      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms/subdoc:seven-pay-matrix"
     },
     {
       "page": 129,
-      "key": "numheading:5",
+      "key": "point:5",
       "occurrence_index": 0,
-      "label": "5 Functional Continuity",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations"
+      "label": "5. Functional Continuity",
+      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms/subdoc:seven-pay-matrix"
+    },
+    {
+      "page": 130,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. The Sole Bidder/Lead Bidder and Consortium Partner (in case of consortium) sh",
+      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
+    },
+    {
+      "page": 130,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. The bidder should be registered in India with GST",
+      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
+    },
+    {
+      "page": 130,
+      "key": "point:3",
+      "occurrence_index": 0,
+      "label": "3. Bidder should not have been blacklisted by any entity of GoMP",
+      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
+    },
+    {
+      "page": 130,
+      "key": "point:4",
+      "occurrence_index": 0,
+      "label": "4. The Sole bidder/Lead bidder should have a Minimum Average Annual Turnover",
+      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
+    },
+    {
+      "page": 130,
+      "key": "point:5",
+      "occurrence_index": 0,
+      "label": "5. The bidder must have positive net worth during last all three (03) financial ",
+      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
+    },
+    {
+      "page": 130,
+      "key": "point:6",
+      "occurrence_index": 0,
+      "label": "6. The Sole bidder/Lead bidder should have successfully executed at least three ",
+      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
+    },
+    {
+      "page": 130,
+      "key": "point:7",
+      "occurrence_index": 0,
+      "label": "7. The Sole Bidder, in case of an individual bid, or the Lead Bidder/Lead Consor",
+      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
     },
     {
       "page": 130,
@@ -4286,6 +5182,27 @@
       "occurrence_index": 0,
       "label": "Annexure-XVI: Check List",
       "scope_key": "section:7"
+    },
+    {
+      "page": 131,
+      "key": "point:10",
+      "occurrence_index": 0,
+      "label": "10. The Sole bidder/Lead bidder should have at least 50 Full-Time Technical Prof",
+      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
+    },
+    {
+      "page": 131,
+      "key": "point:8",
+      "occurrence_index": 0,
+      "label": "8. The Sole bidder/Lead bidder and Consortium Partner (in case of consortium) mu",
+      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
+    },
+    {
+      "page": 131,
+      "key": "point:9",
+      "occurrence_index": 0,
+      "label": "9. The Sole Bidder/Lead Bidder shall be an active Oracle PartnerNetwork (OPN) me",
+      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
     },
     {
       "page": 132,
@@ -4504,8 +5421,8 @@
       "occurrence_index": 5,
       "key": "section:6",
       "raw_text": "Section-VI",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 2,
@@ -4552,8 +5469,8 @@
       "occurrence_index": 11,
       "key": "schedule:14",
       "raw_text": "Schedule 14",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 2,
@@ -4666,54 +5583,6 @@
       "raw_text": "Page No. 2",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
-    },
-    {
-      "page": 2,
-      "occurrence_index": 26,
-      "key": "docref:discomezpur1759etender",
-      "raw_text": "SPECIFICATION No. DISCOM/EZ/PUR/1759(e-Tender",
-      "resolution": "undefined",
-      "suppressed_reason": "unresolved"
-    },
-    {
-      "page": 2,
-      "occurrence_index": 27,
-      "key": "term:itb",
-      "raw_text": "ITB",
-      "resolution": "exact",
-      "suppressed_reason": null
-    },
-    {
-      "page": 2,
-      "occurrence_index": 28,
-      "key": "term:gcc",
-      "raw_text": "GCC",
-      "resolution": "exact",
-      "suppressed_reason": null
-    },
-    {
-      "page": 2,
-      "occurrence_index": 29,
-      "key": "term:scc",
-      "raw_text": "SCC",
-      "resolution": "exact",
-      "suppressed_reason": null
-    },
-    {
-      "page": 2,
-      "occurrence_index": 30,
-      "key": "term:bank",
-      "raw_text": "Bank",
-      "resolution": "exact",
-      "suppressed_reason": null
-    },
-    {
-      "page": 2,
-      "occurrence_index": 31,
-      "key": "term:bank",
-      "raw_text": "Bank",
-      "resolution": "exact",
-      "suppressed_reason": null
     },
     {
       "page": 3,
@@ -5006,16 +5875,16 @@
     {
       "page": 11,
       "occurrence_index": 2,
-      "key": "term:bank",
-      "raw_text": "Bank",
+      "key": "term:emd",
+      "raw_text": "EMD",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 11,
       "occurrence_index": 3,
-      "key": "term:emd",
-      "raw_text": "EMD",
+      "key": "term:loa",
+      "raw_text": "LoA",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -5030,8 +5899,8 @@
     {
       "page": 11,
       "occurrence_index": 5,
-      "key": "term:loa",
-      "raw_text": "LoA",
+      "key": "term:agency",
+      "raw_text": "Agency",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -5054,8 +5923,8 @@
     {
       "page": 11,
       "occurrence_index": 8,
-      "key": "term:agency",
-      "raw_text": "Agency",
+      "key": "term:bank",
+      "raw_text": "Bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -5240,8 +6109,8 @@
       "occurrence_index": 3,
       "key": "clause:8",
       "raw_text": "clause no.8",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 15,
@@ -5326,8 +6195,8 @@
     {
       "page": 16,
       "occurrence_index": 2,
-      "key": "term:bank",
-      "raw_text": "bank",
+      "key": "term:emd",
+      "raw_text": "EMD",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -5438,16 +6307,16 @@
     {
       "page": 16,
       "occurrence_index": 16,
-      "key": "term:emd",
-      "raw_text": "EMD",
+      "key": "term:loa",
+      "raw_text": "LoA",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 16,
       "occurrence_index": 17,
-      "key": "term:loa",
-      "raw_text": "LoA",
+      "key": "term:bank",
+      "raw_text": "bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -5520,8 +6389,8 @@
       "occurrence_index": 2,
       "key": "clause:13.2",
       "raw_text": "Clause no. 13.2",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 18,
@@ -5896,8 +6765,8 @@
       "occurrence_index": 0,
       "key": "section:6",
       "raw_text": "Section-VI",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 25,
@@ -6312,8 +7181,8 @@
       "occurrence_index": 0,
       "key": "section:6",
       "raw_text": "Section VI",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 27,
@@ -6334,14 +7203,22 @@
     {
       "page": 27,
       "occurrence_index": 3,
-      "key": "term:scc",
-      "raw_text": "SCC",
+      "key": "term:ebs",
+      "raw_text": "EBS",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 27,
       "occurrence_index": 4,
+      "key": "term:ebs",
+      "raw_text": "EBS",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 27,
+      "occurrence_index": 5,
       "key": "term:bank",
       "raw_text": "bank",
       "resolution": "exact",
@@ -6349,25 +7226,17 @@
     },
     {
       "page": 27,
-      "occurrence_index": 5,
-      "key": "term:ebs",
-      "raw_text": "EBS",
-      "resolution": "exact",
-      "suppressed_reason": null
-    },
-    {
-      "page": 27,
       "occurrence_index": 6,
-      "key": "term:ebs",
-      "raw_text": "EBS",
+      "key": "term:om",
+      "raw_text": "O&M",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 27,
       "occurrence_index": 7,
-      "key": "term:om",
-      "raw_text": "O&M",
+      "key": "term:si",
+      "raw_text": "SI",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -6398,8 +7267,8 @@
     {
       "page": 27,
       "occurrence_index": 11,
-      "key": "term:si",
-      "raw_text": "SI",
+      "key": "term:scc",
+      "raw_text": "SCC",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -7552,8 +8421,8 @@
       "occurrence_index": 0,
       "key": "section:6",
       "raw_text": "Section VI",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 42,
@@ -7848,8 +8717,8 @@
       "occurrence_index": 1,
       "key": "section:6",
       "raw_text": "Section VI",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 44,
@@ -7870,16 +8739,16 @@
     {
       "page": 44,
       "occurrence_index": 4,
-      "key": "term:scc",
-      "raw_text": "SCC",
+      "key": "term:inr",
+      "raw_text": "INR",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 44,
       "occurrence_index": 5,
-      "key": "term:inr",
-      "raw_text": "INR",
+      "key": "term:ebs",
+      "raw_text": "EBS",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -7894,14 +8763,6 @@
     {
       "page": 44,
       "occurrence_index": 7,
-      "key": "term:ebs",
-      "raw_text": "EBS",
-      "resolution": "exact",
-      "suppressed_reason": null
-    },
-    {
-      "page": 44,
-      "occurrence_index": 8,
       "key": "term:agency",
       "raw_text": "agency",
       "resolution": "exact",
@@ -7909,9 +8770,17 @@
     },
     {
       "page": 44,
-      "occurrence_index": 9,
+      "occurrence_index": 8,
       "key": "term:om",
       "raw_text": "O&M",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 44,
+      "occurrence_index": 9,
+      "key": "term:si",
+      "raw_text": "SI",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -7974,16 +8843,16 @@
     {
       "page": 44,
       "occurrence_index": 17,
-      "key": "term:si",
-      "raw_text": "SI",
+      "key": "term:hoto",
+      "raw_text": "HOTO",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 44,
       "occurrence_index": 18,
-      "key": "term:hoto",
-      "raw_text": "HOTO",
+      "key": "term:scc",
+      "raw_text": "SCC",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -8102,8 +8971,8 @@
     {
       "page": 46,
       "occurrence_index": 2,
-      "key": "term:gcc",
-      "raw_text": "GCC",
+      "key": "term:agency",
+      "raw_text": "Agency",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -8238,8 +9107,8 @@
     {
       "page": 46,
       "occurrence_index": 19,
-      "key": "term:agency",
-      "raw_text": "Agency",
+      "key": "term:gcc",
+      "raw_text": "GCC",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -8384,16 +9253,16 @@
       "occurrence_index": 0,
       "key": "clause:10.4",
       "raw_text": "clause. 10.4",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 48,
       "occurrence_index": 1,
       "key": "clause:19",
       "raw_text": "clause No.19",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 48,
@@ -8728,8 +9597,8 @@
       "occurrence_index": 0,
       "key": "section:6",
       "raw_text": "Section-VI",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 52,
@@ -8744,8 +9613,8 @@
       "occurrence_index": 2,
       "key": "clause:5.2",
       "raw_text": "Clause 5.2",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 52,
@@ -8766,16 +9635,16 @@
     {
       "page": 52,
       "occurrence_index": 5,
-      "key": "term:scc",
-      "raw_text": "SCC",
+      "key": "term:agency",
+      "raw_text": "Agency",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 52,
       "occurrence_index": 6,
-      "key": "term:agency",
-      "raw_text": "Agency",
+      "key": "term:om",
+      "raw_text": "O&M",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -8798,16 +9667,16 @@
     {
       "page": 52,
       "occurrence_index": 9,
-      "key": "term:om",
-      "raw_text": "O&M",
+      "key": "term:si",
+      "raw_text": "SI",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 52,
       "occurrence_index": 10,
-      "key": "term:si",
-      "raw_text": "SI",
+      "key": "term:hoto",
+      "raw_text": "HOTO",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -8822,8 +9691,8 @@
     {
       "page": 52,
       "occurrence_index": 12,
-      "key": "term:hoto",
-      "raw_text": "HOTO",
+      "key": "term:oem",
+      "raw_text": "OEM",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -8838,8 +9707,8 @@
     {
       "page": 52,
       "occurrence_index": 14,
-      "key": "term:oem",
-      "raw_text": "OEM",
+      "key": "term:scc",
+      "raw_text": "SCC",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -9110,16 +9979,16 @@
     {
       "page": 56,
       "occurrence_index": 2,
-      "key": "term:bank",
-      "raw_text": "Bank",
+      "key": "term:agency",
+      "raw_text": "Agency",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 56,
       "occurrence_index": 3,
-      "key": "term:bank",
-      "raw_text": "bank",
+      "key": "term:agency",
+      "raw_text": "Agency",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -9127,7 +9996,7 @@
       "page": 56,
       "occurrence_index": 4,
       "key": "term:bank",
-      "raw_text": "bank",
+      "raw_text": "Bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -9142,16 +10011,16 @@
     {
       "page": 56,
       "occurrence_index": 6,
-      "key": "term:agency",
-      "raw_text": "Agency",
+      "key": "term:bank",
+      "raw_text": "bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 56,
       "occurrence_index": 7,
-      "key": "term:agency",
-      "raw_text": "Agency",
+      "key": "term:bank",
+      "raw_text": "bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -9256,8 +10125,8 @@
       "occurrence_index": 2,
       "key": "clause:7.1",
       "raw_text": "Clause 7.1",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 57,
@@ -9696,8 +10565,8 @@
       "occurrence_index": 0,
       "key": "clause:6",
       "raw_text": "Clause 6",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 62,
@@ -9784,8 +10653,8 @@
       "occurrence_index": 1,
       "key": "clause:17",
       "raw_text": "Clause-17",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 65,
@@ -10198,56 +11067,56 @@
     {
       "page": 72,
       "occurrence_index": 2,
-      "key": "term:bank",
-      "raw_text": "Bank",
+      "key": "term:agency",
+      "raw_text": "Agency",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 72,
       "occurrence_index": 3,
-      "key": "term:bank",
-      "raw_text": "Bank",
+      "key": "term:agency",
+      "raw_text": "Agency",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 72,
       "occurrence_index": 4,
-      "key": "term:bank",
-      "raw_text": "Bank",
+      "key": "term:agency",
+      "raw_text": "Agency",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 72,
       "occurrence_index": 5,
-      "key": "term:bank",
-      "raw_text": "Bank",
+      "key": "term:agency",
+      "raw_text": "Agency",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 72,
       "occurrence_index": 6,
-      "key": "term:bank",
-      "raw_text": "Bank",
+      "key": "term:agency",
+      "raw_text": "Agency",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 72,
       "occurrence_index": 7,
-      "key": "term:bank",
-      "raw_text": "Bank",
+      "key": "term:agency",
+      "raw_text": "Agency",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 72,
       "occurrence_index": 8,
-      "key": "term:bank",
-      "raw_text": "Bank",
+      "key": "term:agency",
+      "raw_text": "Agency",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -10262,56 +11131,56 @@
     {
       "page": 72,
       "occurrence_index": 10,
-      "key": "term:agency",
-      "raw_text": "Agency",
+      "key": "term:bank",
+      "raw_text": "Bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 72,
       "occurrence_index": 11,
-      "key": "term:agency",
-      "raw_text": "Agency",
+      "key": "term:bank",
+      "raw_text": "Bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 72,
       "occurrence_index": 12,
-      "key": "term:agency",
-      "raw_text": "Agency",
+      "key": "term:bank",
+      "raw_text": "Bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 72,
       "occurrence_index": 13,
-      "key": "term:agency",
-      "raw_text": "Agency",
+      "key": "term:bank",
+      "raw_text": "Bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 72,
       "occurrence_index": 14,
-      "key": "term:agency",
-      "raw_text": "Agency",
+      "key": "term:bank",
+      "raw_text": "Bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 72,
       "occurrence_index": 15,
-      "key": "term:agency",
-      "raw_text": "Agency",
+      "key": "term:bank",
+      "raw_text": "Bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 72,
       "occurrence_index": 16,
-      "key": "term:agency",
-      "raw_text": "Agency",
+      "key": "term:bank",
+      "raw_text": "Bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -10326,16 +11195,16 @@
     {
       "page": 73,
       "occurrence_index": 1,
-      "key": "term:bank",
-      "raw_text": "Bank",
+      "key": "term:inr",
+      "raw_text": "INR",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 73,
       "occurrence_index": 2,
-      "key": "term:bank",
-      "raw_text": "Bank",
+      "key": "term:agency",
+      "raw_text": "Agency",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -10382,16 +11251,16 @@
     {
       "page": 73,
       "occurrence_index": 8,
-      "key": "term:inr",
-      "raw_text": "INR",
+      "key": "term:bank",
+      "raw_text": "Bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
     {
       "page": 73,
       "occurrence_index": 9,
-      "key": "term:agency",
-      "raw_text": "Agency",
+      "key": "term:bank",
+      "raw_text": "Bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -10736,8 +11605,8 @@
       "occurrence_index": 1,
       "key": "section:6",
       "raw_text": "Section-VI",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "approximate",
+      "suppressed_reason": null
     },
     {
       "page": 78,
@@ -11350,8 +12219,8 @@
     {
       "page": 106,
       "occurrence_index": 1,
-      "key": "term:bank",
-      "raw_text": "Bank",
+      "key": "term:emd",
+      "raw_text": "EMD",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -11359,7 +12228,7 @@
       "page": 106,
       "occurrence_index": 2,
       "key": "term:bank",
-      "raw_text": "bank",
+      "raw_text": "Bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -11382,8 +12251,8 @@
     {
       "page": 106,
       "occurrence_index": 5,
-      "key": "term:emd",
-      "raw_text": "EMD",
+      "key": "term:bank",
+      "raw_text": "bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -11790,8 +12659,8 @@
     {
       "page": 122,
       "occurrence_index": 2,
-      "key": "term:bank",
-      "raw_text": "Bank",
+      "key": "term:emd",
+      "raw_text": "EMD",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -11799,7 +12668,7 @@
       "page": 122,
       "occurrence_index": 3,
       "key": "term:bank",
-      "raw_text": "bank",
+      "raw_text": "Bank",
       "resolution": "exact",
       "suppressed_reason": null
     },
@@ -11814,8 +12683,8 @@
     {
       "page": 122,
       "occurrence_index": 5,
-      "key": "term:emd",
-      "raw_text": "EMD",
+      "key": "term:bank",
+      "raw_text": "bank",
       "resolution": "exact",
       "suppressed_reason": null
     },

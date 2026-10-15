@@ -175,6 +175,141 @@ async def test_two_different_headings_on_one_page_are_never_wrongly_deduped(monk
     assert "numheading:4.0" in delta[2]
 
 
+def _h(text, page, **kwargs):
+    kwargs.setdefault("level", 2)
+    kwargs.setdefault("still_open_at_chunk_end", True)
+    return AIHeading(heading_text=text, start_page=page, **kwargs)
+
+
+def test_cross_page_hallucinated_repeat_run_is_dropped():
+    """Confirmed real bug (job bb417471, pages 64-70): qwen3:8b repeated
+    "4.0 SETTLEMENT OF DISPUTES" / "4.1 NOTICE OF DEFAULT" at pages 64, 66,
+    67, 68, 69, 70, when the real OCR text shows the clause genuinely
+    starts on page 66 only — pages 67-70 are an unrelated Bank Guarantee
+    letter. Page 64 is isolated (gap of 2 to page 66) and must survive;
+    pages 66-70 form a run of 5 consecutive pages, so only the first (66)
+    should survive."""
+    headings = (
+        [_h("4.0 SETTLEMENT OF DISPUTES", 64), _h("4.1 NOTICE OF DEFAULT", 64)]
+        + [_h("4.0 SETTLEMENT OF DISPUTES", p) for p in (66, 67, 68, 69, 70)]
+        + [_h("4.1 NOTICE OF DEFAULT", p) for p in (66, 67, 68, 69, 70)]
+    )
+    kept, dropped = ai_reference_index._drop_cross_page_hallucinated_repeats(headings)
+    kept_pages_40 = sorted(h.start_page for h in kept if "SETTLEMENT" in h.heading_text)
+    kept_pages_41 = sorted(h.start_page for h in kept if "NOTICE OF DEFAULT" in h.heading_text)
+    assert kept_pages_40 == [64, 66]
+    assert kept_pages_41 == [64, 66]
+    assert dropped == 8  # 4 extra "4.0" (67-70) + 4 extra "4.1" (67-70)
+
+
+def test_two_occurrence_gap_is_not_flagged():
+    """Same decimal heading at page 10 and page 40 only — far apart,
+    non-consecutive. Both are legitimate (e.g. a second schedule reusing
+    the same clause numbering) and must survive untouched."""
+    headings = [_h("4.0 SETTLEMENT OF DISPUTES", 10), _h("4.0 SETTLEMENT OF DISPUTES", 40)]
+    kept, dropped = ai_reference_index._drop_cross_page_hallucinated_repeats(headings)
+    assert dropped == 0
+    assert sorted(h.start_page for h in kept) == [10, 40]
+
+
+def test_two_consecutive_occurrences_alone_not_flagged():
+    """Same decimal heading at pages 30-31 only (run length 2) — a
+    plausible reprint at a page break, not enough evidence of hallucinated
+    repetition. Must be left alone."""
+    headings = [_h("4.0 SETTLEMENT OF DISPUTES", 30), _h("4.0 SETTLEMENT OF DISPUTES", 31)]
+    kept, dropped = ai_reference_index._drop_cross_page_hallucinated_repeats(headings)
+    assert dropped == 0
+    assert sorted(h.start_page for h in kept) == [30, 31]
+
+
+def test_running_header_without_a_number_is_never_touched_by_cross_page_filter():
+    """A bare, keyword-shaped heading with no leading decimal number (an
+    "ANNEXURE A-3" running-header banner) repeated across 10 consecutive
+    pages must NOT be touched by this filter — that's exactly the shape
+    already governed by apply_heading_events_to_scope's own same-key/
+    same-depth repeat guard and the same-page numbered-subdoc-family
+    signal; this function must never re-litigate it."""
+    headings = [_h("ANNEXURE A-3", p) for p in range(50, 60)]
+    kept, dropped = ai_reference_index._drop_cross_page_hallucinated_repeats(headings)
+    assert dropped == 0
+    assert len(kept) == 10
+
+
+def test_case_caption_repeat_untouched_by_cross_page_filter():
+    """Same exclusion as the running-header case, different shape: a bare
+    case-caption heading (no leading decimal number) repeated across many
+    consecutive pages legitimately recurs and must not be dropped here."""
+    headings = [_h("IN THE HIGH COURT OF PUNJAB AND HARYANA", p) for p in range(1, 8)]
+    kept, dropped = ai_reference_index._drop_cross_page_hallucinated_repeats(headings)
+    assert dropped == 0
+    assert len(kept) == 7
+
+
+def test_cross_page_repeat_runs_tracked_independently_per_heading_text():
+    """"4.0 SETTLEMENT OF DISPUTES" and "4.1 NOTICE OF DEFAULT" looping in
+    lockstep across the same page run must each be trimmed independently
+    (one group per normalized heading text), not conflated into one."""
+    headings = (
+        [_h("4.0 SETTLEMENT OF DISPUTES", p) for p in (10, 11, 12, 13)]
+        + [_h("4.1 NOTICE OF DEFAULT", p) for p in (10, 11, 12, 13)]
+    )
+    kept, dropped = ai_reference_index._drop_cross_page_hallucinated_repeats(headings)
+    assert dropped == 6  # 3 extra of each text
+    assert sorted(h.start_page for h in kept if "SETTLEMENT" in h.heading_text) == [10]
+    assert sorted(h.start_page for h in kept if "NOTICE OF DEFAULT" in h.heading_text) == [10]
+
+
+def test_cross_page_repeat_run_does_not_blacklist_text_outside_the_run():
+    """A 3-page run (dropped down to its first occurrence) followed, after
+    a gap, by one more isolated occurrence of the same text later in the
+    chunk must keep that later occurrence — run-detection resets at gaps
+    rather than treating the text as globally suspect for the whole
+    chunk."""
+    headings = (
+        [_h("4.0 SETTLEMENT OF DISPUTES", p) for p in (10, 11, 12)]
+        + [_h("4.0 SETTLEMENT OF DISPUTES", 50)]
+    )
+    kept, dropped = ai_reference_index._drop_cross_page_hallucinated_repeats(headings)
+    assert dropped == 2  # pages 11, 12 dropped from the first run
+    assert sorted(h.start_page for h in kept) == [10, 50]
+
+
+@pytest.mark.asyncio
+async def test_cross_page_repeat_dropped_end_to_end_and_surfaced_in_warnings(monkeypatch):
+    """End-to-end variant: a chunk whose AI response hallucinates the same
+    decimal heading across a 4-page consecutive run must come out of the
+    real pipeline with only the first occurrence persisted, and the chunk
+    report must surface the drop count under ai_cross_page_repeat_dropped
+    (never silently swallowed, given how high-stakes a cross-page drop is
+    for recall)."""
+    job_id = _job_with_ai_pages([
+        "4.0 SETTLEMENT OF DISPUTES\n\nreal clause text on page 1.",
+        "unrelated content, page 2",
+        "unrelated content, page 3",
+        "unrelated content, page 4",
+    ], chunk_pages=4)
+
+    async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
+                             include_pleading_points=False, **_rule_prior_kwargs):
+        headings = [_h("4.0 SETTLEMENT OF DISPUTES", p) for p in (1, 2, 3, 4)]
+        return ChunkStructureResult(outcome=ChunkOutcome.OK, page_nums=chunk.page_nums,
+                                     headings=headings, provider="gemini", model="gemini-2.5-flash")
+
+    monkeypatch.setattr(ai_indexing.StructureIndexer, "extract_structure_for_chunk", _fake_extract)
+
+    result = await ai_reference_index.reindex_job_with_ai(job_id)
+    assert result["status"] == "done"
+
+    delta = database.get_reference_targets_since(job_id, 0)
+    assert "numheading:4.0" in delta[1]
+    assert 2 not in delta or "numheading:4.0" not in delta.get(2, {})
+    assert 3 not in delta or "numheading:4.0" not in delta.get(3, {})
+    assert 4 not in delta or "numheading:4.0" not in delta.get(4, {})
+
+    report = database.get_ai_index_report(job_id)
+    assert report["chunks"][0]["warnings"].get("ai_cross_page_repeat_dropped") == 3
+
+
 @pytest.mark.asyncio
 async def test_chunk_pages_override_wins_over_the_jobs_frozen_engine_params(monkeypatch):
     """Regression: a manual "Rebuild Cross-References" call (main.py) passes

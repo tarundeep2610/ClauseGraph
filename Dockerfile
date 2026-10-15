@@ -42,6 +42,7 @@ COPY chunking.py .
 COPY confidence.py .
 COPY context_primer.py .
 COPY seam_stitching.py .
+COPY export_service.py .
 COPY --from=frontend-build /frontend/dist ./frontend/dist
 
 # unlimited_ocr_engine.py is intentionally NOT copied here — OCR model

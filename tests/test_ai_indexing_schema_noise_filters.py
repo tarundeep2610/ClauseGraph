@@ -92,6 +92,25 @@ def test_latex_formula_artifacts_are_dropped():
     assert report.dropped_invalid == 2
 
 
+def test_contract_execution_signature_block_is_dropped():
+    """Commercial-contract execution/signature boilerplate (as opposed to the
+    court-pleading signature blocks already covered above) — surfaced by the
+    100-page fixture's embedded Contract Agreement annexure (pages 66-68),
+    where these lines were found escaping the filter and over-generating."""
+    chunk = AIStructureChunk(
+        headings=[
+            AIHeading(heading_text="IN WITNESS WHEREOF, the parties through their duly authorised representatives have executed these presents", start_page=66),
+            AIHeading(heading_text="Signed, sealed and Delivered by the.", start_page=66),
+            AIHeading(heading_text="NAME : H. G. CHHABRA", start_page=66),
+            AIHeading(heading_text="TITLE : CHIEF ENGINEER/MM,", start_page=66),
+            AIHeading(heading_text="IN THE PRESENCE OF", start_page=66),
+        ]
+    )
+    norm_chunk, report = normalize_chunk(chunk, expected_pages=[66])
+    assert len(norm_chunk.headings) == 0
+    assert report.dropped_invalid == 5
+
+
 def test_preservation_of_legitimate_headings():
     """Negative test: none of these legitimate headings may be dropped."""
     legitimate = [
@@ -105,6 +124,7 @@ def test_preservation_of_legitimate_headings():
         "SCHEDULE 2: 220 KV SUB-STATION CIVIL WORKS",
         "Clause 11.1 Payment Terms",
         "10.0 TERMS OF PAYMENT",
+        "BANK GUARANTEE FOR CONTRACT PERFORMANCE",
     ]
     chunk = AIStructureChunk(
         headings=[AIHeading(heading_text=text, start_page=1, level=1) for text in legitimate]

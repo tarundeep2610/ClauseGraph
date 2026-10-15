@@ -13,7 +13,6 @@ alignment success on real pages (empty-content `image` tags dropped on one
 side, table-cell splitting mismatched on the other). That fallback case is
 exactly what this file's tests now assert does NOT happen anymore."""
 
-import config
 from reference_index import build_layout_annotated_text
 
 
@@ -79,15 +78,20 @@ def test_indented_block_gets_the_indented_marker():
     assert "INDENTED" not in annotated.split("Left margin text one")[0].split("[OCR-LAYOUT:")[-1]
 
 
-def test_truncation_guard_clips_and_marks_an_oversized_page():
-    long_text = "word " * 3000  # ~15000 chars, well over AI_INDEX_PAGE_CHARS_MAX (12000)
+def test_oversized_page_is_returned_whole_never_truncated():
+    # Well over the old AI_INDEX_PAGE_CHARS_MAX cutoff (12000) — must still
+    # come back in full. Truncating here would silently drop content the
+    # model never gets to see; plan_chunks (ai_indexing/prompt.py) is
+    # responsible for isolating a dense page into its own chunk instead.
+    long_text = "word " * 3000  # ~15000 chars
     raw_text = f"<|det|>text [10,10,100,30]<|/det|>{long_text}"
     out = build_layout_annotated_text("x", raw_text)
-    assert out.endswith("[... page truncated for length ...]")
-    assert len(out) <= config.AI_INDEX_PAGE_CHARS_MAX + len("\n\n[... page truncated for length ...]")
+    assert "truncated" not in out
+    assert long_text.strip() in out
+    assert len(out) >= len(long_text.strip())
 
 
-def test_truncation_guard_is_a_no_op_for_a_normal_sized_page():
+def test_normal_sized_page_is_unaffected():
     raw_text = "<|det|>text [10,10,100,30]<|/det|>A perfectly normal, short page of text."
     out = build_layout_annotated_text("x", raw_text)
     assert "truncated" not in out

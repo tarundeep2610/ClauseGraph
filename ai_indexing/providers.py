@@ -365,10 +365,17 @@ class RokkaAIProvider(BaseProvider):
         job_id = data.get("job_id")
         if not job_id:
             raise AIRemoteError(f"RokkaAI submit response had no job_id: {resp.text}", provider=self.name)
+        # Printed (not logged) so it shows up live in an unbuffered (`python
+        # -u`) scoring-script run's own stdout, not just in a log framework
+        # elsewhere — the job_id previously existed only as a local variable
+        # on this call stack, with no way to inspect it or query RokkaAI's
+        # own `/api/v1/jobs/{job_id}` status for a chunk stuck mid-poll.
+        print(f"[RokkaAI] submitted job_id={job_id} at {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}", flush=True)
         return job_id
 
     async def _poll(self, client: httpx.AsyncClient, job_id: str) -> str:
         deadline = time.monotonic() + self.cfg.poll_timeout_s
+        poll_count = 0
         while True:
             if self._cancel_check and self._cancel_check():
                 raise AICancelledError("Cancelled while polling RokkaAI.", provider=self.name)
@@ -390,6 +397,11 @@ class RokkaAIProvider(BaseProvider):
             if status in ("failed", "error"):
                 raise AIRemoteError(data.get("error") or "RokkaAI job failed with no error detail.",
                                      provider=self.name)
+            poll_count += 1
+            if poll_count % 20 == 0:  # ~every 60s at the default 3s poll_interval_s
+                elapsed = self.cfg.poll_timeout_s - (deadline - time.monotonic())
+                print(f"[RokkaAI] still polling job_id={job_id}: status={status!r} "
+                      f"elapsed={elapsed:.0f}s/{self.cfg.poll_timeout_s:.0f}s", flush=True)
             # Poll immediately on first check, then sleep — deliberately not a
             # fixed floor before the first poll (a real bug in the sibling
             # project's own client, which slept before checking even once).

@@ -174,7 +174,6 @@ AI_INDEX_CHUNK_PAGES = int(os.environ.get("AI_INDEX_CHUNK_PAGES", "3"))
 # left to pay that cost. Re-measure before changing again.
 AI_INDEX_CHUNK_OVERLAP_PAGES = int(os.environ.get("AI_INDEX_CHUNK_OVERLAP_PAGES", "0"))
 AI_INDEX_CHUNK_CHARS_MAX = int(os.environ.get("AI_INDEX_CHUNK_CHARS_MAX", "60000"))
-AI_INDEX_PAGE_CHARS_MAX = int(os.environ.get("AI_INDEX_PAGE_CHARS_MAX", "12000"))
 # How many neighboring pages (each direction, within the same chunk) to
 # search when grounding an AI-reported heading whose claimed start_page
 # doesn't actually contain matching text — see
