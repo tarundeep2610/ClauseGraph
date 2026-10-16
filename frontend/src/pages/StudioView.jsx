@@ -45,7 +45,8 @@ export default function StudioView() {
         onRetryPages={ctx.handleRetryPages}
         reviewPages={ctx.reviewPages}
         onConfirmCorrectPage={ctx.handleConfirmCorrectPage}
-        onReindexReferences={(textSource) => docId && ctx.handleReindexReferences(docId, textSource)}
+        onReindexReferences={() => docId && ctx.handleReindexReferences(docId)}
+        onBuildReferenceLinksOnly={() => docId && ctx.handleBuildReferenceLinksOnly(docId)}
         reindexing={ctx.reindexing}
         referenceStore={ctx.referenceStore}
         scopeRanges={ctx.scopeRanges}

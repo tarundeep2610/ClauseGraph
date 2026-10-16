@@ -3129,17 +3129,23 @@ def build_mention_index_for_job(job_id: str) -> None:
     safe: only discards it if THIS call was the one that added it) so
     `is_reindex_active` — which the manual /references/revert-to-rule and
     /references/build-mentions endpoints check before running — sees this build
-    as in-flight. Without this, the AI-disabled path in trigger_ai_reindex_safe
-    called this directly with no guard at all, leaving a race window where a
-    manual trigger right after OCR completion could run concurrently with the
-    automatic one. The AI-indexing path already calls this from inside
-    reindex_job's own registration, so the self-guard must not clear that
-    outer registration early."""
+    as in-flight, guarding against two manual triggers (e.g. a rapid double
+    click of "Build Index & Citations") racing each other. The AI-indexing path
+    already calls this from inside reindex_job's own registration, so the
+    self-guard must not clear that outer registration early."""
     already_active = job_id in _active_reindex_jobs
     if not already_active:
         _active_reindex_jobs.add(job_id)
     try:
-        version = database.get_reference_index_version(job_id)
+        # Bumped, not just read: the frontend's "Rebuilding..." state only
+        # clears once reference_index_version advances past the value it
+        # captured at click time (see AppShell.jsx's reindexState), and the
+        # incremental GET .../references?since_version= delta fetch only
+        # returns mentions whose written_at_version is strictly greater than
+        # what the client already has — both silently never fire if this
+        # reused the current, un-bumped version instead (confirmed as a real
+        # stuck-"Rebuilding…"-forever bug via Playwright, not theoretical).
+        version = database.bump_reference_index_version(job_id)
         docref_targets, docref_occs_by_page, def_pos_docref = build_docref_index_for_job(job_id, version)
         term_targets, term_occs_by_page, def_pos_term = build_term_index_for_job(job_id, version)
         definition_positions = def_pos_docref | def_pos_term

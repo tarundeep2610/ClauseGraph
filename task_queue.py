@@ -12,7 +12,6 @@ import confidence
 import context_primer
 import database
 import layout_format
-import reference_index
 from gpu_ocr_client import GPUServiceAuthError, GPUServiceError
 
 # Shown in place of a raw traceback/engine error string for any page the OCR
@@ -36,46 +35,6 @@ _escalation_share_semaphore = asyncio.Semaphore(max(1, config.OCR_ESCALATION_CON
 
 # pypdfium2 is not safe for concurrent access to a single PdfDocument.
 _render_lock = asyncio.Lock()
-
-
-async def _update_reference_index_safe(job_id: str, page_num: int, text: str, total_pages: int, raw_text: str = None):
-    """Recomputes this page's cross-reference targets right after its OCR text is
-    (re)written. Never allowed to take the OCR pipeline down — a detection bug
-    should degrade to "this page's links are stale," not fail the whole job.
-
-    `raw_text` (optional) is this page's raw, pre-clean_detection_tags() OCR
-    output — see reference_index.build_targets_for_page's layout-tag signal."""
-    try:
-        await reference_index.update_reference_index_for_page(job_id, page_num, text or "", total_pages, raw_text=raw_text)
-    except Exception as e:
-        print(f"[TaskQueue] ⚠️ Job {job_id} page {page_num} reference-index update failed (non-fatal): {e}\n{traceback.format_exc()}")
-
-
-async def trigger_ai_reindex_safe(job_id: str, start_page: "int | None" = None):
-    """Kicks off a full (or, with start_page, a targeted single-page-forward)
-    AI reindex when the job's frozen engine_params opted into it — same
-    defensive shape as _update_reference_index_safe above: an indexing
-    failure must never take the OCR job down. `start_page` is used after a
-    manual page retry (see retry_single_page/bulk retry below) — the live
-    per-page hook above is unconditionally rule-based, so without this a
-    retried page would silently and permanently revert from AI-derived rows
-    back to rule-derived ones with no re-AI-detection."""
-    try:
-        job = database.get_job(job_id, include_pages=False)
-        if not job:
-            return
-        if not (job.get("engine_params") or {}).get("ai_indexing_enabled"):
-            reference_index.build_mention_index_for_job(job_id)
-            if (job.get("engine_params") or {}).get("ai_index_review_mentions"):
-                import ai_reference_index
-                await ai_reference_index.review_mentions_for_job(job_id, job.get("engine_params"))
-            if (job.get("engine_params") or {}).get("ai_index_override_docrefs") or (job.get("engine_params") or {}).get("ai_index_review_docrefs"):
-                import ai_reference_index
-                await ai_reference_index.review_docrefs_for_job(job_id, job.get("engine_params"))
-            return
-        await reference_index.reindex_job(job_id, start_page=start_page)
-    except Exception as e:
-        print(f"[TaskQueue] ⚠️ Job {job_id} AI reindex failed (non-fatal): {e}\n{traceback.format_exc()}")
 
 
 @contextlib.asynccontextmanager
@@ -373,7 +332,6 @@ async def process_ocr_job(
                     tiling=int(tiling), outcome=final_status, error=error or '', confidence=score.confidence,
                     signals=__import__("json").dumps(score.signals), text_len=len(text or ''), text=None,
                 )
-                await _update_reference_index_safe(job_id, page_num, stored_text, total_pages, raw_text=raw_text)
                 return score, final_status
 
             async def process_single_page(page_num):
@@ -516,7 +474,6 @@ async def process_ocr_job(
 
             database.set_job_status(job_id, "completed")
             print(f"[TaskQueue] ✅ Job {job_id} successfully completed!")
-            asyncio.create_task(trigger_ai_reindex_safe(job_id))
 
             if output_path and os.path.isdir(output_path):
                 try:
@@ -651,9 +608,6 @@ async def _escalate_page(job_id, page_num, engine, run_ocr_func, run_unlimited_f
             signals=__import__("json").dumps(new_score.signals), escalated=1,
             error=stored_error, raw_ocr_text=raw_capture.get("raw_text"), formatted_text=formatted_text,
         )
-        job_for_total = database.get_job(job_id, include_pages=False)
-        total_pages = (job_for_total or {}).get('total_pages') or page_num
-        await _update_reference_index_safe(job_id, page_num, stored_text, total_pages, raw_text=raw_capture.get("raw_text"))
     else:
         # Escalation attempt scored worse than the base pass — keep the base text,
         # just record that escalation was attempted. Same reasoning as the
@@ -764,11 +718,6 @@ async def retry_pages_bulk(job_id: str, engine: str, run_ocr_func, run_unlimited
 
         database.refresh_job_page_counts(job_id)
         database.set_job_status(job_id, "completed")
-        # Targeted from the earliest retried page — not a full-document
-        # AI reindex — since a bulk retry only ever changes target_pages'
-        # own text; everything before the earliest one is untouched and
-        # its already-persisted scope is still valid as the seed.
-        asyncio.create_task(trigger_ai_reindex_safe(job_id, start_page=min(target_pages)))
     finally:
         _active_bulk_retries.discard(job_id)
 

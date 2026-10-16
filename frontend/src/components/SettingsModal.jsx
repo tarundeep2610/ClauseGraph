@@ -484,8 +484,8 @@ export default function SettingsModal({
                     accuracy benefit found — while higher overlap costs real
                     extra calls (~28-39% more chunks at overlap 2 vs 0 on a
                     larger document). Default changed to 0 accordingly.
-                    Frozen per job at creation time; "Rebuild
-                    Cross-References" always uses the current value instead.
+                    Frozen per job at creation time; "Rebuild Index &
+                    Reference Links" always uses the current value instead.
                   </p>
                   {aiChunkOverlapSaved && <span className="flash-saved"><i className="fa-solid fa-check" /> Saved</span>}
                 </div>
@@ -516,8 +516,8 @@ export default function SettingsModal({
                     that never happened with it off — on this model, this
                     made results worse, not better. Left as a per-job toggle
                     for further experimentation, not a recommended setting.
-                    Frozen per job at creation time; "Rebuild
-                    Cross-References" always uses the current value instead.
+                    Frozen per job at creation time; "Rebuild Index &
+                    Reference Links" always uses the current value instead.
                   </p>
                   {aiReviewRulePriorSaved && <span className="flash-saved"><i className="fa-solid fa-check" /> Saved</span>}
                 </div>

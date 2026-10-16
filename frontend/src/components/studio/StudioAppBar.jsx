@@ -9,7 +9,7 @@ export default function StudioAppBar({
   onBackToLibrary,
   onBuildIndex,
   reindexing = false,
-  indexBuiltAt,
+  indexBuilt = false,
   onExport,
   isDualCompare = false,
   onExitDualCompare,
@@ -147,13 +147,17 @@ export default function StudioAppBar({
 
         {onBuildIndex && (
           <button
-            className={`btn btn-sm ${indexBuiltAt ? 'btn-secondary' : 'btn-primary'} btn-build-index`}
+            className={`btn btn-sm ${indexBuilt ? 'btn-secondary' : 'btn-primary'} btn-build-index`}
             onClick={onBuildIndex}
             disabled={reindexing}
             data-testid="reindex-references-btn"
-            title={indexBuiltAt ? 'Re-run structure tree and cross-reference indexing' : 'Generate outline tree and cross-reference citations'}
+            title={
+              indexBuilt
+                ? 'Choose what to rebuild: the document outline, reference links, or both'
+                : "Finds the document's outline and links mentions like \"see Clause 8\" to where that clause is actually defined"
+            }
           >
-            <i className="fa-solid fa-bolt" /> {reindexing ? 'Rebuilding…' : indexBuiltAt ? 'Rebuild Cross-References' : 'Build Index & Citations'}
+            <i className="fa-solid fa-bolt" /> {reindexing ? 'Rebuilding…' : indexBuilt ? 'Rebuild Index & Reference Links' : 'Build Index & Reference Links'}
           </button>
         )}
 

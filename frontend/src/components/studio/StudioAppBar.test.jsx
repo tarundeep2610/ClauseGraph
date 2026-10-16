@@ -37,15 +37,15 @@ describe('StudioAppBar component', () => {
   it('handles build index / reindexing button actions', () => {
     const onBuild = vi.fn();
     const { rerender } = render(
-      <StudioAppBar onBuildIndex={onBuild} reindexing={false} indexBuiltAt={null} />
+      <StudioAppBar onBuildIndex={onBuild} reindexing={false} indexBuilt={false} />
     );
 
     const btn = screen.getByTestId('reindex-references-btn');
-    expect(btn).toHaveTextContent('Build Index & Citations');
+    expect(btn).toHaveTextContent('Build Index & Reference Links');
     fireEvent.click(btn);
     expect(onBuild).toHaveBeenCalledTimes(1);
 
-    rerender(<StudioAppBar onBuildIndex={onBuild} reindexing={true} indexBuiltAt={new Date().toISOString()} />);
+    rerender(<StudioAppBar onBuildIndex={onBuild} reindexing={true} indexBuilt={true} />);
     expect(screen.getByTestId('reindex-references-btn')).toHaveTextContent('Rebuilding…');
     expect(screen.getByTestId('reindex-references-btn')).toBeDisabled();
   });

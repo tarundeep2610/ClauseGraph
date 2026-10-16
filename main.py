@@ -1037,12 +1037,27 @@ async def revert_job_references_to_rule(job_id: str, principal: Principal = Depe
 
 @app.post("/api/jobs/{job_id}/references/build-mentions")
 def build_job_mentions(job_id: str, principal: Principal = Depends(_require_job_access)):
-    """Manual/backfill trigger to compute and persist mentions for a job."""
+    """Rebuilds reference-link mentions only, against whatever targets already
+    exist — the cheaper half of a full reindex, used when the document's
+    outline/structure hasn't changed and only the links need refreshing (see
+    RebuildIndexModal.jsx's "Reference Links Only" option). Never redetects
+    structure itself (that only happens via POST .../reindex-references)."""
     job = database.get_job(job_id, include_pages=False)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     if reference_index.is_reindex_active(job_id):
         raise HTTPException(status_code=409, detail="Reindex is currently in progress")
+    # Guards the contract explicitly rather than leaving it implicit: without
+    # any existing targets to link against, this would silently "succeed"
+    # while producing a degraded result (docref/term mentions only, nothing
+    # resolving to a heading/section/clause). The UI never offers this option
+    # on a job with no index yet, but the endpoint itself shouldn't rely on
+    # that frontend gate being the only thing preventing it.
+    if not database.get_reference_targets_for_job(job_id):
+        raise HTTPException(
+            status_code=400,
+            detail="No existing index to rebuild reference links from — build the full index first.",
+        )
 
     reference_index.build_mention_index_for_job(job_id)
     return {"status": "ok", "reference_index_version": database.get_reference_index_version(job_id)}
@@ -1051,8 +1066,8 @@ def build_job_mentions(job_id: str, principal: Principal = Depends(_require_job_
 # ─── Structure tree overrides (user add/edit/delete/reparent/reorder on top
 # of the auto-detected Structure tree — see structure_overrides.py's module
 # docstring for why these live in their own tables, never touched by
-# reindex_job, and therefore survive a "Rebuild Cross-References" click by
-# construction). ──────────────────────────────────────────────────────────
+# reindex_job, and therefore survive a "Rebuild Index & Reference Links"
+# click by construction). ───────────────────────────────────────────────────
 
 @app.post("/api/jobs/{job_id}/structure-items", status_code=201)
 def create_structure_item(job_id: str, body: dict, principal: Principal = Depends(_require_job_access)):
@@ -1533,11 +1548,6 @@ async def retry_ocr_page(
         raise HTTPException(status_code=409, detail=str(e))
     if updated is None:
         raise HTTPException(status_code=404, detail="Page not found")
-    # Re-runs AI structure detection starting from this page (bounded,
-    # early-stopping — not a full-document reindex) when the job is
-    # AI-indexed, so a retried page doesn't silently and permanently revert
-    # to a rule-derived provisional row with no re-AI-detection.
-    asyncio.create_task(task_queue.trigger_ai_reindex_safe(job_id, start_page=page_num))
     return _annotate_page_confidence(updated)
 
 @app.post("/api/jobs/{job_id}/retry-pages")

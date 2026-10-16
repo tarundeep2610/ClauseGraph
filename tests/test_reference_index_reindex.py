@@ -120,6 +120,88 @@ def test_reindex_endpoint_starts_a_background_task_for_a_completed_job(client, a
     assert resp.json()["status"] == "reindexing"
 
 
+# ─── POST .../references/build-mentions — the "Reference Links Only" rebuild
+# path (RebuildIndexModal.jsx), scoped to mentions only, never touching
+# structure detection. ───────────────────────────────────────────────────────
+
+def test_build_mentions_endpoint_404s_for_missing_job(client, auth_headers):
+    resp = client.post("/api/jobs/does-not-exist/references/build-mentions", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+def test_build_mentions_endpoint_400s_when_the_job_has_no_existing_index(client, auth_headers):
+    # The UI never offers "Reference Links Only" on a job with no index yet
+    # (see ViewerPanel.jsx's indexBuilt gate), but the endpoint itself must
+    # not silently produce a degraded result if ever called on one directly.
+    job_id = _job_with_pages(["Clause 1 text."])
+    assert database.get_reference_targets_for_job(job_id) == []
+
+    resp = client.post(f"/api/jobs/{job_id}/references/build-mentions", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "no existing index" in resp.json()["detail"].lower()
+
+
+def test_build_mentions_endpoint_409s_when_already_active(client, auth_headers):
+    job_id = _job_with_pages(["Clause 1 text."])
+    reference_index._active_reindex_jobs.add(job_id)
+    try:
+        resp = client.post(f"/api/jobs/{job_id}/references/build-mentions", headers=auth_headers)
+        assert resp.status_code == 409
+    finally:
+        reference_index._active_reindex_jobs.discard(job_id)
+
+
+@pytest.mark.asyncio
+async def test_build_mentions_endpoint_succeeds_and_leaves_structure_untouched_when_targets_already_exist(client, auth_headers):
+    job_id = _job_with_pages([
+        "Clause 4.2 The contractor shall deliver the goods within 30 days.",
+        "Clause 4.3 Penalty for delay is per Clause 4.2 above.",
+    ])
+    # Build a real index first, same as a full "Rebuild Index" would.
+    await reference_index.reindex_job(job_id)
+    targets_before = database.get_reference_targets_for_job(job_id)
+    assert targets_before  # real structural targets exist
+
+    resp = client.post(f"/api/jobs/{job_id}/references/build-mentions", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
+
+    # Structure/targets are exactly as they were — build-mentions never
+    # redetects them, only rebuilds ocr_reference_mentions from the existing set.
+    assert database.get_reference_targets_for_job(job_id) == targets_before
+
+
+@pytest.mark.asyncio
+async def test_build_mentions_endpoint_bumps_the_version_so_the_frontend_can_see_it_finished(client, auth_headers):
+    # Regression test for a real bug found via Playwright: build_mention_index_for_job
+    # used to read the CURRENT reference_index_version and stamp new mention
+    # rows with it unchanged, instead of bumping it — so the toolbar button
+    # (gated on reference_index_version advancing past its click-time
+    # snapshot, see AppShell.jsx's reindexState) got stuck on "Rebuilding…"
+    # forever, AND the incremental GET .../references?since_version= delta
+    # fetch (database.get_reference_mentions_since, filters on
+    # written_at_version > since_version) would never return the refreshed
+    # mentions either, since they were written at a version the client
+    # already had.
+    job_id = _job_with_pages([
+        "Clause 4.2 The contractor shall deliver the goods within 30 days.",
+        "Clause 4.3 Penalty for delay is per Clause 4.2 above.",
+    ])
+    await reference_index.reindex_job(job_id)
+    version_before = database.get_reference_index_version(job_id)
+
+    resp = client.post(f"/api/jobs/{job_id}/references/build-mentions", headers=auth_headers)
+    assert resp.status_code == 200
+    version_after = resp.json()["reference_index_version"]
+
+    assert version_after > version_before
+    assert database.get_reference_index_version(job_id) == version_after
+    # The delta fetch must actually surface the refreshed mentions to a
+    # client that already had version_before cached.
+    delta = database.get_reference_mentions_since(job_id, version_before)
+    assert 2 in delta  # page 2 has the "per Clause 4.2" mention
+
+
 def test_reindex_endpoint_stamps_index_built_at(client, auth_headers, monkeypatch):
     """Studio redesign 'Zero Indexing Overhead by Default': index_built_at is
     the frontend's signal to show citation badges/outline — it must be set by

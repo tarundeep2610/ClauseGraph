@@ -153,6 +153,29 @@ async def test_formatted_text_is_none_for_a_failed_page_placeholder(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_ocr_completion_triggers_no_automatic_indexing(tmp_path):
+    """Indexing (structure detection + cross-reference citations) is fully
+    opt-in, built only by the explicit POST .../reindex-references action
+    ("Build Index & Citations") — normal OCR processing (including the
+    automatic escalation pass) must never touch reference_index_version or
+    ocr_reference_targets on its own. Regression coverage for a deliberate
+    architecture change: this app used to run a per-page rule-based
+    structure detector automatically on every page, plus an automatic
+    reindex at job completion — both removed so a freshly-OCR'd job has no
+    structure/citations until the user asks for them."""
+    job_id = _make_multipage_pdf_job(tmp_path, n_pages=3, chunk_size=5)
+    runner = _AlwaysCleanRunner()
+
+    await task_queue.process_ocr_job(job_id, run_ocr_func=None, run_unlimited_func=runner, prompts_dict={"document": "p"})
+
+    job = database.get_job(job_id)
+    assert job["status"] == "completed"
+    assert job["reference_index_version"] == 0
+    assert job["index_built_at"] is None
+    assert database.get_reference_targets_for_job(job_id) == []
+
+
+@pytest.mark.asyncio
 async def test_multipage_job_processes_all_pages_across_chunks(tmp_path):
     job_id = _make_multipage_pdf_job(tmp_path, n_pages=6, chunk_size=5)
     runner = _AlwaysCleanRunner()
