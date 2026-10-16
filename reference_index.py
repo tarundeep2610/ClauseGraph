@@ -19,6 +19,7 @@ import asyncio
 import difflib
 import hashlib
 import html
+from html.parser import HTMLParser
 import json
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -864,6 +865,8 @@ def _fuzzy_family_match(text: str) -> Optional[Tuple[str, Optional[str], str]]:
     # leftover "A" + group(2) "-1" reforms the real tail "A-1".
     tail = m.group(1)[len(best_cand):] + m.group(2)
     if no_digit_fallback:
+        if tail.lower() in ("s", "es"):
+            return None
         tail = _denoise_digit_confusables(tail)
     tail_m = _FUZZY_TAIL_RE.match(tail)
     if not tail_m:
@@ -970,6 +973,98 @@ def _block_own_text(block: Dict[str, Any]) -> str:
     return _leaf_text(block).strip()
 
 
+_TABLE_ROOT_RE = re.compile(r"^\s*<table\b", re.IGNORECASE)
+
+
+class _HtmlTableCellParser(HTMLParser):
+    """Lenient per-cell text extractor for a single raw `<table>...</table>`
+    HTML blob (a mistune `block_html` token's own `raw` string). Scoped
+    ONLY to <table>/<tr>/<td>/<th> structure. A new <tr>/<td>/<th> start
+    tag always implicitly closes whatever cell/row is still open first —
+    OCR'd HTML missing end tags (confirmed common in this corpus) degrades
+    gracefully instead of losing structure, mirroring a browser's own
+    lenient table parser. `close()` is overridden because stdlib
+    HTMLParser.close() does NOT synthesize end-tag events for anything
+    still open (confirmed directly) — without this override, a table
+    truncated with no closing </tr>/</table> would silently lose its last
+    row entirely."""
+
+    _CELL_TAGS = {"td", "th"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.rows: List[List[str]] = []
+        self._cur_row: Optional[List[str]] = None
+        self._cur_cell: Optional[List[str]] = None
+
+    def _close_cell(self):
+        if self._cur_cell is not None:
+            text = re.sub(r"\s+", " ", "".join(self._cur_cell)).strip()
+            if self._cur_row is None:
+                self._cur_row = []
+            self._cur_row.append(text)
+            self._cur_cell = None
+
+    def _close_row(self):
+        self._close_cell()
+        if self._cur_row is not None:
+            self.rows.append(self._cur_row)
+            self._cur_row = None
+
+    def close(self):
+        super().close()
+        self._close_row()
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "tr":
+            self._close_row()
+            self._cur_row = []
+        elif tag in self._CELL_TAGS:
+            self._close_cell()
+            if self._cur_row is None:
+                self._cur_row = []
+            self._cur_cell = []
+        elif tag in ("br", "p", "div") and self._cur_cell is not None:
+            self._cur_cell.append(" ")
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        if tag in self._CELL_TAGS:
+            self._close_cell()
+        elif tag in ("tr", "table"):
+            self._close_row()
+
+    def handle_data(self, data):
+        if self._cur_cell is not None:
+            self._cur_cell.append(data)
+
+
+def _parse_html_table_blocks(raw: str) -> List[Dict[str, Any]]:
+    """If `raw` (a mistune block_html token's raw text) is TABLE-rooted,
+    parses it into one synthetic `table_cell` token per <td>/<th> cell, in
+    row-major document order — the exact token shape _block_own_text
+    already handles for a real mistune pipe-table cell. Returns [] (never
+    None) when `raw` isn't table-rooted or parsing fails or yields no
+    cells — the caller then falls through to today's unconditional drop,
+    so non-table raw HTML (a bare <div>, <center>) stays exactly as
+    invisible as before."""
+    if not _TABLE_ROOT_RE.match(raw or ""):
+        return []
+    parser = _HtmlTableCellParser()
+    try:
+        parser.feed(raw)
+        parser.close()
+    except Exception:
+        return []
+    return [
+        {"type": "table_cell", "children": [{"type": "text", "raw": cell_text}]}
+        for row in parser.rows
+        for cell_text in row
+    ]
+
+
 def _flatten_blocks(tokens: List[Dict[str, Any]]):
     """Yields paragraph/heading/list_item/table_cell blocks in document order,
     recursing through list/table/table_head/table_body/table_row containers
@@ -995,6 +1090,9 @@ def _flatten_blocks(tokens: List[Dict[str, Any]]):
                     item["_ordinal"] = start + idx
                 item["_list_size"] = len(children)
                 yield from _flatten_blocks([item])
+            continue
+        if t == "block_html":
+            yield from _parse_html_table_blocks(tok.get("raw", ""))
             continue
         if t in _BLOCK_TYPES:
             yield tok
@@ -1494,7 +1592,11 @@ def build_targets_for_page(
     per-block layout type (header/title = positive signal, text = negative)
     — additive only, never removing a reason a text heuristic already added,
     and never applied at all on a count mismatch (never guess which block a
-    layout type belongs to).
+    layout type belongs to). Note: decomposing a table into N cell blocks
+    means len(blocks) no longer lines up with the OCR engine's one-det-tag-per-
+    table-region count on table pages — this mismatch already existed pre-fix
+    (0 blocks vs 1 det-tag region), so alignment simply degrades gracefully
+    to False on table-bearing pages without corrupting candidates.
     """
     tokens, _ = _get_parser().parse(page_text or "")
     blocks = list(_flatten_blocks(tokens))
@@ -1718,7 +1820,8 @@ def build_targets_for_page(
             if fuzzy_m:
                 family, prefix, number_raw = fuzzy_m
                 is_fuzzy = True
-                match_end = _FUZZY_PREFIX_RE.match(text).end()
+                m_fuzzy = _FUZZY_PREFIX_RE.match(text) or _FUZZY_PREFIX_NODIGIT_RE.match(text)
+                match_end = m_fuzzy.end() if m_fuzzy else len(text)
             elif _ground_scope_active(nested_stack):
                 gm = _resolve_ground_or_point_match(text, last_ground_letter_ordinal)
                 if gm:
@@ -2187,6 +2290,7 @@ def build_targets_for_page(
             and not _is_external_law(text)
             and not _is_backward_reference(text, 0)
             and not in_distribution_list
+            and block.get("type") != "table_cell"
         ):
             finalize(closed_by_new_target=True)
             boundary_ordinal += 1
