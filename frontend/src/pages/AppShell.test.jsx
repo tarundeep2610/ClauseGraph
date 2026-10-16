@@ -1104,7 +1104,12 @@ describe('AppShell/StudioView — Rebuild Cross-References button', () => {
     renderApp("/studio/job-r");
     await screen.findByTestId('reindex-references-btn');
 
+    // This job already has an index (version starts at 3), so the click
+    // opens the rebuild-choice modal rather than rebuilding directly —
+    // confirm with the default "Index" checked, equivalent to the old
+    // single-button full rebuild this test was written against.
     fireEvent.click(screen.getByTestId('reindex-references-btn'));
+    fireEvent.click(screen.getByTestId('rebuild-modal-confirm'));
     await act(async () => { await vi.advanceTimersByTimeAsync(0); }); // let the POST + its immediate fetchJobDetails resolve
 
     expect(screen.getByTestId('reindex-references-btn')).toHaveTextContent('Rebuilding…');
@@ -1113,7 +1118,7 @@ describe('AppShell/StudioView — Rebuild Cross-References button', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(2500); }); // next poll tick observes the version bump
 
     await waitFor(() => {
-      expect(screen.getByTestId('reindex-references-btn')).toHaveTextContent('Rebuild Cross-References');
+      expect(screen.getByTestId('reindex-references-btn')).toHaveTextContent('Rebuild Index & Reference Links');
     });
     expect(screen.getByTestId('reindex-references-btn')).not.toBeDisabled();
   });
@@ -1371,7 +1376,7 @@ describe('AppShell/StudioView — Structure item edit only sends fields that act
         return { ok: true, json: async () => ({}) };
       }
       if (url.split('?')[0] === '/api/jobs/job-edit') {
-        return { ok: true, json: async () => ({ ...job, reference_index_version: 1, pages_data: [] }) };
+        return { ok: true, json: async () => ({ ...job, reference_index_version: 1, index_built_at: '2026-01-01T00:00:00Z', pages_data: [] }) };
       }
       if (url.startsWith('/api/jobs/job-edit/references')) {
         return {
@@ -1445,7 +1450,7 @@ describe('AppShell/StudioView — add-as-child chains create with one move', () 
         return { ok: true, json: async () => ({}) };
       }
       if (url.split('?')[0] === '/api/jobs/job-add-child') {
-        return { ok: true, json: async () => ({ ...job, reference_index_version: 1, pages_data: [] }) };
+        return { ok: true, json: async () => ({ ...job, reference_index_version: 1, index_built_at: '2026-01-01T00:00:00Z', pages_data: [] }) };
       }
       if (url.startsWith('/api/jobs/job-add-child/references')) {
         return {

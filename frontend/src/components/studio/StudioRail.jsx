@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 export default function StudioRail({
   structureOpen,
   onToggleStructure,
+  indexBuilt = true,
   reviewOpen,
   onToggleReview,
   reviewCount = 0,
@@ -28,13 +29,18 @@ export default function StudioRail({
     <aside className="task-rail studio-rail" data-testid="studio-rail">
       <div
         className="rail-btn-wrap"
-        title="Document Outline (Ctrl+1)"
+        title={indexBuilt ? 'Document Outline (Ctrl+1)' : 'No index built yet — click Build Index & Reference Links first'}
         onClick={onToggleStructure}
         data-testid="studio-rail-outline-wrap"
       >
+        {/* Not a native `disabled` button — the click handler lives on the
+            wrapping div above, and a disabled button would swallow clicks on
+            itself before they bubble, silently eating the toast-on-click
+            this is supposed to show instead of just doing nothing. */}
         <button
           type="button"
-          className={`rail-icon-btn${structureOpen ? ' active' : ''}`}
+          className={`rail-icon-btn${structureOpen ? ' active' : ''}${indexBuilt ? '' : ' disabled'}`}
+          aria-disabled={!indexBuilt}
           data-testid="structure-sidebar-toggle-btn"
           aria-label="Toggle document structure tree"
         >

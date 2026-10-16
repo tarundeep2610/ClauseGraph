@@ -47,6 +47,27 @@ describe('StudioRail component', () => {
     expect(screen.getByTestId('studio-rail-review-badge')).toHaveTextContent('4');
   });
 
+  it('shows the Outline button as visually disabled when indexBuilt=false, but still calls onToggleStructure on click (the toast-on-click, not a silent no-op)', () => {
+    const onToggleStructure = vi.fn();
+    render(
+      <StudioRail
+        structureOpen={false}
+        onToggleStructure={onToggleStructure}
+        indexBuilt={false}
+        reviewOpen={false}
+        onToggleReview={vi.fn()}
+        reviewCount={0}
+      />
+    );
+
+    const outlineBtn = screen.getByTestId('structure-sidebar-toggle-btn');
+    expect(outlineBtn).toHaveClass('disabled');
+    expect(outlineBtn).toHaveAttribute('aria-disabled', 'true');
+
+    fireEvent.click(outlineBtn);
+    expect(onToggleStructure).toHaveBeenCalledTimes(1);
+  });
+
   it('responds to global Ctrl+1 and Ctrl+2 keyboard shortcuts', () => {
     const onToggleStructure = vi.fn();
     const onToggleReview = vi.fn();

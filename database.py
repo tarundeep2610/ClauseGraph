@@ -31,13 +31,13 @@ _OCR_JOBS_NEW_COLUMNS = [
     ("reference_index_frontier", "INTEGER DEFAULT 0"),
     ("ai_index_report", "TEXT DEFAULT '{}'"),  # JSON: per-chunk status/progress/audit — see ai_reference_index.py
     ("owner_id", "TEXT"),  # principal.subject of the uploader; NULL for jobs predating this column (admin-only visible)
-    # Set ONLY by the explicit POST .../reindex-references action (never by
-    # the always-on per-page rule-based detector, which keeps running
-    # unconditionally in the background regardless of this flag — it's cheap,
-    # local regex work, not the thing "Zero Indexing Overhead by Default"
-    # cares about). The frontend uses this, not reference_index_version (which
-    # the per-page detector bumps on every page regardless), to decide whether
-    # to surface citation badges/the outline by default for a document.
+    # Set ONLY by the explicit POST .../reindex-references action ("Build
+    # Index & Citations") — OCR itself no longer triggers any indexing
+    # automatically (removed: it used to run a per-page rule-based structure
+    # detector on every page, and an AI/rule reindex on job completion and
+    # after every retry). The frontend uses this, not reference_index_version
+    # (which stays 0 until an explicit build), to decide whether to surface
+    # citation badges and enable the Outline tree for a document.
     ("index_built_at", "TIMESTAMP"),
 ]
 

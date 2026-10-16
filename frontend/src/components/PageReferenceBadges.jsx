@@ -77,7 +77,7 @@ export default function PageReferenceBadges({ mentions, referenceStore, scopeRan
 
   return (
     <div className="page-reference-badges" data-testid="page-reference-badges">
-      <span className="page-reference-badges-label">Active Citations on P.{currentPage}:</span>
+      <span className="page-reference-badges-label">Reference Links on P.{currentPage}:</span>
       {mentions.map((mention) => (
         <button
           key={mention.key}

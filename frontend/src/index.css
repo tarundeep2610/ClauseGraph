@@ -232,9 +232,16 @@ header.app-header { margin-bottom: 16px; }
 /* LibraryHome ("/") only ever renders the sidebar column (no viewer next to
    it — Studio is a separate, viewer-only page now), so the 340px/1fr
    two-column grid built for sidebar+viewer would otherwise leave a huge
-   empty right column. Center a single column instead, matching the mockup's
-   Library screen width (~1100px, a plain upload+table page, not a sidebar). */
-.dashboard.library-view { grid-template-columns: minmax(0, 1100px); justify-content: center; }
+   empty right column. Fill the single column instead of the old 340px/1fr
+   split. Previously also capped at minmax(0, 1100px) + centered, which made
+   Library's content sit ~130px narrower per side than Header right above it
+   (Header fills the whole .app-shell-container, Studio's content does too —
+   only Library was re-capping itself narrower) — confirmed via Playwright as
+   the exact cause of "the header position isn't the same everywhere." The
+   outer .app-shell-container:not(.is-studio) still caps the whole page at a
+   reasonable 1400px, so this isn't full edge-to-edge, just no longer
+   re-capped narrower than the header. */
+.dashboard.library-view { grid-template-columns: minmax(0, 1fr); }
 .dashboard.library-view .sidebar { display: flex; flex-direction: column; gap: 20px; }
 
 /* Desktop: the page scrolls normally (not a fixed-height container) — the
@@ -370,6 +377,12 @@ input[type="range"]::-webkit-slider-thumb {
   background: rgba(var(--overlay), 0.06); border: 1px solid rgba(var(--overlay), 0.12);
   color: var(--text); font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  /* RebuildIndexModal.jsx uses a <label> (not a <button>, like this class's
+     other users) so clicking the row toggles its checkbox natively — but the
+     global `label` tag selector's uppercase/letter-spaced/margin styling
+     (meant for form-field captions elsewhere) would otherwise leak straight
+     through for any property this class doesn't already override itself. */
+  text-transform: none; letter-spacing: normal; margin-bottom: 0;
 }
 .modal-option-btn:hover:not(:disabled) { background: rgba(var(--primary-rgb), 0.14); border-color: var(--primary); }
 .modal-option-btn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -1386,6 +1399,24 @@ input[type="range"]::-webkit-slider-thumb {
   border-color: var(--primary);
   color: var(--fg-primary-soft);
 }
+/* Visually disabled, but still clickable (see StudioRail.jsx) — clicking
+   shows a toast explaining why, rather than silently doing nothing or
+   opening an empty drawer. */
+.rail-icon-btn.disabled {
+  opacity: 0.4; cursor: not-allowed;
+}
+.rail-btn-wrap:hover .rail-icon-btn.disabled { background: transparent; border-color: transparent; color: var(--muted); }
+
+/* Minimal generic toast (see Toast.jsx) — fixed, top-center so it never
+   collides with the floating nav HUD docked at the bottom of Studio. */
+.toast {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+  background: var(--surface-solid); border: 1px solid var(--border); color: var(--text);
+  padding: 10px 18px; border-radius: 8px; box-shadow: var(--shadow-lg);
+  font-size: 0.82rem; font-weight: 500; z-index: 500;
+  animation: toastIn 0.2s ease;
+}
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 .rail-btn-label {
   font-size: 0.65rem;

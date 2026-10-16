@@ -59,14 +59,20 @@ const baseProps = {
 };
 
 function jobWithPages(pages) {
-  // index_built_at defaults to "already built" so every existing test below
-  // (written before citation badges became gated on it) keeps exercising
-  // PageReferenceBadges unchanged — the dedicated "on-demand indexing"
-  // describe block further down explicitly sets it to null/undefined to
-  // test the gated-off default state.
+  // reference_index_version defaults to "already built" (> 0) so every
+  // existing test below (written before citation badges became gated on it)
+  // keeps exercising PageReferenceBadges unchanged — the dedicated
+  // "on-demand indexing" describe block further down explicitly sets it to 0
+  // to test the gated-off default state. This is the real gating signal
+  // (ViewerPanel.jsx's `indexBuilt`) — NOT index_built_at, which is only
+  // ever stamped by the explicit rebuild endpoint and stays null forever for
+  // a job indexed under the old automatic architecture, even though it has
+  // real data (the round-7 bug fix this file's "stale gating signal" tests
+  // cover). index_built_at is still included here for realism/parity with a
+  // real API response, but nothing in ViewerPanel should read it anymore.
   return {
     status: 'completed', total_pages: pages.length, processed_pages: pages.length, pages_data: pages,
-    index_built_at: '2026-01-01T00:00:00Z',
+    reference_index_version: 1, index_built_at: '2026-01-01T00:00:00Z',
   };
 }
 
@@ -343,11 +349,12 @@ describe('ViewerPanel — completed progress label', () => {
   });
 });
 
-describe('ViewerPanel — Rebuild Cross-References button', () => {
-  it('is shown and enabled for a completed job, and calls onReindexReferences when clicked', () => {
+describe('ViewerPanel — Build/Rebuild Index & Reference Links button', () => {
+  it('is shown and enabled for a completed job, and builds directly (no modal) when no index exists yet', () => {
     const onReindexReferences = vi.fn();
     const job = jobWithPages([{ page: 1, text: 'x', status: 'success' }]);
-    render(<ViewerPanel {...baseProps} jobDetails={job} onReindexReferences={onReindexReferences} />);
+    job.reference_index_version = 0;
+    render(<ViewerPanel {...baseProps} jobDetails={job} onReindexReferences={onReindexReferences} onBuildReferenceLinksOnly={vi.fn()} />);
     const btn = screen.getByTestId('reindex-references-btn');
     expect(btn).toBeInTheDocument();
     expect(btn).not.toBeDisabled();
@@ -473,44 +480,165 @@ describe('ViewerPanel — Result pane is editable (WysiwygEditor)', () => {
 });
 
 describe('ViewerPanel — on-demand indexing (Zero Indexing Overhead by Default)', () => {
-  it('hides PageReferenceBadges and labels the action "Build Index & Citations" before the index has ever been built', () => {
+  it('hides PageReferenceBadges and labels the action "Build Index & Reference Links" before the index has ever been built', () => {
     const store = storeWithDelta(
       { 1: { 'clause:8': [{ anchor_id: 'a1', collapsed_key: 'clause:8', page: 1 }] } },
       1,
       { 1: [{ key: 'clause:8', raw_text: 'Clause 8', resolution: 'exact' }] }
     );
     const job = jobWithPages([{ page: 1, text: 'See Clause 8 for details.' }]);
-    job.index_built_at = null;
+    job.reference_index_version = 0;
     render(
       <ViewerPanel {...baseProps} viewMode="split" pdfSrc="blob:fake-url" jobDetails={job} referenceStore={store} scopeRanges={[]} onReindexReferences={vi.fn()} />
     );
 
-    // The underlying mention data already exists (the always-on rule-based
-    // detector runs regardless) but must not surface as a badge until the
-    // user explicitly opts in — that data existing is not the same as the
-    // user having asked for citations.
+    // Even with referenceStore/scopeRanges data passed in directly (as this
+    // test does, bypassing the real fetch), badges must not surface until
+    // the index has actually been built (reference_index_version > 0) — that
+    // data existing is not the same as the user having asked for reference
+    // links. In the real app, post round-6, this data wouldn't exist yet
+    // either: indexing is fully opt-in now, nothing runs automatically
+    // during OCR.
     expect(screen.queryByTestId('page-reference-badge-clause:8')).not.toBeInTheDocument();
 
     const btn = screen.getByTestId('reindex-references-btn');
-    expect(btn).toHaveTextContent('Build Index & Citations');
+    expect(btn).toHaveTextContent('Build Index & Reference Links');
     expect(btn).toHaveClass('btn-primary');
   });
 
-  it('shows PageReferenceBadges and labels the action "Rebuild Cross-References" once the index has been built', () => {
+  it('shows PageReferenceBadges and labels the action "Rebuild Index & Reference Links" once the index has been built', () => {
     const store = storeWithDelta(
       { 1: { 'clause:8': [{ anchor_id: 'a1', collapsed_key: 'clause:8', page: 1 }] } },
       1,
       { 1: [{ key: 'clause:8', raw_text: 'Clause 8', resolution: 'exact' }] }
     );
-    const job = jobWithPages([{ page: 1, text: 'See Clause 8 for details.' }]); // index_built_at set by the jobWithPages default
+    const job = jobWithPages([{ page: 1, text: 'See Clause 8 for details.' }]); // reference_index_version: 1 set by the jobWithPages default
     render(
       <ViewerPanel {...baseProps} viewMode="split" pdfSrc="blob:fake-url" jobDetails={job} referenceStore={store} scopeRanges={[]} onReindexReferences={vi.fn()} />
     );
 
     expect(screen.getByTestId('page-reference-badge-clause:8')).toBeInTheDocument();
     const btn = screen.getByTestId('reindex-references-btn');
-    expect(btn).toHaveTextContent('Rebuild Cross-References');
+    expect(btn).toHaveTextContent('Rebuild Index & Reference Links');
     expect(btn).toHaveClass('btn-secondary');
+  });
+
+  // Regression coverage for the exact bug the user reported: a job indexed
+  // under the old (removed) automatic architecture has real data —
+  // reference_index_version > 0 — but index_built_at permanently null, since
+  // that column is only ever stamped by the explicit rebuild endpoint and
+  // was never backfilled. Badges/Outline must key off reference_index_version,
+  // not index_built_at, or every pre-existing job wrongly looks un-indexed.
+  it('treats a job with reference_index_version > 0 but index_built_at null as already indexed (the old-job gating bug)', () => {
+    const store = storeWithDelta(
+      { 1: { 'clause:8': [{ anchor_id: 'a1', collapsed_key: 'clause:8', page: 1 }] } },
+      1,
+      { 1: [{ key: 'clause:8', raw_text: 'Clause 8', resolution: 'exact' }] }
+    );
+    const job = jobWithPages([{ page: 1, text: 'See Clause 8 for details.' }]);
+    job.index_built_at = null; // never stamped — old automatic architecture
+    job.reference_index_version = 3; // but real data exists
+    render(
+      <ViewerPanel {...baseProps} studioMode={true} viewMode="split" pdfSrc="blob:fake-url" jobDetails={job} referenceStore={store} scopeRanges={[]} onReindexReferences={vi.fn()} />
+    );
+
+    expect(screen.getByTestId('page-reference-badge-clause:8')).toBeInTheDocument();
+    expect(screen.getByTestId('reindex-references-btn')).toHaveTextContent('Rebuild Index & Reference Links');
+    expect(screen.getByTestId('structure-sidebar-toggle-btn')).not.toHaveClass('disabled');
+  });
+
+  // The Outline rail button only exists in the real, studioMode-rendered
+  // shell (StudioRail.jsx) — the legacy, non-studio branch exercised by the
+  // tests above (dead code in production, kept for its own test coverage)
+  // has a different, ungated toolbar button instead.
+  it('disables the Outline rail button and shows a toast instead of opening the drawer when no index has been built', () => {
+    const job = jobWithPages([{ page: 1, text: 'See Clause 8 for details.' }]);
+    job.reference_index_version = 0;
+    render(
+      <ViewerPanel {...baseProps} studioMode={true} viewMode="split" pdfSrc="blob:fake-url" jobDetails={job} referenceStore={null} scopeRanges={[]} onReindexReferences={vi.fn()} />
+    );
+
+    expect(screen.getByTestId('structure-sidebar-toggle-btn')).toHaveClass('disabled');
+    fireEvent.click(screen.getByTestId('studio-rail-outline-wrap'));
+    expect(screen.getByTestId('toast')).toHaveTextContent(/no index built yet/i);
+    expect(screen.queryByTestId('structure-sidebar')).not.toBeInTheDocument();
+  });
+
+  it('opens the Outline drawer normally once an index has been built, with no toast', () => {
+    const job = jobWithPages([{ page: 1, text: 'See Clause 8 for details.' }]);
+    render(
+      <ViewerPanel {...baseProps} studioMode={true} viewMode="split" pdfSrc="blob:fake-url" jobDetails={job} referenceStore={null} scopeRanges={[]} onReindexReferences={vi.fn()} />
+    );
+
+    expect(screen.getByTestId('structure-sidebar-toggle-btn')).not.toHaveClass('disabled');
+    fireEvent.click(screen.getByTestId('studio-rail-outline-wrap'));
+    expect(screen.queryByTestId('toast')).not.toBeInTheDocument();
+    expect(screen.getByTestId('structure-sidebar')).toBeInTheDocument();
+  });
+});
+
+describe('ViewerPanel — Rebuild Index & Reference Links modal (shown only when an index already exists)', () => {
+  it('a never-indexed job builds directly on click, with no modal', () => {
+    const onReindexReferences = vi.fn();
+    const job = jobWithPages([{ page: 1, text: 'x' }]);
+    job.reference_index_version = 0;
+    render(<ViewerPanel {...baseProps} jobDetails={job} onReindexReferences={onReindexReferences} onBuildReferenceLinksOnly={vi.fn()} />);
+
+    fireEvent.click(screen.getByTestId('reindex-references-btn'));
+    expect(onReindexReferences).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('rebuild-index-modal')).not.toBeInTheDocument();
+  });
+
+  it('a job that already has an index opens the modal instead of rebuilding directly', () => {
+    const onReindexReferences = vi.fn();
+    const job = jobWithPages([{ page: 1, text: 'x' }]); // reference_index_version: 1 by default
+    render(<ViewerPanel {...baseProps} jobDetails={job} onReindexReferences={onReindexReferences} onBuildReferenceLinksOnly={vi.fn()} />);
+
+    fireEvent.click(screen.getByTestId('reindex-references-btn'));
+    expect(onReindexReferences).not.toHaveBeenCalled();
+    expect(screen.getByTestId('rebuild-index-modal')).toBeInTheDocument();
+  });
+
+  it('confirming with "Index" checked (the default) calls onReindexReferences, the full rebuild', () => {
+    const onReindexReferences = vi.fn();
+    const onBuildReferenceLinksOnly = vi.fn();
+    const job = jobWithPages([{ page: 1, text: 'x' }]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} onReindexReferences={onReindexReferences} onBuildReferenceLinksOnly={onBuildReferenceLinksOnly} />);
+
+    fireEvent.click(screen.getByTestId('reindex-references-btn'));
+    fireEvent.click(screen.getByTestId('rebuild-modal-confirm'));
+
+    expect(onReindexReferences).toHaveBeenCalledTimes(1);
+    expect(onBuildReferenceLinksOnly).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('rebuild-index-modal')).not.toBeInTheDocument();
+  });
+
+  it('unchecking "Index" and confirming with only "Reference Links" calls onBuildReferenceLinksOnly, not the full rebuild', () => {
+    const onReindexReferences = vi.fn();
+    const onBuildReferenceLinksOnly = vi.fn();
+    const job = jobWithPages([{ page: 1, text: 'x' }]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} onReindexReferences={onReindexReferences} onBuildReferenceLinksOnly={onBuildReferenceLinksOnly} />);
+
+    fireEvent.click(screen.getByTestId('reindex-references-btn'));
+    fireEvent.click(screen.getByTestId('rebuild-checkbox-index'));
+    fireEvent.click(screen.getByTestId('rebuild-modal-confirm'));
+
+    expect(onBuildReferenceLinksOnly).toHaveBeenCalledTimes(1);
+    expect(onReindexReferences).not.toHaveBeenCalled();
+  });
+
+  it('cancelling the modal calls neither handler', () => {
+    const onReindexReferences = vi.fn();
+    const onBuildReferenceLinksOnly = vi.fn();
+    const job = jobWithPages([{ page: 1, text: 'x' }]);
+    render(<ViewerPanel {...baseProps} jobDetails={job} onReindexReferences={onReindexReferences} onBuildReferenceLinksOnly={onBuildReferenceLinksOnly} />);
+
+    fireEvent.click(screen.getByTestId('reindex-references-btn'));
+    fireEvent.click(screen.getByTestId('rebuild-modal-cancel'));
+
+    expect(screen.queryByTestId('rebuild-index-modal')).not.toBeInTheDocument();
+    expect(onReindexReferences).not.toHaveBeenCalled();
+    expect(onBuildReferenceLinksOnly).not.toHaveBeenCalled();
   });
 });
 

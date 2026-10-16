@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../utils/AuthContext';
 import { getPageMentions } from '../utils/markdown';
 import RetryPagesModal from './RetryPagesModal';
+import RebuildIndexModal from './RebuildIndexModal';
 import PdfCanvasViewer from './PdfCanvasViewer';
 import PageNavBar from './PageNavBar';
 import StructureReadingModal from './StructureReadingModal';
@@ -17,6 +18,7 @@ import StudioRail from './studio/StudioRail';
 import StudioFloatingHud from './studio/StudioFloatingHud';
 import SplitResizer from './studio/SplitResizer';
 import DualPdfCompare from './studio/DualPdfCompare';
+import Toast from './Toast';
 
 // Presentational only — the thresholds themselves live entirely on the backend
 // (confidence.py); this just maps the already-computed tier string to a label/color
@@ -74,6 +76,7 @@ export default function ViewerPanel({
   reviewPages,
   onConfirmCorrectPage,
   onReindexReferences,
+  onBuildReferenceLinksOnly,
   reindexing,
   referenceStore,
   scopeRanges,
@@ -91,6 +94,7 @@ export default function ViewerPanel({
   const { isAdmin } = useAuth();
   const showPdf = viewMode === 'split' || viewMode === 'pdf';
   const [retryModalOpen, setRetryModalOpen] = useState(false);
+  const [rebuildModalOpen, setRebuildModalOpen] = useState(false);
   const [pdfPageOverride, setPdfPageOverride] = useState(null);
   // Set by a cross-reference badge click — pins a second, independent PDF
   // view (same pdfSrc, its own page) to the reference's target page, taking
@@ -114,6 +118,42 @@ export default function ViewerPanel({
   // Guided Review Queue drawer (Sprint 6) — same "persistent, collapsed by
   // default" treatment as the Structure sidebar above, toggled independently.
   const [reviewSidebarOpen, setReviewSidebarOpen] = useState(initialReviewOpen);
+  // Indexing (structure + reference links) is fully opt-in now — see
+  // StudioRail's disabled Outline button below — so clicking it with no
+  // index built shows this instead of silently opening an empty drawer.
+  const [toastMessage, setToastMessage] = useState(null);
+  // `index_built_at` is NOT the right signal here — it's only ever stamped by
+  // the explicit rebuild endpoint, so a job indexed under the old (removed)
+  // automatic architecture has real data but permanently null index_built_at.
+  // reference_index_version is bumped by every path that has ever written
+  // structure/target data, old automatic or new explicit alike, and is
+  // confirmed 0 for a genuinely fresh, never-indexed job — the correct,
+  // data-presence-based signal instead of a separate flag that can drift
+  // from reality.
+  const indexBuilt = (jobDetails?.reference_index_version ?? 0) > 0;
+  function handleToggleStructure() {
+    if (!indexBuilt) {
+      setToastMessage('No index built yet — click "Build Index & Reference Links" first.');
+      return;
+    }
+    setStructureSidebarOpen((v) => !v);
+  }
+  // Nothing built yet: build both directly, "Reference Links Only" has no
+  // value with nothing to link against. Something already built: let the
+  // user choose what to rebuild (RebuildIndexModal) rather than silently
+  // redoing everything every time.
+  function handleBuildIndexClick() {
+    if (!indexBuilt) {
+      onReindexReferences();
+      return;
+    }
+    setRebuildModalOpen(true);
+  }
+  function handleConfirmRebuild(choice) {
+    setRebuildModalOpen(false);
+    if (choice === 'links-only') onBuildReferenceLinksOnly();
+    else onReindexReferences();
+  }
   const [splitRatio, setSplitRatio] = useState(50);
   const [editorSaveStatus, setEditorSaveStatus] = useState('saved');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -403,11 +443,11 @@ export default function ViewerPanel({
           sidebarCollapsed={sidebarCollapsed}
           onBuildIndex={
             jobDetails?.status !== 'processing' && jobDetails?.status !== 'escalating'
-              ? () => onReindexReferences(useRawText ? 'raw' : 'clean')
+              ? handleBuildIndexClick
               : undefined
           }
           reindexing={reindexing}
-          indexBuiltAt={jobDetails?.index_built_at}
+          indexBuilt={indexBuilt}
           onExport={(opts) => onExport && onExport(opts)}
           isDualCompare={showPinnedPdf}
           onExitDualCompare={() => setPinnedPdfPage(null)}
@@ -490,14 +530,18 @@ export default function ViewerPanel({
               )}
               {jobDetails?.status !== 'processing' && jobDetails?.status !== 'escalating' && (
                 <button
-                  className={`btn btn-sm ${jobDetails?.index_built_at ? 'btn-secondary' : 'btn-primary'}`}
+                  className={`btn btn-sm ${indexBuilt ? 'btn-secondary' : 'btn-primary'}`}
                   disabled={!!reindexing}
-                  onClick={() => onReindexReferences(useRawText ? 'raw' : 'clean')}
+                  onClick={handleBuildIndexClick}
                   data-testid="reindex-references-btn"
-                  title={jobDetails?.index_built_at ? undefined : 'Generate the document outline and cross-reference citation badges'}
+                  title={
+                    indexBuilt
+                      ? 'Choose what to rebuild: the document outline, reference links, or both'
+                      : "Finds the document's outline and links mentions like \"see Clause 8\" to where that clause is actually defined"
+                  }
                 >
                   <i className="fa-solid fa-diagram-project" />
-                  {reindexing ? 'Rebuilding…' : jobDetails?.index_built_at ? 'Rebuild Cross-References' : 'Build Index & Citations'}
+                  {reindexing ? 'Rebuilding…' : indexBuilt ? 'Rebuild Index & Reference Links' : 'Build Index & Reference Links'}
                 </button>
               )}
               <button className="btn btn-sm btn-secondary" onClick={onDownloadPdf}><i className="fa-solid fa-file-arrow-down" /> PDF</button>
@@ -524,11 +568,13 @@ export default function ViewerPanel({
         <div className="studio-main-body" style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
           <StudioRail
             structureOpen={structureSidebarOpen}
-            onToggleStructure={() => setStructureSidebarOpen((v) => !v)}
+            onToggleStructure={handleToggleStructure}
+            indexBuilt={indexBuilt}
             reviewOpen={reviewSidebarOpen}
             onToggleReview={() => setReviewSidebarOpen((v) => !v)}
             reviewCount={reviewPages?.length || 0}
           />
+          <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
           <div className="dual-viewport studio-viewport" style={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex' }}>
             <StructureTreePanel
               open={structureSidebarOpen}
@@ -608,7 +654,7 @@ export default function ViewerPanel({
                       )}
                       {pdfSrc ? (
                         <>
-                          {!!jobDetails?.index_built_at && (
+                          {indexBuilt && (
                             <PageReferenceBadges
                               mentions={pageMentions}
                               referenceStore={referenceStore}
@@ -742,7 +788,7 @@ export default function ViewerPanel({
               <div className="view-box-content" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 {pdfSrc ? (
                   <>
-                    {!!jobDetails?.index_built_at && (
+                    {indexBuilt && (
                       <PageReferenceBadges
                         mentions={pageMentions}
                         referenceStore={referenceStore}
@@ -845,6 +891,12 @@ export default function ViewerPanel({
           review: jobDetails?.review_pages ?? 0,
           total: jobDetails?.total_pages ?? 0,
         }}
+      />
+
+      <RebuildIndexModal
+        open={rebuildModalOpen}
+        onClose={() => setRebuildModalOpen(false)}
+        onConfirm={handleConfirmRebuild}
       />
 
       <StructureReadingModal

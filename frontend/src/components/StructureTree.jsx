@@ -267,7 +267,7 @@ function finalize(node, sortIndex) {
 // *that* it is. Falls back to the raw reason string for anything unlisted
 // (e.g. a future signal added server-side before this map is updated).
 const REASON_LABELS = {
-  chained_citation: 'chained citation to another clause/section',
+  chained_citation: 'chained reference to another clause/section',
   other_doc_marker: 'mentions another document (GCC/SCC/Vol...)',
   range_shaped_continuation: 'range-shaped ("... TO N") continuation, likely a running header',
   same_page_repeat: 'repeats an already-seen sub-document trigger on this page',

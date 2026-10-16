@@ -678,12 +678,10 @@ export default function AppShell() {
     loadJobsList();
   }
 
-  async function handleReindexReferences(jobId, textSource = 'clean') {
+  async function handleReindexReferences(jobId) {
     if (!jobId) return;
     const startVersion = jobDetails?.reference_index_version || 0;
-    const resp = await apiFetch(
-      `/api/jobs/${jobId}/reindex-references?text_source=${textSource}`, { method: 'POST' },
-    );
+    const resp = await apiFetch(`/api/jobs/${jobId}/reindex-references`, { method: 'POST' });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       alert(`Reindex failed: ${err.detail || resp.statusText}`);
@@ -694,6 +692,24 @@ export default function AppShell() {
     // between two 2.5s poll ticks, so that flag alone can silently never be
     // observed as true. Cleared once reference_index_version has moved past
     // this snapshot (see the effect watching reindexState above).
+    setReindexState({ jobId, startVersion, startedAt: Date.now() });
+    fetchJobDetails(jobId, currentPdfPageRef.current);
+  }
+
+  // Rebuilds reference links only (mentions of e.g. "see Clause 8" matched
+  // against already-known targets), leaving the outline/structure untouched
+  // — the cheaper half of a full rebuild, offered via RebuildIndexModal once
+  // an index already exists. Same "track locally, don't rely solely on the
+  // live reindexing flag" pattern as handleReindexReferences above.
+  async function handleBuildReferenceLinksOnly(jobId) {
+    if (!jobId) return;
+    const startVersion = jobDetails?.reference_index_version || 0;
+    const resp = await apiFetch(`/api/jobs/${jobId}/references/build-mentions`, { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert(`Rebuild failed: ${err.detail || resp.statusText}`);
+      return;
+    }
     setReindexState({ jobId, startVersion, startedAt: Date.now() });
     fetchJobDetails(jobId, currentPdfPageRef.current);
   }
@@ -1031,7 +1047,7 @@ export default function AppShell() {
           handlePause, handleRetry, handleDownloadFile, handleDownloadResult,
           handleSavePageText, handleExportDocument,
           handleRetryPage, retryingPage, handleRetryPages,
-          handleReindexReferences, reindexing,
+          handleReindexReferences, handleBuildReferenceLinksOnly, reindexing,
           reviewPages, handleConfirmCorrectPage,
           referenceStore: referenceStoreRef.current,
           scopeRanges,
