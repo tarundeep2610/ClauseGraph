@@ -2109,3 +2109,141 @@ config. No new bugs surfaced beyond what §15.3 already catalogued.
   production config) and are reusable for any future Ollama-backed
   comparison.
 
+## 19. HTML-Table-Blindness Fix Shipped, Live-Verified Across Both Fixtures (2026-10-16)
+
+### 19.1 Context
+
+§15.3 finding #1 and §18.4 confirmed `reference_index.py`'s mistune-based
+block parser silently drops literal HTML `<table>` content entirely — a
+`block_html` token matches neither `_BLOCK_TYPES` nor `_CONTAINER_TYPES` in
+`_flatten_blocks`, so the token (and everything inside it) is dropped
+before ever becoming a block. This blinds BOTH the AI-path grounding step
+AND the fully independent rule-based detector (`build_targets_for_page`
+uses the exact same parser), confirmed on two structurally different
+fixtures: the tender spec (§15.3, ~280/660 headings affected) and the
+arbitration judgment (§18.4, pages 89-98, the worst-precision chunk at
+P=0.286).
+
+### 19.2 The fix
+
+New `_HtmlTableCellParser` (a lenient `html.parser.HTMLParser` subclass,
+scoped only to `<table>`/`<tr>`/`<td>`/`<th>` structure) and
+`_parse_html_table_blocks`, wired into `_flatten_blocks`'s existing
+`block_html` dispatch. Decomposes a table into one synthetic `table_cell`
+token per cell, row-major order — the exact shape `_block_own_text`
+already handles for a real mistune pipe-table cell (pipe tables already
+worked correctly; this makes HTML tables match that precedent). Non-table
+raw HTML (`<div>`, `<center>`) stays exactly as invisible as before — the
+fix is narrowly scoped to table-rooted content only.
+
+Two additional bugs found and fixed during implementation, both confirmed
+live before shipping:
+- A pre-existing crash this fix would otherwise make far more likely to
+  hit: `_fuzzy_family_match` resolved a bare plural of a family keyword
+  ("Pages", "Articles", "Clauses", "Sections", "Annexures" — common table
+  column headers) into a garbled fuzzy match, then crashed with
+  `AttributeError: 'NoneType' object has no attribute 'end'` one line later
+  in `build_targets_for_page`. Confirmed this crashes TODAY even on bare
+  plain text, independent of tables — fixed by rejecting a bare "s"/"es"
+  tail in the no-digit fallback path before denoising it into a digit.
+- A false-positive guard (`block.get("type") != "table_cell"`) added to
+  `build_targets_for_page`'s weakest residual heading-shape fallback, so a
+  generic, title-cased table cell value ("DOC TITLE") doesn't mint purely
+  on shape — applied to BOTH HTML-decomposed and native markdown pipe-table
+  cells uniformly, since they share the same mistune `table_cell` type.
+
+Also handled, confirmed via direct Python testing against the real
+`html.parser.HTMLParser`: stdlib `HTMLParser.close()` does NOT synthesize
+end-tag events for anything still open, so a table truncated mid-OCR with
+no closing tags would silently lose its last row without an explicit
+`close()` override that flushes the pending row.
+
+12 new tests in `tests/test_reference_index_html_table_blocks.py`. Full
+suite: 849 passed (up from 831, reflecting this round's 8 new cross-page
+tests plus other concurrent work), confirmed independently re-run twice
+rather than trusted from a single report.
+
+### 19.3 Deterministic, parser-level verification (no model involved)
+
+Pulled the real OCR text for job `bb417471-561c-4029-bb21-3bdcf74e7dcb`
+page 94 (one of the §18.4-identified table-heavy pages) and ran
+`parse_page_blocks` against it directly, before and after the fix:
+
+```
+'DOC TITLE'
+'SUMMARY PRICE PROPOSAL'
+''
+'Specification No.: REC-064'
+'SCHEDULE-1A'          <- the real heading gold wants
+'400 KV SUBSTATION'
+'(Summary Price Proposal)'
+```
+
+"SCHEDULE-1A" is now a separate, visible block, distinct from the
+"DOC TITLE"/"SUMMARY PRICE PROPOSAL" table-cell values an AI model
+previously had no alternative but to latch onto (the whole table was
+invisible before). This is a clean confirmation independent of any model
+non-determinism, since it's a deterministic parsing change.
+
+### 19.4 Live verification, arbitration doc (32000/thinking-off config)
+
+Pages 89-98 chunk, before vs. after (same job, same config):
+
+| | Before | After |
+|---|---:|---:|
+| Precision | 0.286 | 0.298 |
+| Recall | 0.750 | 0.875 |
+| matched | 12 | 14 |
+
+Recall improved as expected. Precision stayed roughly flat because total
+candidate count also rose (42→47) — some new over-generation accompanied
+the new visibility, not yet separately investigated.
+
+Full-trial live re-verification (3 separate attempts, 2 interrupted by
+unrelated container restarts, 1 completed clean) produced byte-for-byte
+identical per-chunk warnings across all 3 — this specific config turned out
+to be highly deterministic with thinking off, and the original
+cross-page-hallucination bug this investigation separately fixed (§18.4)
+simply didn't recur in any of these reruns (confirmed: zero repeated
+headings in the completed rerun's raw output). The completed rerun's
+overall numbers (Merged P=0.759/R=0.878, later re-confirmed at
+P=0.754/R=0.884 post-table-fix) are not directly comparable to the original
+32000-config baseline (P=0.848/R=0.859) as a before/after for either fix —
+natural baseline variance and the untouched pages-89-98 improvement are
+tangled together in that single aggregate number; the pages-89-98-specific
+comparison above is the clean signal.
+
+### 19.5 A real alarm, investigated and resolved as non-determinism, not a regression
+
+The post-fix tender-doc trial's chunk 11 (pages 106-121) initially scored
+gold=4, act=114, matched=0 — a dramatic, alarming spike versus the pre-fix
+baseline's act=3 on the identical range. Investigated directly rather than
+accepted at face value: this fix's code changes provably never touch what
+the AI sees in its own prompt (`build_layout_annotated_text` uses a
+completely separate parser, `layout_format.parse_blocks`, never
+`_flatten_blocks`) or the AI-success candidate-generation path at all — only
+the deterministic rule-based detector and the grounding-for-nesting step.
+An immediate isolated rerun of the exact same page range, same code, same
+config produced `heading_count: 11` with only one minor grounding warning —
+a completely normal result. The chunk's own logged `eval_count=10,468`
+(nearly 3x every other chunk in that trial) was the tell: this was the
+model generating an anomalously long, repetitive response that one time,
+not a parsing regression. Confirmed, not assumed.
+
+### 19.6 Summary
+
+- **Shipped**: the fix, 2 bonus bugs, 12 tests, 849 passing.
+- **Confirmed via two independent methods**: a deterministic parser-level
+  check (the real fix) and a live trial (the real-world effect on the
+  specific previously-broken chunk).
+- **Confirmed NOT a cause of**: the one alarming live number that first
+  looked like a regression — traced to ordinary model non-determinism via
+  direct reproduction, not assumed.
+- **Known follow-ups, not yet done** (see §20 for the full, cross-fixture
+  catalogue these are drawn from): the table-cell/listing-container pruning
+  mechanisms (`ai_reference_index.py`'s `_ground_and_resolve_chunk`,
+  `reference_index.py`'s `_LISTING_CONTAINER_RE`) were built when table
+  content was always invisible/ungrounded — now that grounding against
+  tables frequently succeeds, their own detection signal needs rechecking
+  (tracked, designed, not yet shipped as of this section).
+
