@@ -152,11 +152,23 @@ def test_addressee_list_items_never_become_subdoc_candidates_either():
     heading) is untouched - this only suppresses pages that actually open
     with a distribution-list intro."""
     candidates, _ = build_targets_for_page(_PAGE_91_ADDRESSEE_LIST, seed_scope=None, has_next_page=False)
-    addressee_subdocs = [
-        c["key"] for c in candidates
-        if c["key"].startswith("subdoc:") and c["key"] not in ("subdoc:no-text", "subdoc:non-text")
-    ]
+    addressee_subdocs = [c["key"] for c in candidates if c["key"].startswith("subdoc:")]
     assert addressee_subdocs == []
+
+
+def test_bracketed_ocr_placeholder_tags_never_become_subdoc_candidates():
+    """[NO TEXT]/[Non-Text] (literal OCR-engine placeholder tags for a
+    region it couldn't read, both present on this same page 91 fixture)
+    must never mint as their own subdoc: target — confirmed real bug:
+    _looks_like_generic_heading_shape strips non-word characters before
+    testing capitalization, so the bracket contributes no signal and the
+    placeholder slips through as if it were a real Title-Case heading.
+    Previously worked around by excluding subdoc:no-text/subdoc:non-text
+    from the assertion above rather than actually fixed."""
+    candidates, _ = build_targets_for_page(_PAGE_91_ADDRESSEE_LIST, seed_scope=None, has_next_page=False)
+    keys = {c["key"] for c in candidates}
+    assert "subdoc:no-text" not in keys
+    assert "subdoc:non-text" not in keys
 
 
 def test_equipment_schedule_dotted_headings_still_match_but_stray_bare_integer_does_not():

@@ -111,6 +111,77 @@ def test_contract_execution_signature_block_is_dropped():
     assert report.dropped_invalid == 5
 
 
+def test_note_colon_container_headings_are_preserved_bare_or_not():
+    """Confirmed regression against the 135-page tender-doc gold fixture's
+    own build script (scratch/build_gold_fixture.py): 'NOTE: -'/'Note: -'/
+    'Note:' are the REAL, literal heading text of real containers with real
+    numbered children (Tender Notice's 13-point Note, Key Dates' nested
+    Note, Section-II's, Annexure-IV's 11-point Note) — confirmed directly,
+    the child headings reference the container via parent_ref="NOTE: -"
+    etc., so the container's own text is exactly this bare string, not a
+    richer "Note: <content>" variant. The original unscoped
+    'Note\\s*:\\s*.*' regex blanket-dropped every 'Note:'-headed heading
+    regardless of content, which would drop the container object itself
+    and orphan its children. No confirmed real-document noise case for a
+    bare 'Note:'/'Note: -' heading was found anywhere in this repo's tests
+    or fixtures, and no existing test relied on dropping one — the
+    alternative was removed from the filter outright rather than narrowed,
+    since narrowing to "bare-only" would have kept dropping exactly the
+    real container shape gold wants kept (same literal string, both
+    cases)."""
+    chunk = AIStructureChunk(
+        headings=[
+            AIHeading(heading_text="NOTE: -", start_page=3, level=2, parent_ref="TENDER NOTICE"),
+            AIHeading(
+                heading_text="(1) Other details can be seen in the complete tender documents",
+                start_page=3, level=3, parent_ref="NOTE: -",
+            ),
+            AIHeading(heading_text="Note: See clauses 1-13 below for full requirements", start_page=3, level=2),
+        ]
+    )
+    norm_chunk, report = normalize_chunk(chunk, expected_pages=[3])
+    assert len(norm_chunk.headings) == 3
+    assert report.dropped_invalid == 0
+
+
+def test_document_specific_project_title_strings_are_not_generically_matched():
+    """KIRORI/CONSTRUCTION OF .../SUPPLY OF EQUIPMENT FOR were one
+    fixture's own project-title fragments hardcoded into this supposedly
+    'generic' filter, not real generic noise — after removal, a different
+    document's equally boilerplate-shaped project title line must survive,
+    proving the filter no longer overfits to the one document it was
+    tuned against."""
+    chunk = AIStructureChunk(
+        headings=[
+            AIHeading(heading_text="CONSTRUCTION OF 220 KV GRID SUB-STATION AT RAIPUR", start_page=1, level=1),
+            AIHeading(heading_text="SUPPLY OF EQUIPMENT FOR RURAL ELECTRIFICATION SCHEME", start_page=1, level=1),
+        ]
+    )
+    norm_chunk, report = normalize_chunk(chunk, expected_pages=[1])
+    assert len(norm_chunk.headings) == 2
+    assert report.dropped_invalid == 0
+
+
+def test_short_definition_clause_with_multiseg_decimal_is_preserved():
+    """Boundary-pinning companion to the overlong-narrative-prose-paragraph
+    drop test (tests/test_ai_indexing_parsing.py): a SHORT, correctly
+    short-labeled definitions-clause heading with a multi-segment decimal
+    number — e.g. '1.1 "Addendum"' from the tender-doc gold fixture's
+    Definitions section — must survive. Confirms the 15-word+multi-segment-
+    decimal filter only disqualifies long verb-bearing prose, not
+    genuinely short numbered labels, matching the system prompt's own
+    "noun-phrase test" instruction."""
+    chunk = AIStructureChunk(
+        headings=[
+            AIHeading(heading_text='1.1. "Addendum"', start_page=11, level=3),
+            AIHeading(heading_text="4.2 Verbal agreement or conversation", start_page=12, level=3),
+        ]
+    )
+    norm_chunk, report = normalize_chunk(chunk, expected_pages=[11, 12])
+    assert len(norm_chunk.headings) == 2
+    assert report.dropped_invalid == 0
+
+
 def test_preservation_of_legitimate_headings():
     """Negative test: none of these legitimate headings may be dropped."""
     legitimate = [

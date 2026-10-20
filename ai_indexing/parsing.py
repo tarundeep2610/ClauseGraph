@@ -158,7 +158,7 @@ def _validate_rejections_individually(rejections_list: List[Any]) -> "Tuple[List
 
 
 def parse_structure_response(
-    raw: str, expected_pages: List[int],
+    raw: str, expected_pages: List[int], order_by_line_hint: bool = False,
 ) -> Tuple[AIStructureChunk, NormalizationReport]:
     fenced = strip_code_fences(raw)
     extracted = extract_json_object(fenced)
@@ -187,7 +187,7 @@ def parse_structure_response(
         confirmed_prior_ids=confirmed_raw,
         rejected_priors=valid_rejections,
     )
-    cleaned, report = normalize_chunk(chunk, expected_pages)
+    cleaned, report = normalize_chunk(chunk, expected_pages, order_by_line_hint=order_by_line_hint)
     report.dropped_invalid = dropped_invalid + dropped_rejections
     return cleaned, report
 

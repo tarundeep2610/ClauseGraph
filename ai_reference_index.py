@@ -155,21 +155,191 @@ def _drop_cross_page_hallucinated_repeats(headings: List[Any]) -> Tuple[List[Any
     return [h for h in headings if id(h) not in drop_ids], len(drop_ids)
 
 
+_SEQUENCE_REPEAT_MIN_LEN = 2
+_SEQUENCE_REPEAT_MAX_LEN = 6
+
+
+def _drop_sequence_repeat_hallucinations(
+    headings: List[Any], page_blocks: Dict[int, List[str]],
+) -> Tuple[List[Any], int]:
+    """Drops a LATER occurrence of a repeated contiguous 2+-heading sequence
+    only when NONE of that occurrence's headings can be located against the
+    real parsed page blocks -- i.e. only when the model's claim that this
+    content exists there is independently falsifiable, the same
+    ground-truth-based approach _drop_cross_page_hallucinated_repeats itself
+    was originally root-caused by hand with.
+
+    Deliberately NOT a page-count/gap-based discriminator (the naive "3+
+    consecutive pages" shape copied from the sibling fix above): confirmed
+    against this job's own real recorded data that a legitimate repeated
+    5-heading sequence (["CT","CVT","NCT","ISO (for 3 phase)","SA"]) recurs
+    verbatim as children of "400 KV Lattice Structure (Standard)" and then
+    again under "132 KV Lattice Structure (Standard)" a few headings later --
+    genuinely repeating equipment line-items per voltage class, not a
+    hallucination. A page/gap-based detector would have flagged this real
+    content; this one instead grounds each later occurrence independently
+    and only drops it when grounding finds nothing at all.
+
+    Each grounding probe here uses its OWN fresh, isolated used_block_idxs
+    scratch dict -- it must never read from or write to the real, persistent
+    used_block_idxs the actual later grounding pass depends on, or a
+    probe-only check would corrupt real block claims for subsequent
+    processing.
+
+    Must run BEFORE _drop_cross_page_hallucinated_repeats: running after
+    could see an already-fragmented sequence if the sibling fix removed one
+    member first, corrupting the n-gram match.
+
+    Longer candidate lengths are resolved before shorter ones, and indices
+    already resolved at a longer length are excluded from shorter-length
+    consideration -- so a genuine long repeat is never also re-litigated (and
+    potentially mis-dropped) as one of its own shorter internal sub-runs.
+
+    Explicit, honest residual risk: a real repeated line-item sequence
+    landing on an HTML-table-heavy or otherwise hard-to-ground page could
+    still, in a residual edge case, fail to ground for an unrelated reason --
+    watch the `ai_sequence_repeat_dropped` warning counter in early
+    production runs rather than assume zero false positives from day one.
+
+    Returns (kept_headings, dropped_count)."""
+    n = len(headings)
+    if n < _SEQUENCE_REPEAT_MIN_LEN * 2:
+        return headings, 0
+    norm_texts = [_norm_for_match(h.heading_text) for h in headings]
+    handled: Set[int] = set()
+    drop_idxs: Set[int] = set()
+
+    max_len = min(_SEQUENCE_REPEAT_MAX_LEN, n // 2)
+    for L in range(max_len, _SEQUENCE_REPEAT_MIN_LEN - 1, -1):
+        groups: Dict[Tuple[str, ...], List[int]] = {}
+        for i in range(0, n - L + 1):
+            if any(idx in handled for idx in range(i, i + L)):
+                continue
+            window = tuple(norm_texts[i:i + L])
+            if not all(window):
+                continue
+            if len(set(window)) == 1:
+                # A run of the SAME single heading repeating (e.g. "A","A",
+                # "A","A") is a length-1 repeat wearing a length-2+ window's
+                # clothes, not a genuine multi-heading sequence -- that shape
+                # is _drop_cross_page_hallucinated_repeats's own job. Without
+                # this guard, a 4-page single-heading repeat gets wrongly
+                # carved into two "occurrences of a 2-heading sequence",
+                # trusting the first pair (pages 1-2) outright and only
+                # probing the second (pages 3-4) -- silently keeping page 2's
+                # hallucinated repeat that the sibling fix would otherwise
+                # have caught.
+                continue
+            groups.setdefault(window, []).append(i)
+
+        for window, starts in groups.items():
+            occurrences = []
+            last_end = -1
+            for s in starts:
+                if s >= last_end:
+                    occurrences.append(s)
+                    last_end = s + L
+            if len(occurrences) < 2:
+                continue
+            for i in occurrences:
+                handled.update(range(i, i + L))
+            # The first occurrence is always trusted; only later ones are
+            # challenged against real grounding evidence.
+            for s in occurrences[1:]:
+                probe_used: Dict[int, set] = {}
+                any_located = False
+                for k in range(s, s + L):
+                    h = headings[k]
+                    blocks = page_blocks.get(h.start_page, [])
+                    scratch = probe_used.setdefault(h.start_page, set())
+                    if locate_heading_block(blocks, h.heading_text, scratch) is not None:
+                        any_located = True
+                        break
+                if not any_located:
+                    drop_idxs.update(range(s, s + L))
+
+    if not drop_idxs:
+        return headings, 0
+    return [h for i, h in enumerate(headings) if i not in drop_idxs], len(drop_idxs)
+
+
 _PAGE_NUMBER_ORNAMENT_RE = re.compile(
     r"^\s*[-–—:]+\s*\d{1,4}\s*[-–—:]*\s*$|^\s*[-–—:]*\s*\d{1,4}\s*[-–—:]+\s*$"
 )
 
+# Mirrors _DUPLICATE_HEADING_MIN_PREFIX_LEN's existing convention above —
+# below this, a prefix relationship is too likely to be a short, generic
+# marker (a bare "1.", "a.", "i.") coincidentally prefix-matching something
+# unrelated, not real evidence of a genuine match.
+_PREFIX_MATCH_MIN_LEN = 15
+
+
+def _try_row_merge_match(
+    blocks: List[str], row_ids: List[Optional[int]], target: str, used_block_idxs: set,
+) -> Optional[Tuple[int, str, float]]:
+    """Fallback for a heading whose real text is split across a table row's
+    first two cells (e.g. a "9.1." number cell plus a separate "Bidder
+    shall submit..." content cell) — confirmed real, pervasive shape in job
+    89cfa529 (a 135-page tender doc that renders nearly all of its numbered
+    clauses as 2-column, or wider, HTML tables). Only the first two cells of
+    a row are merged (covers both the confirmed 2-column clause shape and a
+    4-column checklist where gold only ever wants the first two columns
+    combined) — never the whole row, so an untouched 3rd/4th cell stays
+    independently matchable by some other heading. Reuses the same
+    exact/prefix(-with-floor)/fuzzy bar a single block has to clear; a pair
+    of degenerate-short cells gets no free pass here either. Returns
+    (first_cell_idx, "row_merged", ratio), or None."""
+    seen_rows: set = set()
+    for i, rid in enumerate(row_ids):
+        if rid is None or rid in seen_rows or i in used_block_idxs:
+            continue
+        seen_rows.add(rid)
+        row_indices = [j for j, r in enumerate(row_ids) if r == rid and j not in used_block_idxs]
+        if len(row_indices) < 2:
+            continue
+        i0, i1 = row_indices[0], row_indices[1]
+        merged = _norm_for_match(f"{blocks[i0]} {blocks[i1]}")
+        if not merged:
+            continue
+        if merged == target:
+            return i0, "row_merged", 1.0
+        if (
+            (merged.startswith(target) or target.startswith(merged))
+            and min(len(merged), len(target)) >= _PREFIX_MATCH_MIN_LEN
+        ):
+            return i0, "row_merged", 1.0
+        ratio = difflib.SequenceMatcher(None, merged, target).ratio()
+        if ratio >= _FUZZY_PARENT_CUTOFF:
+            return i0, "row_merged", ratio
+    return None
+
 
 def locate_heading_block(
     blocks: List[str], heading_text: str, used_block_idxs: set,
+    row_ids: Optional[List[Optional[int]]] = None,
 ) -> Optional[Tuple[int, str, float]]:
     """Locates an AI-reported (already-sanitized) heading against ONE
     page's real parsed blocks — exact -> prefix -> difflib ratio >= cutoff
-    — scanning forward from the last consumed block so document order is
-    preserved and one block is never claimed twice. Returns
-    (block_idx, match_kind, ratio), match_kind one of "exact"/"prefix"/
-    "fuzzy" — or None if nothing clears the fuzzy cutoff. Never mutates
-    `used_block_idxs` itself — the caller commits a winning match."""
+    -> (if row_ids given) row-merge fallback — scanning forward from the
+    last consumed block so document order is preserved and one block is
+    never claimed twice. Returns (block_idx, match_kind, ratio), match_kind
+    one of "exact"/"prefix"/"fuzzy"/"row_merged" — or None if nothing
+    clears the cutoff. A "prefix" match additionally requires both sides to
+    clear _PREFIX_MATCH_MIN_LEN — confirmed real bug this closes: a bare
+    short table-cell marker like "1." (normalizes to "1") used to trivially
+    prefix-match any heading starting with that same digit, at an
+    automatic, guaranteed 1.0 confidence. A ratio-based gate was tried
+    first and rejected: most hand-authored gold headings are deliberately
+    short labels that are a genuine prefix of a much longer real paragraph
+    block (see scratch/build_gold_fixture.py's own docstring), so gating on
+    difflib ratio alone wrongly broke ~226 genuine long-prefix matches
+    along with the ~301 real bug cases — confirmed via a full document-wide
+    scan, not just targeted tests. A pure length floor (independent of the
+    ratio BETWEEN the two sides) correctly separates the two groups.
+    `row_ids` (optional, None by default — every existing caller is
+    unaffected) enables the row-merge fallback (see _try_row_merge_match)
+    for a heading split across a table row's first two cells. Never
+    mutates `used_block_idxs` itself — the caller commits a winning match."""
     target = _norm_for_match(heading_text)
     if not target:
         return None
@@ -198,7 +368,10 @@ def locate_heading_block(
             continue
         if candidate == target:
             return idx, "exact", 1.0
-        if candidate.startswith(target) or target.startswith(candidate):
+        if (
+            (candidate.startswith(target) or target.startswith(candidate))
+            and min(len(candidate), len(target)) >= _PREFIX_MATCH_MIN_LEN
+        ):
             if best_idx is None or best_kind != "exact":
                 best_idx, best_ratio, best_kind = idx, 1.0, "prefix"
                 if idx >= start:
@@ -211,16 +384,21 @@ def locate_heading_block(
             return best_idx, best_kind, 1.0
         if best_ratio >= _FUZZY_PARENT_CUTOFF:
             return best_idx, "fuzzy", best_ratio
+    if row_ids is not None:
+        merge_result = _try_row_merge_match(blocks, row_ids, target, used_block_idxs)
+        if merge_result is not None:
+            return merge_result
     return None
 
 
-_MATCH_KIND_RANK = {"exact": 3, "prefix": 2, "fuzzy": 1}
+_MATCH_KIND_RANK = {"exact": 3, "prefix": 2, "row_merged": 2, "fuzzy": 1}
 
 
 
 def _locate_heading_in_chunk(
     page_blocks: Dict[int, List[str]], claimed_page: int, heading_text: str,
     used_block_idxs: Dict[int, set], alt_text: Optional[str] = None,
+    row_ids: Optional[Dict[int, List[Optional[int]]]] = None,
 ) -> Optional[Tuple[int, int, str, float]]:
     """Locates an AI-reported heading across a small window of pages
     centered on the page the AI claimed it's on, not just that one page —
@@ -236,13 +414,15 @@ def _locate_heading_in_chunk(
     heading_text="AmexureAl"), is tried against every candidate block
     alongside `heading_text` itself, keeping whichever match is better —
     covers the model "correcting" garbled OCR text instead of copying it
-    verbatim.
+    verbatim. `row_ids`, when given, enables locate_heading_block's
+    row-merge fallback on every candidate page, same opt-in/None-by-default
+    contract.
 
-    Ranked by match kind first (exact > prefix > fuzzy), then ratio, then
-    proximity to the claimed page as a final tiebreak — an exact/prefix
-    match on a neighboring page is stronger evidence than a merely-fuzzy
-    match on the claimed page, which is exactly the coincidental-match
-    failure mode being fixed."""
+    Ranked by match kind first (exact > prefix/row_merged > fuzzy), then
+    ratio, then proximity to the claimed page as a final tiebreak — an
+    exact/prefix/row_merged match on a neighboring page is stronger
+    evidence than a merely-fuzzy match on the claimed page, which is
+    exactly the coincidental-match failure mode being fixed."""
     own_number = _leading_reference_number(heading_text)
     candidate_pages = [claimed_page]
     for delta in range(1, config.AI_INDEX_GROUND_PAGE_WINDOW + 1):
@@ -256,10 +436,11 @@ def _locate_heading_in_chunk(
         if blocks is None:
             continue
         used = used_block_idxs.setdefault(page, set())
+        page_row_ids = (row_ids or {}).get(page)
         for text_variant in (heading_text, alt_text):
             if not text_variant:
                 continue
-            result = locate_heading_block(blocks, text_variant, used)
+            result = locate_heading_block(blocks, text_variant, used, row_ids=page_row_ids)
             if result is None:
                 continue
             idx, kind, ratio = result
@@ -268,7 +449,7 @@ def _locate_heading_in_chunk(
                 if candidate_number is not None and candidate_number != own_number:
                     continue
             is_claimed = 1 if page == claimed_page else 0
-            has_direct_claimed_match = 1 if (is_claimed and kind in ("exact", "prefix")) else 0
+            has_direct_claimed_match = 1 if (is_claimed and kind in ("exact", "prefix", "row_merged")) else 0
             score = (has_direct_claimed_match, _MATCH_KIND_RANK[kind], ratio, is_claimed)
             if best_score is None or score > best_score:
                 best, best_score = (page, idx, kind, ratio), score
@@ -604,6 +785,8 @@ async def _ground_and_resolve_chunk(
     has_next_page_fn,
     resolve_parent_via_ai: bool = False,
     provider_config: Optional["ai_indexing.ProviderConfig"] = None,
+    page_block_types: Optional[Dict[int, List[str]]] = None,
+    page_row_ids: Optional[Dict[int, List[Optional[int]]]] = None,
 ) -> "Tuple[Dict[int, List[Dict[str, Any]]], Dict[str, int]]":
     """Resolves parent_ref -> depth and grounds each heading against its
     page's real blocks, walking headings in (page, order) sequence while
@@ -618,6 +801,7 @@ async def _ground_and_resolve_chunk(
         )
 
     headings = _dedupe_same_page_headings(headings)
+    headings, sequence_repeat_dropped_count = _drop_sequence_repeat_hallucinations(headings, page_blocks)
     headings, cross_page_dupe_count = _drop_cross_page_hallucinated_repeats(headings)
 
     for h in headings:
@@ -662,11 +846,14 @@ async def _ground_and_resolve_chunk(
     # First pass: resolve depth + locate a block index per heading.
     located: List[Dict[str, Any]] = []
     warning_counts: Dict[str, int] = {}
+    if sequence_repeat_dropped_count:
+        warning_counts["ai_sequence_repeat_dropped"] = sequence_repeat_dropped_count
     if cross_page_dupe_count:
         warning_counts["ai_cross_page_repeat_dropped"] = cross_page_dupe_count
 
     for h in headings:
-        is_subdoc_root = reference_index.is_subdoc_root_candidate(h.heading_text, h.family_hint)
+        root_label = sim_stack_labels[0] if sim_stack_labels else None
+        is_subdoc_root = reference_index.is_subdoc_root_candidate(h.heading_text, h.family_hint, root_label)
         # Container-aware Table of Contents suppression (only early TOC pages <= 2)
         is_inside_toc = (h.start_page <= 2) and (
             (bool(h.parent_ref) and h.parent_ref.strip().upper() in ("INDEX", "TABLE OF CONTENTS"))
@@ -784,11 +971,30 @@ async def _ground_and_resolve_chunk(
 
         result = _locate_heading_in_chunk(
             page_blocks, h.start_page, h.heading_text, used_block_idxs, alt_text=alt_text,
+            row_ids=page_row_ids,
         )
         if result is not None:
             found_page, block_idx, match_kind, _ratio = result
             used_block_idxs.setdefault(found_page, set()).add(block_idx)
-            if match_kind == "fuzzy":
+            if match_kind == "row_merged":
+                ground_reason = "ai_row_merged_grounded"
+                rids = (page_row_ids or {}).get(found_page) or []
+                if block_idx < len(rids) and rids[block_idx] is not None:
+                    # Excludes any cell already used BEFORE this heading's own
+                    # match attempt (block_idx itself was just added above, so
+                    # it's correctly excluded by the j != block_idx check) —
+                    # without this filter, a row with a non-contiguous
+                    # available-cell gap (some middle cell already claimed by
+                    # an earlier heading) would pick that stale, wrong cell
+                    # instead of the real partner _try_row_merge_match used.
+                    already_used = used_block_idxs[found_page]
+                    partner_idxs = [
+                        j for j, r in enumerate(rids)
+                        if r == rids[block_idx] and j != block_idx and j not in already_used
+                    ]
+                    if partner_idxs:
+                        used_block_idxs[found_page].add(partner_idxs[0])
+            elif match_kind == "fuzzy":
                 ground_reason = "ai_fuzzy_grounded"
             elif found_page != h.start_page:
                 ground_reason = "ai_page_corrected"
@@ -817,6 +1023,7 @@ async def _ground_and_resolve_chunk(
 
     for page_num, items in by_page.items():
         blocks = page_blocks.get(page_num, [])
+        types = (page_block_types or {}).get(page_num, [])
         items_sorted = sorted(
             items,
             key=lambda i: (i["block_idx"] is None, i["block_idx"] if i["block_idx"] is not None else 0),
@@ -857,6 +1064,10 @@ async def _ground_and_resolve_chunk(
                 last_reproduced_number = _leading_reference_number(h.heading_text) or last_reproduced_number
             else:
                 last_reproduced_number = None
+            if item["block_idx"] is not None and item["block_idx"] < len(types) and types[item["block_idx"]] == "table_cell":
+                # A table row/entry can only be a leaf, never a parent —
+                # see _GROUNDING_PUSH_BLOCKING_REASONS's own docstring.
+                reasons.append("table_row_sourced")
             if item["block_idx"] is not None:
                 snippet_blocks = item.get("snippet_blocks") or [blocks[item["block_idx"]]]
                 snippet = "\n\n".join(snippet_blocks)
@@ -876,6 +1087,7 @@ async def _ground_and_resolve_chunk(
                 "heading_text": h.heading_text,
                 "depth": item["depth"],
                 "end_page": h.end_page if not h.still_open_at_chunk_end else None,
+                "block_idx": item["block_idx"],
                 "fingerprint": fingerprint,
                 "snippet": snippet,
                 "truncated": truncated and has_next_page_fn(page_num),
@@ -894,6 +1106,7 @@ async def _ground_and_resolve_chunk(
     for p_num, ev_list in events_by_page.items():
         kept = []
         blocks = page_blocks.get(p_num, [])
+        types = (page_block_types or {}).get(p_num, [])
         for ev in ev_list:
             txt = ev.get('heading_text', '')
             is_subdoc_root = reference_index.is_subdoc_root_candidate(txt, ev.get('family_hint'))
@@ -902,13 +1115,26 @@ async def _ground_and_resolve_chunk(
                 family_hint=ev.get('family_hint'), number_hint=ev.get('number_hint'),
             )
             fp = ev.get('fingerprint', '')
-            is_table = False
-            if fp and blocks:
-                for b in blocks:
-                    if b.startswith(fp):
-                        if b.strip().startswith(('<table', '<tr')) or '<td>' in b:
-                            is_table = True
-                        break
+            block_idx = ev.get('block_idx')
+            # O(1) lookup on the matched block's actual mistune type —
+            # confirmed necessary post-HTML-table-fix: before that fix,
+            # table content was always ungrounded entirely (fp always ""),
+            # so the literal-tag-sniffing fallback below was already dead
+            # code (a table_cell's own text never contains raw tags
+            # either, same as a markdown pipe-table cell's always did).
+            # Now that grounding against tables frequently succeeds, this
+            # is the only reliable signal — the fp-prefix text scan is kept
+            # only as a defensive fallback when block_idx is unavailable.
+            if block_idx is not None and block_idx < len(types):
+                is_table = types[block_idx] == "table_cell"
+            else:
+                is_table = False
+                if fp and blocks:
+                    for b in blocks:
+                        if b.startswith(fp):
+                            if b.strip().startswith(('<table', '<tr')) or '<td>' in b:
+                                is_table = True
+                            break
             if minted_fam == 'subdoc' and not is_subdoc_root:
                 if is_table or not fp:
                     continue
@@ -1348,6 +1574,14 @@ async def reindex_job_with_ai(
     # engine_params can still explicitly set this to False to opt back into
     # the regex-augmented behavior instead.
     pleading_points_via_ai = bool(engine_params.get("ai_index_pleading_points_via_ai", True))
+    # Off by default — same-page heading order is normally the model's own
+    # array order (the only signal available when start_line_hint is
+    # absent/unreliable); when on AND every heading on a page reports a
+    # non-null hint, that hint is used as a secondary sort key instead. No
+    # measured accuracy data exists for this hint yet (the prompt itself
+    # documents it as "stored for possible future use only"), so this
+    # ships inert, for live A/B testing before ever defaulting on.
+    order_by_line_hint = bool(engine_params.get("ai_index_order_by_line_hint", False))
     # Off by default — a per-heading AI micro-decision (see
     # _resolve_parent_via_ai) that replaces _resolve_depth_for_heading's
     # fuzzy-string/positional fallback specifically, not its exact-match
@@ -1487,6 +1721,7 @@ async def reindex_job_with_ai(
                 include_pleading_points=pleading_points_via_ai,
                 rule_prior=priors,
                 review_rule_prior=review_rule_prior,
+                order_by_line_hint=order_by_line_hint,
             )
         except ai_indexing.AIConfigError as e:
             final_status, final_error = "failed", str(e)
@@ -1502,7 +1737,14 @@ async def reindex_job_with_ai(
         chunk_page_texts = {p.page_num: p.text for p in chunk.pages}
 
         if source == "ai":
-            page_blocks = {p.page_num: reference_index.parse_page_blocks(p.text) for p in chunk.pages}
+            page_blocks: Dict[int, List[str]] = {}
+            page_block_types: Dict[int, List[str]] = {}
+            page_row_ids: Dict[int, List[Optional[int]]] = {}
+            for p in chunk.pages:
+                texts, types, row_ids = reference_index.parse_page_blocks_with_row_ids(p.text)
+                page_blocks[p.page_num] = texts
+                page_block_types[p.page_num] = types
+                page_row_ids[p.page_num] = row_ids
 
             verified_rejections: Set[str] = set()
             if review_rule_prior and priors:
@@ -1585,6 +1827,7 @@ async def reindex_job_with_ai(
                 final_headings, page_blocks, carry_context, resolved.provider_config.model,
                 has_next_page_fn=lambda pn: pn < total_pages,
                 resolve_parent_via_ai=resolve_parent_via_ai, provider_config=resolved.provider_config,
+                page_block_types=page_block_types, page_row_ids=page_row_ids,
             )
             warning_counts.update(grounding_warnings)
 

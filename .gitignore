@@ -160,6 +160,11 @@ activemq-data/
 !.env.example
 *.env.local*
 .envrc
+
+# Session-local investigation notes/evidence (page text dumps, diagnostic
+# captures) — useful for picking up an investigation later, never meant to
+# be committed.
+/diagnostics/
 .venv
 env/
 venv/

@@ -297,6 +297,147 @@ class OpenAICompatibleProvider(_OpenAIChatProvider):
             raise AIConfigError("A model name is required for the OpenAI-compatible provider.")
 
 
+class OllamaNativeProvider(BaseProvider):
+    """Talks to Ollama's *native* /api/chat endpoint, not the OpenAI-
+    compatible shim OpenAICompatibleProvider uses — needed for two things
+    the OpenAI-compatible endpoint cannot do at all:
+
+    1. `num_ctx`: the OpenAI SDK's chat.completions.create() has no way to
+       pass it, and Ollama defaults num_ctx to a small window (commonly
+       2048) regardless of model capability, which silently truncates a
+       large prompt and returns an empty/useless completion with no error.
+    2. `think: false`: confirmed directly (this round) that sending `think`
+       in any shape — top-level, `options.think`, or
+       `chat_template_kwargs.enable_thinking` — to the OpenAI-compatible
+       endpoint has NO effect; Qwen3 keeps emitting a full `<think>` chain
+       regardless. Only the native endpoint's top-level `think` field
+       actually works.
+
+    `num_ctx` and `num_predict` are computed together, not as independent
+    fixed constants, so prompt_tokens + num_predict can never exceed
+    num_ctx regardless of future prompt-size changes (confirmed necessary:
+    this already mattered once, when chunk_chars_max was raised for a
+    64000-char experiment) — a fixed pair of constants would only be safe
+    for whatever prompt range was observed at the time they were chosen.
+    Root cause of the original recurring 8+ minute hangs this guards
+    against (confirmed via Ollama's own issue tracker, e.g. ollama/ollama
+    #9382, #11172): with num_predict unset (unlimited) and `stream: false`,
+    a runaway-but-alive generation is indistinguishable from a true hang —
+    the TCP connection stays ESTABLISHED with zero bytes received for as
+    long as generation keeps going."""
+
+    name = "ollama_native"
+
+    MAX_CTX = 40960  # Qwen3-8B's native context ceiling
+    DESIRED_NUM_PREDICT = 14000  # comfortably above the largest legitimate response observed (10,468 tokens)
+    MAX_ATTEMPTS = 2  # 1 initial + 1 retry
+    RETRY_TEMPERATURE_BUMP = 0.1  # a loop is sampling-dependent; an identical retry has no reason to behave differently
+
+    @classmethod
+    def validate_config(cls, cfg: ProviderConfig) -> None:
+        if not cfg.base_url:
+            raise AIConfigError("base_url is required for the ollama_native provider (e.g. http://host:port).")
+        _require_https_or_local(cfg.base_url)
+        if not cfg.model:
+            raise AIConfigError("A model name is required for the ollama_native provider.")
+
+    async def _one_attempt(
+        self, system_prompt: str, user_prompt: str, num_ctx: int, num_predict: int, attempt: int,
+    ) -> CompletionResult:
+        temperature = self.cfg.temperature + (self.RETRY_TEMPERATURE_BUMP if attempt > 1 else 0.0)
+        payload = {
+            "model": self.cfg.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "stream": False,
+            "think": False,  # Ollama's top-level hybrid-reasoning toggle — confirmed this is the ONLY
+            # request shape that actually suppresses Qwen3's internal <think> chain; the OpenAI-
+            # compatible endpoint ignores every equivalent field tried (see class docstring).
+            "options": {"temperature": temperature, "num_ctx": num_ctx, "num_predict": num_predict},
+        }
+        url = f"{self.cfg.base_url.rstrip('/')}/api/chat"
+        t0 = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=self.cfg.request_timeout_s) as client:
+                resp = await asyncio.wait_for(client.post(url, json=payload), timeout=self.cfg.request_timeout_s)
+        except (httpx.TimeoutException, asyncio.TimeoutError) as e:
+            elapsed_ms = int((time.monotonic() - t0) * 1000)
+            # No body was ever received for a genuine timeout, so there's no
+            # eval_count/done_reason to log — log what we DO know instead,
+            # so a timeout still leaves a diagnostic trace (previously only
+            # a success logged anything at all).
+            print(
+                f"[ollama_native] TIMEOUT attempt={attempt} elapsed_ms={elapsed_ms} "
+                f"num_ctx={num_ctx} num_predict={num_predict} approx_input_tokens={(len(system_prompt) + len(user_prompt)) // 4}",
+                flush=True,
+            )
+            raise AITimeoutError(
+                f"ollama_native request exceeded the {self.cfg.request_timeout_s:.0f}s cap: {e}", provider=self.name
+            ) from e
+        except httpx.TransportError as e:
+            raise AIUnreachableError(f"Cannot reach ollama_native at {url}: {e}", provider=self.name) from e
+        if resp.status_code >= 400:
+            raise AIRemoteError(f"ollama_native returned {resp.status_code}: {resp.text}", provider=self.name)
+        data = resp.json()
+        content = data.get("message", {}).get("content", "")
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        done_reason = data.get("done_reason")
+        if done_reason == "length":
+            # A loud, distinct outcome, not folded into a normal success
+            # log line: the model was still generating when num_predict cut
+            # it off — a runaway (capped, not hung) generation, instantly
+            # distinguishable from a clean completion in the logs.
+            print(
+                f"[ollama_native] WARNING: generation capped by num_predict (done_reason=length) "
+                f"num_predict={num_predict} eval_count={data.get('eval_count')} elapsed={elapsed_ms/1000:.1f}s",
+                flush=True,
+            )
+        print(
+            f"[ollama_native] num_ctx={num_ctx} num_predict={num_predict} elapsed={elapsed_ms/1000:.1f}s "
+            f"prompt_eval_count={data.get('prompt_eval_count')} eval_count={data.get('eval_count')} "
+            f"done_reason={done_reason} content_len={len(content)}",
+            flush=True,
+        )
+        return CompletionResult(
+            text=content,
+            provider=self.name,
+            model=self.cfg.model,
+            duration_ms=elapsed_ms,
+            finish_reason=done_reason,
+        )
+
+    async def _complete_once(self, system_prompt: str, user_prompt: str) -> CompletionResult:
+        approx_input_tokens = (len(system_prompt) + len(user_prompt)) // 4
+        # Co-dependent, not independent fixed constants: guarantees
+        # approx_input_tokens + num_predict < num_ctx always, regardless of
+        # how large a future prompt gets.
+        num_ctx = min(self.MAX_CTX, max(32768, approx_input_tokens + self.DESIRED_NUM_PREDICT + 512))
+        num_predict = min(self.DESIRED_NUM_PREDICT, num_ctx - approx_input_tokens - 256)
+        last_exc: Exception = AITimeoutError("unreachable", provider=self.name)
+        for attempt in range(1, self.MAX_ATTEMPTS + 1):
+            try:
+                return await self._one_attempt(system_prompt, user_prompt, num_ctx, num_predict, attempt)
+            except (AITimeoutError, AIUnreachableError, AIRemoteError) as e:
+                last_exc = e
+                print(
+                    f"[ollama_native] attempt {attempt}/{self.MAX_ATTEMPTS} failed ({e.__class__.__name__}: {e}); "
+                    + ("retrying once..." if attempt < self.MAX_ATTEMPTS else "giving up, falling back for this chunk."),
+                    flush=True,
+                )
+        # complete()'s own retry wrapper above would otherwise retry a
+        # raised AITimeoutError/AIRemoteError up to
+        # config.AI_INDEX_MAX_TRANSPORT_RETRIES more times, stacking another
+        # N * MAX_ATTEMPTS * request_timeout_s on top. `is_daily_quota` is
+        # read there via getattr(e, "is_daily_quota", False) as an
+        # unconditional "stop retrying now" escape hatch — repurposed here
+        # so this provider's own MAX_ATTEMPTS cap is the real, total cap
+        # per chunk.
+        last_exc.is_daily_quota = True
+        raise last_exc
+
+
 class RokkaAIProvider(BaseProvider):
     """Submit-then-poll job queue, mirroring gpu_ocr_client.py's own
     submit/_poll_until_done_full idiom for this exact API shape. Fixes two
@@ -421,6 +562,7 @@ _PROVIDERS: Dict[str, type] = {
     GeminiProvider.name: GeminiProvider,
     OpenAICompatibleProvider.name: OpenAICompatibleProvider,
     RokkaAIProvider.name: RokkaAIProvider,
+    OllamaNativeProvider.name: OllamaNativeProvider,
 }
 
 

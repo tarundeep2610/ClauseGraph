@@ -381,7 +381,8 @@ async def test_review_rule_prior_override_false_wins_over_a_true_default(monkeyp
     received_flags = []
 
     async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
-                             include_pleading_points=False, rule_prior=None, review_rule_prior=False):
+                             include_pleading_points=False, rule_prior=None, review_rule_prior=False,
+                             order_by_line_hint=False):
         received_flags.append(review_rule_prior)
         return ChunkStructureResult(outcome=ChunkOutcome.EMPTY, page_nums=chunk.page_nums,
                                      headings=[], provider="gemini", model="gemini-2.5-flash")
@@ -1018,4 +1019,44 @@ async def test_pleading_points_via_ai_is_the_default_when_engine_params_omits_it
 
     delta = database.get_reference_targets_since(job_id, 0)
     assert delta[1]["ground:xi"][0]["scope_key"] == "subdoc:grounds-of-appeal/ground:10"
+
+
+@pytest.mark.asyncio
+async def test_table_row_sourced_heading_can_never_become_a_parent_even_in_a_normally_nestable_family(monkeypatch):
+    """User's explicit clarification on the D6/D7 table-row fix: a table
+    row/entry can only ever be a leaf, never a parent — regardless of
+    family. A decimal numheading ("4.0") NORMALLY supports nested children
+    (e.g. "4.1") elsewhere in this codebase, but when it's grounded inside
+    a decomposed HTML table cell, it must be structurally prevented from
+    anchoring anything, via the universal `table_row_sourced` reason in
+    _GROUNDING_PUSH_BLOCKING_REASONS — independent of whatever the D6/D7
+    content-shape heuristic would have judged."""
+    job_id = _job_with_ai_pages([
+        "<table><tr><td>4.0 SETTLEMENT OF DISPUTES</td><td>Some clause text</td></tr></table>\n\n"
+        "4.1 NOTICE OF DEFAULT\n\nSome body text.",
+    ], chunk_pages=1)
+
+    async def _fake_extract(self, chunk, *, carry_context=None, document_hint="", cancel_check=None,
+                             include_pleading_points=False, **_rule_prior_kwargs):
+        headings = [
+            AIHeading(heading_text="4.0 SETTLEMENT OF DISPUTES", start_page=1, level=1, still_open_at_chunk_end=True),
+            AIHeading(heading_text="4.1 NOTICE OF DEFAULT", start_page=1, level=2,
+                      parent_ref="4.0 SETTLEMENT OF DISPUTES", still_open_at_chunk_end=True),
+        ]
+        return ChunkStructureResult(outcome=ChunkOutcome.OK, page_nums=chunk.page_nums,
+                                     headings=headings, provider="gemini", model="gemini-2.5-flash")
+
+    monkeypatch.setattr(ai_indexing.StructureIndexer, "extract_structure_for_chunk", _fake_extract)
+    result = await ai_reference_index.reindex_job_with_ai(job_id)
+    assert result["status"] == "done"
+
+    delta = database.get_reference_targets_since(job_id, 0)
+    parent_row = delta[1]["numheading:4.0"][0]
+    assert "table_row_sourced" in parent_row["heading_confidence_reasons"]
+    assert parent_row["heading_confidence"] == "low"
+    # The real assertion: 4.1 must NOT have nested under 4.0 despite a
+    # real parent_ref pointing at it -- proves 4.0 was structurally unable
+    # to become a stack anchor.
+    child_row = delta[1]["numheading:4.1"][0]
+    assert "numheading:4.0" not in child_row["scope_key"]
 

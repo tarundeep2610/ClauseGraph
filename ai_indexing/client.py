@@ -75,13 +75,16 @@ class StructureIndexer:
         include_pleading_points: bool = False,
         rule_prior: Optional[List[dict]] = None,
         review_rule_prior: bool = False,
+        order_by_line_hint: bool = False,
     ) -> ChunkStructureResult:
         page_nums = chunk.page_nums
 
         replay_session = get_active_replay_session()
         if replay_session is not None:
             recorded = replay_session.get_chunk(page_nums)
-            ai_chunk, norm_report = parse_structure_response(recorded["raw_text"], page_nums)
+            ai_chunk, norm_report = parse_structure_response(
+                recorded["raw_text"], page_nums, order_by_line_hint=order_by_line_hint,
+            )
             has_content = bool(ai_chunk.headings or ai_chunk.confirmed_prior_ids or ai_chunk.rejected_priors)
             outcome = ChunkOutcome.OK if has_content else ChunkOutcome.EMPTY
             return ChunkStructureResult(
@@ -161,7 +164,9 @@ class StructureIndexer:
                 break  # a provider-transport failure isn't worth re-calling the model for
             else:
                 try:
-                    ai_chunk, norm_report = parse_structure_response(completion.text, page_nums)
+                    ai_chunk, norm_report = parse_structure_response(
+                        completion.text, page_nums, order_by_line_hint=order_by_line_hint,
+                    )
                 except AIInvalidOutputError as e:
                     last_error = e
                     if attempt == 1:

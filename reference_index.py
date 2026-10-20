@@ -20,9 +20,10 @@ import difflib
 import hashlib
 import html
 from html.parser import HTMLParser
+import itertools
 import json
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 import mistune
 
@@ -418,18 +419,71 @@ _LISTING_CONTAINER_RE = re.compile(
     r"LIST\s+OF\s+ANNEXURES?|BILL\s+OF\s+QUANTITIES|BOQ)\b", re.IGNORECASE)
 
 
-def _immediate_parent_is_listing_container(nested_stack: List[Dict[str, Any]]) -> bool:
+_TABULAR_DATA_MAX_WORDS = 20  # a generous backstop against degenerate/garbled OCR noise, NOT a tight disqualifier —
+# see _looks_like_tabular_data_shape: verb/modal absence is the real, primary signal.
+_CLAUSE_VERB_RE = re.compile(
+    r"\b(?:shall|should|must|is|are|was|were|will|would|may|can|could|has|have|had|does|did|needs?)\b",
+    re.IGNORECASE,
+)
+_LEADING_MARKER_RE = re.compile(r"^\s*[\(\[]?[0-9A-Za-z]+[\.\)\]]\s*")
+
+
+def _looks_like_tabular_data_shape(text: str) -> bool:
+    """True when `text` reads as a short catalogue/field-value table cell
+    (a part name, a date, a price, a document title) rather than a
+    self-contained clause. Confirmed via real gold-fixture text from a
+    second, structurally different document: finite-verb/modal absence is
+    used as the PRIMARY, sufficient signal — NOT AND-combined with a tight
+    word-count cap. An earlier design required BOTH "short" (<=8 words) AND
+    verb-free, which broke an existing, confirmed-real case
+    ("10. Letter of M/s Areva T&D India Ltd. dated 27.12.2007", 9 words,
+    no verb, must stay suppressed under an INDEX parent) — the AND-combined
+    design would have let it through just for being one word over the cap.
+    Word count is kept only as a generous backstop against truly
+    degenerate/garbled OCR noise, not a disqualifier for ordinary
+    short-to-medium noun-phrase rows."""
+    stripped = (text or "").strip()
+    if not stripped:
+        return False
+    body = _LEADING_MARKER_RE.sub("", stripped)
+    words = body.split()
+    if len(words) > _TABULAR_DATA_MAX_WORDS:
+        return False
+    if _CLAUSE_VERB_RE.search(body):
+        return False
+    return True
+
+
+def _immediate_parent_is_listing_container(nested_stack: List[Dict[str, Any]], row_text: Optional[str] = None) -> bool:
     """True when the nearest open container's own label marks it as a
-    listing/schedule/index, not narrative prose — the gate for suppressing
-    point/ground/numheading/letterheading rows that are really table/list
-    rows (see _LISTING_CONTAINER_RE above). Deliberately checks only the
-    single nearest container, not a full ancestor walk like
+    listing/schedule/index, not narrative prose, AND (when `row_text` is
+    given) the row itself reads as tabular/field-value data rather than a
+    real clause (see _looks_like_tabular_data_shape) — the gate for
+    suppressing point/ground/numheading/letterheading rows that are really
+    table/list rows (see _LISTING_CONTAINER_RE above). Deliberately checks
+    only the single nearest container, not a full ancestor walk like
     _ground_scope_active — a listing table's own immediate parent is what
     matters, not whether some distant ancestor happens to also be named
-    "Schedule"."""
+    "Schedule". The row-shape check matters because a listing-labeled
+    parent can genuinely contain BOTH real noise (price-schedule/spares
+    data rows) AND real numbered clauses laid out as a table (confirmed on
+    a second, structurally different document) — a real clause must
+    survive even under a listing-labeled parent.
+
+    `row_text=None` (the default) means "no single row to judge" (e.g. a
+    whole-page gate deciding before scanning any individual line) — skips
+    the shape check entirely and preserves this function's original,
+    label-only behavior exactly. Passing `row_text=""` would otherwise
+    silently disable the gate for every caller that always shape-rejects
+    on empty input — None, not "", is the deliberate sentinel for
+    "shape check not applicable here."""
     if not nested_stack:
         return False
-    return bool(_LISTING_CONTAINER_RE.search(nested_stack[-1].get("label") or ""))
+    if not _LISTING_CONTAINER_RE.search(nested_stack[-1].get("label") or ""):
+        return False
+    if row_text is None:
+        return True
+    return _looks_like_tabular_data_shape(row_text)
 
 EXTERNAL_LAW_A_RE = re.compile(
     r"\b[A-Za-z]+(?:\s+(?:and|of|for|[A-Za-z]+))*\s+(?:Act|Code|Rules|Regulations)(?:,\s*|\s+)(?:19|20)\d{2}\b",
@@ -739,15 +793,64 @@ def reconcile_prefix_and_number(keyword: str, prefix: Optional[str], number_raw:
     family = _FAMILY_ALIASES.get(keyword.lower().rstrip("."), keyword.lower())
     if prefix and family not in _PREFIX_ELIGIBLE_FAMILIES:
         return None, f"{prefix.rstrip('-')}{number_raw}"
+    if prefix and not prefix.endswith("-") and _is_roman(prefix + number_raw):
+        # Confirmed real bug ("Annexure XI:"): CORE_RE's optional prefix
+        # group is greedy with no hyphen requirement, so on a multi-char
+        # roman numeral like "XI" it wrongly peels off the leading letter
+        # ("X") as if it were a one-letter exhibit prefix, leaving "I" as
+        # the number — garbled into annexure:x-1 instead of annexure:xi.
+        # A real exhibit prefix ("A-1", "R-9") always keeps its hyphen, so
+        # this guard only fires on the wrong split, never a genuine prefix.
+        return None, prefix + number_raw
     return prefix, number_raw
 
 
-def normalize_key(keyword: str, prefix: Optional[str], number_raw: str) -> str:
+def normalize_key(keyword: str, prefix: Optional[str], number_raw: str, suffix: Optional[str] = None) -> str:
     prefix, number_raw = reconcile_prefix_and_number(keyword, prefix, number_raw)
     family = _FAMILY_ALIASES.get(keyword.lower().rstrip("."), keyword.lower())
-    number = str(roman_to_arabic(number_raw)) if _is_roman(number_raw) else number_raw
+    if family in _PREFIX_ELIGIBLE_FAMILIES and _is_roman(number_raw):
+        # Keep the roman numeral literal (not arabic-converted) for these
+        # families — it's the document's own real numbering scheme
+        # ("Annexure XI", not "Annexure 11"); Article/Section etc. still
+        # convert to arabic below, unaffected.
+        number = number_raw.lower()
+    else:
+        number = str(roman_to_arabic(number_raw)) if _is_roman(number_raw) else number_raw
     prefix_part = f"{prefix.rstrip('-').lower()}-" if prefix else ""
-    return f"{family}:{prefix_part}{number}"
+    suffix_part = f"-{suffix.lower()}" if suffix else ""
+    return f"{family}:{prefix_part}{number}{suffix_part}"
+
+
+# Hyphen-separator variant of CORE_RE, scoped to exactly the three
+# prefix-eligible families ("Annexure-XI:" instead of "Annexure XI:") —
+# confirmed real bug: CORE_RE's keyword separator hard-requires literal
+# whitespace, never a hyphen, so this spelling previously failed
+# annexure-family parsing entirely and fell through to an unrelated
+# generic fallback bucket. Deliberately NOT a change to CORE_RE itself
+# (that would also affect "Section-N:" detection for every other keyword
+# — a separate, already-tracked issue), and deliberately NOT extended to
+# clause/section/article/para/page/ground. Same group names as CORE_RE so
+# `CORE_RE.match(t) or _SUBDOC_HYPHEN_RE.match(t)` is a drop-in everywhere.
+_SUBDOC_HYPHEN_RE = re.compile(
+    r"^\s*(?P<keyword>annexure|schedule|appendix)\b\.?-\s*(?:no\.?\s*)?"
+    r"(?P<prefix>[A-Z]-?)?(?P<number>[ivxlcdm]+|\d+(?:\.\d+)*)\b",
+    re.IGNORECASE,
+)
+
+_SUBDOC_TRAILING_SUFFIX_RE = re.compile(r"^-(?P<suffix>[A-Za-z])\b")
+
+
+def _match_subdoc_trailing_suffix(family: str, trailing_text: str) -> Optional[str]:
+    """Captures a lettered sub-annexure suffix after the main number
+    ("Annexure XIII-A" -> "A"). Confirmed necessary: the tender-spec
+    fixture has both a plain "Annexure XIII" and a distinct "Annexure
+    XIII-A" as real, different headings — without this, fixing the
+    roman-split bug above would make BOTH collapse onto the identical key
+    "annexure:xiii"."""
+    if family not in _PREFIX_ELIGIBLE_FAMILIES:
+        return None
+    sm = _SUBDOC_TRAILING_SUFFIX_RE.match(trailing_text)
+    return sm.group("suffix") if sm else None
 
 
 _SLUG_NON_ALNUM_RE = re.compile(r"[^a-z0-9\s]+")
@@ -1041,7 +1144,9 @@ class _HtmlTableCellParser(HTMLParser):
             self._cur_cell.append(data)
 
 
-def _parse_html_table_blocks(raw: str) -> List[Dict[str, Any]]:
+def _parse_html_table_blocks(
+    raw: str, row_id_counter: Optional[Iterator[int]] = None,
+) -> List[Dict[str, Any]]:
     """If `raw` (a mistune block_html token's raw text) is TABLE-rooted,
     parses it into one synthetic `table_cell` token per <td>/<th> cell, in
     row-major document order — the exact token shape _block_own_text
@@ -1049,7 +1154,16 @@ def _parse_html_table_blocks(raw: str) -> List[Dict[str, Any]]:
     None) when `raw` isn't table-rooted or parsing fails or yields no
     cells — the caller then falls through to today's unconditional drop,
     so non-table raw HTML (a bare <div>, <center>) stays exactly as
-    invisible as before."""
+    invisible as before.
+
+    `row_id_counter`, when given, tags each emitted cell dict with
+    `"_row_id"` — one id per `<tr>`, shared by every cell in that row (reuses
+    `_HtmlTableCellParser.rows`' already-correct row grouping, which is
+    otherwise discarded by the flattening below). Lets a caller downstream
+    reconstruct a split "number cell + content cell" row as one logical
+    unit (see ai_reference_index.py's row-merge grounding fallback). `None`
+    (the default, used by every existing caller) preserves today's exact
+    output — zero risk to parse_page_blocks's existing contract."""
     if not _TABLE_ROOT_RE.match(raw or ""):
         return []
     parser = _HtmlTableCellParser()
@@ -1058,14 +1172,18 @@ def _parse_html_table_blocks(raw: str) -> List[Dict[str, Any]]:
         parser.close()
     except Exception:
         return []
-    return [
-        {"type": "table_cell", "children": [{"type": "text", "raw": cell_text}]}
-        for row in parser.rows
-        for cell_text in row
-    ]
+    out = []
+    for row in parser.rows:
+        row_id = next(row_id_counter) if row_id_counter is not None else None
+        for cell_text in row:
+            cell = {"type": "table_cell", "children": [{"type": "text", "raw": cell_text}]}
+            if row_id is not None:
+                cell["_row_id"] = row_id
+            out.append(cell)
+    return out
 
 
-def _flatten_blocks(tokens: List[Dict[str, Any]]):
+def _flatten_blocks(tokens: List[Dict[str, Any]], row_id_counter: Optional[Iterator[int]] = None):
     """Yields paragraph/heading/list_item/table_cell blocks in document order,
     recursing through list/table/table_head/table_body/table_row containers
     (which are never themselves yielded).
@@ -1077,7 +1195,16 @@ def _flatten_blocks(tokens: List[Dict[str, Any]]):
     list, a numbered-paragraph enumeration) by block type alone. Confirmed
     directly: both a lone real heading and a real 22-item addressee list on
     a page in a 955-page document parse as `list_item` - only the sibling
-    count actually tells them apart."""
+    count actually tells them apart.
+
+    `row_id_counter`, when given, is threaded through to `_parse_html_table_
+    blocks` for every `block_html` token encountered (and through this
+    function's own recursive self-calls) — a single shared counter, so row
+    ids stay globally unique and monotonically increasing across multiple
+    separate HTML tables on the same page. Native markdown pipe-table rows
+    (the `table_row` container branch below) are deliberately NOT tagged —
+    no confirmed case needs it yet; they keep `_row_id` absent, same as
+    today. `None` (the default) preserves today's exact output."""
     for tok in tokens:
         t = tok.get("type")
         if t == "list":
@@ -1089,19 +1216,19 @@ def _flatten_blocks(tokens: List[Dict[str, Any]]):
                 if ordered:
                     item["_ordinal"] = start + idx
                 item["_list_size"] = len(children)
-                yield from _flatten_blocks([item])
+                yield from _flatten_blocks([item], row_id_counter=row_id_counter)
             continue
         if t == "block_html":
-            yield from _parse_html_table_blocks(tok.get("raw", ""))
+            yield from _parse_html_table_blocks(tok.get("raw", ""), row_id_counter=row_id_counter)
             continue
         if t in _BLOCK_TYPES:
             yield tok
             if t == "list_item":
                 for child in tok.get("children", []):
                     if child.get("type") != "block_text":
-                        yield from _flatten_blocks([child])
+                        yield from _flatten_blocks([child], row_id_counter=row_id_counter)
         elif t in _CONTAINER_TYPES:
-            yield from _flatten_blocks(tok.get("children", []))
+            yield from _flatten_blocks(tok.get("children", []), row_id_counter=row_id_counter)
 
 
 # ─── Sub-document boundary & external-law exclusion ────────────────────────────
@@ -1165,7 +1292,7 @@ def detect_subdoc_trigger(
         return None  # a bare "INDEX" heading while an Annexure/Schedule/
         # Appendix is already open is that container's own internal table
         # of contents, not a new document - only trust it starting fresh.
-    core_m = CORE_RE.match(block_text)
+    core_m = CORE_RE.match(block_text) or _SUBDOC_HYPHEN_RE.match(block_text)
     if core_m and core_m.group("keyword").lower() in _SUBDOC_NUMBERED_FAMILIES:
         return None  # handled natively via _HIERARCHY_RANK below, not here
     if not weak and _CASE_CAPTION_TRIGGER_RE.search(m.group(0)):
@@ -1182,10 +1309,36 @@ def detect_subdoc_trigger(
     return label, is_strong
 
 
-def is_subdoc_root_candidate(text: str, family: Optional[str] = None) -> bool:
+_IMPLICIT_KEYWORD_NUMBER_RE = re.compile(
+    rf"^\s*(?P<keyword>{_KEYWORD_ALTS})\b[\s\-]*\.?[\s\-]*"
+    rf"(?P<number>[ivxlcdm]+(?:\.\d+)*|\d+(?:\.\d+)*)\b",
+    re.IGNORECASE,
+)
+
+
+def is_subdoc_root_candidate(text: str, family: Optional[str] = None, root_label: Optional[str] = None) -> bool:
     """Returns True if the heading represents a genuine top-level document boundary
     (an independent document, annexure, schedule, exhibit, or major root boundary)
-    rather than a section heading within the active document."""
+    rather than a section heading within the active document.
+
+    `root_label` (the currently-open root container's own label, when the
+    caller has one) enables one more, general signal: a heading sharing
+    the SAME explicit numbered-family keyword as the document's current
+    root (e.g. both say "Section") is a SIBLING of that root, not its
+    child — regardless of whether its label also happens to contain some
+    unrelated trigger word. Confirmed real bug this closes: a tender-spec
+    document's "Section-I"/"Section-II".."Section-VI" headings were
+    wrongly clamped under whichever of them opened first, because this
+    function has no concept of "Section" as a keyword at all — "Section-I"
+    and "Section VII" only escaped the clamp by COINCIDENCE (their own
+    labels also happened to contain "Tender"/"Annexures"), not because of
+    their hyphen-vs-space spelling, which the investigation had
+    (incorrectly) documented as the cause. Deliberately shape-only and
+    keyword-matched (via _IMPLICIT_KEYWORD_NUMBER_RE, tolerant of
+    hyphen/space/nothing between keyword and number) — never touches
+    key-minting, so it can't re-key an already-scored target. A genuinely
+    nested child sharing the root's own number (e.g. "Section-I.1" under
+    root "Section-I") is excluded via the decimal-extension guard below."""
     if family in _SUBDOC_NUMBERED_FAMILIES:
         return True
     if not text:
@@ -1203,6 +1356,18 @@ def is_subdoc_root_candidate(text: str, family: Optional[str] = None) -> bool:
         return True
     if _STANDALONE_LEGAL_DOCS_RE.search(stripped):
         return True
+    if root_label:
+        m_this = _IMPLICIT_KEYWORD_NUMBER_RE.match(stripped)
+        if m_this:
+            m_root = _IMPLICIT_KEYWORD_NUMBER_RE.match(root_label.strip())
+            if m_root:
+                kw_this = _FAMILY_ALIASES.get(m_this.group("keyword").lower().rstrip("."), m_this.group("keyword").lower())
+                kw_root = _FAMILY_ALIASES.get(m_root.group("keyword").lower().rstrip("."), m_root.group("keyword").lower())
+                if kw_this == kw_root:
+                    this_num = m_this.group("number").lower()
+                    root_num = m_root.group("number").lower()
+                    if this_num != root_num and not this_num.startswith(root_num + "."):
+                        return True
     return False
 
 
@@ -1238,6 +1403,11 @@ _GENERIC_HEADING_CONNECTORS = {"of", "for", "and", "the", "in", "to", "on", "at"
 # exactly the bug the trigger-list exclusion was meant to fix.
 _GENERIC_HEADING_EXCLUDED_WORDS = {"versus", "vs", "vs."}
 
+# A bare OCR/editorial placeholder tag — the whole stripped text is one
+# bracket pair with nothing outside it ("[NO TEXT]", "[Non-Text]",
+# "[illegible]", "[IMAGE]"). See _looks_like_generic_heading_shape's use.
+_BRACKETED_PLACEHOLDER_RE = re.compile(r"^\[[^\[\]]{1,40}\]$")
+
 # A line introducing a mailing/circulation distribution list ("Copy of the
 # above is forwarded to the following for information...", bare "Copy to:")
 # — the numbered addressee lines that follow (office designation + place
@@ -1266,6 +1436,17 @@ def _looks_like_generic_heading_shape(text: str) -> bool:
     (see build_targets_for_page's residual-fallback usage)."""
     stripped = text.strip()
     if not stripped:
+        return False
+    if _BRACKETED_PLACEHOLDER_RE.match(stripped):
+        # A bare OCR/editorial placeholder tag ("[NO TEXT]", "[Non-Text]",
+        # "[illegible]", "[IMAGE]") — confirmed real bug (job bb417471,
+        # page 91): the word-shape check below strips non-word characters
+        # before testing capitalization, so the bracket itself contributes
+        # no signal and a short Title-Case placeholder like this slips
+        # through as if it were a real heading. Scoped to the WHOLE
+        # stripped text being one bracket pair with nothing outside it, so
+        # a real heading that merely contains a bracket ("Annexure A
+        # (Revised)") is unaffected.
         return False
     if stripped.rstrip(":.- ").lower() in _GENERIC_HEADING_EXCLUDED_WORDS:
         return False
@@ -1800,10 +1981,11 @@ def build_targets_for_page(
             outer_decimal_ground = None
             continue
 
-        core_m = CORE_RE.match(text)
+        core_m = CORE_RE.match(text) or _SUBDOC_HYPHEN_RE.match(text)
         family = None
         number_raw = None
         prefix = None
+        suffix = None
         is_ground = False
         is_point = False
         is_seq_letter = False
@@ -1815,6 +1997,7 @@ def build_targets_for_page(
             family = _FAMILY_ALIASES.get(keyword.lower().rstrip("."), keyword.lower())
             prefix, number_raw = reconcile_prefix_and_number(keyword, core_m.group("prefix"), core_m.group("number"))
             match_end = core_m.end()
+            suffix = _match_subdoc_trailing_suffix(family, text[match_end:])
         else:
             fuzzy_m = _fuzzy_family_match(text)
             if fuzzy_m:
@@ -1866,7 +2049,10 @@ def build_targets_for_page(
             elif family == "subpoint":
                 key = normalize_key(family, prefix, number_raw)
             else:
-                key = normalize_key(family if (is_ground or is_point or is_fuzzy) else core_m.group("keyword"), prefix, number_raw)
+                key = normalize_key(
+                    family if (is_ground or is_point or is_fuzzy) else core_m.group("keyword"),
+                    prefix, number_raw, suffix,
+                )
             is_subpoint = family == "subpoint"
             excluded = _is_backward_reference(text, match_end) or (
                 (not (is_ground or is_point or is_subpoint)) and _is_external_law(text)
@@ -1878,7 +2064,7 @@ def build_targets_for_page(
             # point/ground never anchor anything (FAMILIES gives both
             # rank=None), so skipping entirely here can't orphan any real
             # nested content.
-            if (is_ground or is_point) and _immediate_parent_is_listing_container(nested_stack):
+            if (is_ground or is_point) and _immediate_parent_is_listing_container(nested_stack, text):
                 continue
 
             finalize(closed_by_new_target=True)
@@ -2136,7 +2322,7 @@ def build_targets_for_page(
             # even though 3.4's true resolved parent ("3.0 CONDITIONS AND
             # COVENANTS") does not. Must use the same post-resolution
             # nested_stack state scope_key itself is about to be built from.
-            if _immediate_parent_is_listing_container(nested_stack):
+            if _immediate_parent_is_listing_container(nested_stack, text):
                 continue
 
             scope_key = "/".join(s["key"] for s in nested_stack)
@@ -2215,7 +2401,7 @@ def build_targets_for_page(
                 # reasoning/bug as the numheading site: the stale pre-prune
                 # top-of-stack is not necessarily this heading's true
                 # resolved parent).
-                if _immediate_parent_is_listing_container(nested_stack):
+                if _immediate_parent_is_listing_container(nested_stack, text):
                     continue
 
                 scope_key = "/".join(s["key"] for s in nested_stack)
@@ -2428,13 +2614,47 @@ async def _cascade_locked(job_id: str, from_page: int, total_pages: int):
         asyncio.create_task(_cascade_entry(job_id, frontier, total_pages))
 
 
+def parse_page_blocks_with_types(page_text: str) -> Tuple[List[str], List[str]]:
+    """Like parse_page_blocks, but also returns each block's own mistune
+    `type` (e.g. "table_cell", "paragraph", "list_item") alongside its
+    text, same order, same length — lets a caller tell a table-cell-sourced
+    block apart from ordinary prose without re-deriving that from the
+    block's TEXT (which, post-HTML-table-fix, no longer carries any raw
+    tag markup to sniff — see _ground_and_resolve_chunk's table-cell
+    pruning, which needed exactly this)."""
+    tokens, _ = _get_parser().parse(page_text or "")
+    flat = list(_flatten_blocks(tokens))
+    return [_block_own_text(b) for b in flat], [b.get("type") for b in flat]
+
+
 def parse_page_blocks(page_text: str) -> List[str]:
     """Public wrapper over this module's own block parser (_get_parser +
     _flatten_blocks + _block_own_text) — used by ai_reference_index.py to
     ground an AI-reported heading against a page's real text blocks,
     without reaching into three separate private helpers itself."""
+    texts, _ = parse_page_blocks_with_types(page_text)
+    return texts
+
+
+def parse_page_blocks_with_row_ids(page_text: str) -> Tuple[List[str], List[str], List[Optional[int]]]:
+    """Like parse_page_blocks_with_types, but also returns each block's
+    HTML-table row id (None for every non-HTML-table-cell block; a shared
+    integer for every cell belonging to the same <tr>, globally unique and
+    increasing across multiple separate tables on the page) — lets a caller
+    reconstruct a split "number cell + content cell" row as one logical
+    unit for matching purposes (see ai_reference_index.py's row-merge
+    grounding fallback). A separate, new, opt-in function rather than a
+    parameter on parse_page_blocks_with_types, so nothing that already
+    calls that function needs to change — this one is used exclusively by
+    the AI-grounding path, never by build_targets_for_page's rule-based
+    detector, which has no need for it."""
     tokens, _ = _get_parser().parse(page_text or "")
-    return [_block_own_text(b) for b in _flatten_blocks(tokens)]
+    row_id_counter = itertools.count()
+    flat = list(_flatten_blocks(tokens, row_id_counter=row_id_counter))
+    texts = [_block_own_text(b) for b in flat]
+    types = [b.get("type") for b in flat]
+    row_ids = [b.get("_row_id") for b in flat]
+    return texts, types, row_ids
 
 
 def build_layout_annotated_text(clean_text: str, raw_text: Optional[str]) -> str:
@@ -3441,9 +3661,12 @@ def mint_key_for_heading(
     """
     stripped = (text or "").strip()
 
-    core_m = CORE_RE.match(stripped)
+    core_m = CORE_RE.match(stripped) or _SUBDOC_HYPHEN_RE.match(stripped)
     if core_m:
-        key = normalize_key(core_m.group("keyword"), core_m.group("prefix"), core_m.group("number"))
+        keyword = core_m.group("keyword")
+        family = _FAMILY_ALIASES.get(keyword.lower().rstrip("."), keyword.lower())
+        suffix = _match_subdoc_trailing_suffix(family, stripped[core_m.end():])
+        key = normalize_key(keyword, core_m.group("prefix"), core_m.group("number"), suffix)
         return key.partition(":")[0], key, _format_label_from_key(key), None, boundary_ordinal
 
     fuzzy = _fuzzy_family_match(stripped)
@@ -3571,7 +3794,21 @@ def validate_scope_shape(scope: Dict[str, Any]) -> None:
 # a stack anchor (see apply_heading_events_to_scope's skip_stack_mutation
 # gate, mirroring the rule engine's own "a flagged match does neither pop
 # nor push" precedent at build_targets_for_page).
-_GROUNDING_PUSH_BLOCKING_REASONS = {"ai_unlocated", "ai_fuzzy_grounded", "possible_reproduced_text"}
+_GROUNDING_PUSH_BLOCKING_REASONS = {
+    "ai_unlocated", "ai_fuzzy_grounded", "possible_reproduced_text",
+    # A table row/entry must only ever be a leaf, never a parent — added
+    # here (rather than relying solely on the D6/D7 content-shape
+    # heuristic above, which can be imperfect) so this invariant is
+    # UNIVERSAL and UNCONDITIONAL: any heading grounded to a table_cell
+    # block (see _ground_and_resolve_chunk's event-building, which attaches
+    # this reason) is structurally prevented from becoming a stack-mutating
+    # ancestor, regardless of family or how the shape heuristic judges it.
+    # This substantially de-risks that heuristic — even where it's wrong
+    # (e.g. the Section-I short-field-row limitation), the failure mode is
+    # now contained to "one extra/missing isolated leaf target," never
+    # "real subsequent content wrongly absorbed as this row's children."
+    "table_row_sourced",
+}
 
 _ENUM_MARKER_RE = re.compile(r"^\s*\(?(?P<marker>[0-9]+(?:\.[0-9]+)*|[A-Za-z]+)(?:\)\.?|\.)\s+")
 
@@ -3778,7 +4015,7 @@ def apply_heading_events_to_scope(
         if depth == 0 and len(nested_stack) >= 1:
             root_family = nested_stack[0].get("family")
             root_is_subdoc = root_family in ("subdoc", "annexure", "schedule", "appendix")
-            if root_is_subdoc and not is_subdoc_root_candidate(text, family):
+            if root_is_subdoc and not is_subdoc_root_candidate(text, family, nested_stack[0].get("label")):
                 depth = 1
 
         # Major judicial section boundary clamping:
@@ -3961,7 +4198,7 @@ def apply_heading_events_to_scope(
         # truncated top-of-stack entry can gate on the WRONG parent (e.g. a
         # sibling heading briefly sees a doomed ancestor's label before
         # depth/truncation resolves the true one).
-        if family in ("point", "ground", "numheading", "letterheading") and _immediate_parent_is_listing_container(effective_stack):
+        if family in ("point", "ground", "numheading", "letterheading") and _immediate_parent_is_listing_container(effective_stack, text):
             continue
 
         scope_key = "/".join(s["key"] for s in effective_stack)

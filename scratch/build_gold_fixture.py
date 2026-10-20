@@ -806,12 +806,12 @@ h("Annex-III: Performa for Undertaking", 65, 2, S7)
 h("(A) Regarding Conflicting Interest:-", 65, 3, "Annex-III: Performa for Undertaking")
 h("(B) \u201cRegarding Black listing/Debarring of the firm.\u201d", 65, 3, "Annex-III: Performa for Undertaking")
 h("(C) \u201cRegarding information/details given\u201d", 65, 3, "Annex-III: Performa for Undertaking")
-h("Annexure-IV: Format for Price Schedule", 66, 2, S7)
-h("Item-I : Cost for Oracle ERP Version Upgrade", 66, 3, "Annexure-IV: Format for Price Schedule")
-h("Item II - Cost for Operations and Maintenance for five (5) Years", 66, 3, "Annexure-IV: Format for Price Schedule")
-h("Item III \u2013 Cost for GIS Migration/Redevelopment to Oracle Apex, Spatial & ORDS", 67, 3, "Annexure-IV: Format for Price Schedule")
-h("Item IV \u2013 Cost for GIS Operations & Maintenance for four (4) Years", 67, 3, "Annexure-IV: Format for Price Schedule")
-h("Note:", 68, 3, "Annexure-IV: Format for Price Schedule")
+h("Annexure IV: Format for Price Schedule", 66, 2, S7)
+h("Item-I : Cost for Oracle ERP Version Upgrade", 66, 3, "Annexure IV: Format for Price Schedule")
+h("Item II - Cost for Operations and Maintenance for five (5) Years", 66, 3, "Annexure IV: Format for Price Schedule")
+h("Item III \u2013 Cost for GIS Migration/Redevelopment to Oracle Apex, Spatial & ORDS", 67, 3, "Annexure IV: Format for Price Schedule")
+h("Item IV \u2013 Cost for GIS Operations & Maintenance for four (4) Years", 67, 3, "Annexure IV: Format for Price Schedule")
+h("Note:", 68, 3, "Annexure IV: Format for Price Schedule")
 for n, text in [
     (1, "Successful bidder (L1) will be declared on the basis of grand total amount."),
     (2, "Grand total amount should be same in both words & figures."),
@@ -833,11 +833,11 @@ h("Annex VIII (a): Performa for Bank Guarantee (For Contract Performance)", 72, 
 
 h("Bank Guarantee", 72, 3, "Annex VIII (a): Performa for Bank Guarantee (For Contract Performance)")
 h("Annex-VIII (b) : Bank Guarantee checklist", 74, 2, S7)
-h("Annexure-IX: Guidelines for E-Procurement System", 75, 2, S7)
-h("Annexure-X: Pre-bid Query format", 76, 2, S7)
+h("Annexure IX: Guidelines for E-Procurement System", 75, 2, S7)
+h("Annexure X: Pre-bid Query format", 76, 2, S7)
 
-h("Annexure-XI: Service Level Agreement", 77, 2, S7)
-_SLA = "Annexure-XI: Service Level Agreement"
+h("Annexure XI: Service Level Agreement", 77, 2, S7)
+_SLA = "Annexure XI: Service Level Agreement"
 h("a. Purpose of this Agreement", 77, 3, _SLA)
 h("b. Description of Services Provided", 77, 3, _SLA)
 h("c. Duration of SLA", 77, 3, _SLA)
@@ -886,10 +886,10 @@ h("Sourcing (Supply Chain Management)", 112, 3, _A13)
 h("Purchase (Supply Chain Management)", 112, 3, _A13)
 h("Inventory and Order Management (Supply Chain Management)", 116, 3, _A13)
 
-h("Annexure-XIV: CV Format (At most 2 pages)", 121, 2, S7)
+h("Annexure XIV: CV Format (At most 2 pages)", 121, 2, S7)
 
-h("Annexure-XV: List of Major Integrations & Customizations", 122, 2, S7)
-_A15 = "Annexure-XV: List of Major Integrations & Customizations"
+h("Annexure XV: List of Major Integrations & Customizations", 122, 2, S7)
+_A15 = "Annexure XV: List of Major Integrations & Customizations"
 h("Finance", 122, 3, _A15)
 h("Meter Reader Invoicing:", 122, 4, "Finance")
 h("Employee Asset Tracking:", 122, 4, "Finance")
@@ -933,15 +933,15 @@ h("Increment reversal Program :", 126, 4, "HRMS")
 h("DA Arrear Program :", 126, 4, "HRMS")
 h("Seven Pay Matrix :", 126, 4, "HRMS")
 
-h("Annexure-XIII-A: GIS / GeoPortal Functionalities, Modernization & Enterprise Integration", 127, 2, S7)
-_A13A = "Annexure-XIII-A: GIS / GeoPortal Functionalities, Modernization & Enterprise Integration"
+h("Annexure XIII-A: GIS / GeoPortal Functionalities, Modernization & Enterprise Integration", 127, 2, S7)
+_A13A = "Annexure XIII-A: GIS / GeoPortal Functionalities, Modernization & Enterprise Integration"
 h("1. Objective", 127, 3, _A13A)
 h("2. Major GIS Functionalities", 127, 3, _A13A)
 h("3. Data Migration & Reconciliation", 129, 3, _A13A)
 h("4. Technology & Interoperability", 129, 3, _A13A)
 h("5. Functional Continuity", 129, 3, _A13A)
 
-h("Annexure-XVI: Check List", 130, 2, S7)
+h("Annexure XVI: Check List", 130, 2, S7)
 for n, criteria, page in [
     (1, "The Sole Bidder/Lead Bidder and Consortium Partner (in case of consortium) shall be a company registered", 130),
     (2, "The bidder should be registered in India with GST", 130),
@@ -954,10 +954,10 @@ for n, criteria, page in [
     (9, "The Sole Bidder/Lead Bidder shall be an active Oracle PartnerNetwork (OPN) member", 131),
     (10, "The Sole bidder/Lead bidder should have at least 50 Full-Time Technical Professionals", 131),
 ]:
-    h(f"{n}. {criteria}", page, 3, "Annexure-XVI: Check List")
+    h(f"{n}. {criteria}", page, 3, "Annexure XVI: Check List")
 
-h("Annexure-XVII", 132, 2, S7)
-h("Consortium Agreement", 132, 3, "Annexure-XVII")
+h("Annexure XVII", 132, 2, S7)
+h("Consortium Agreement", 132, 3, "Annexure XVII")
 _A17 = "Consortium Agreement"
 h("a. Submit a response jointly to Bid", 132, 4, _A17)
 h("b. Provide and perform the services which would be ordered", 132, 4, _A17)
@@ -974,8 +974,8 @@ h("h. That the broad roles and the responsibilities of each Party at each stage 
 h("i. That the Parties affirm that they shall implement the Project in good faith", 133, 4, _A17)
 h("j. That this MoU shall be governed in accordance with the laws of India", 133, 4, _A17)
 
-h("Annexure-XVIII", 135, 2, S7)
-h("Schedule - . Format of Power of Attorney by Consortium Member in favour of Lead Consortium Member (Self Format)", 135, 3, "Annexure-XVIII")
+h("Annexure XVIII", 135, 2, S7)
+h("Schedule - . Format of Power of Attorney by Consortium Member in favour of Lead Consortium Member (Self Format)", 135, 3, "Annexure XVIII")
 
 print(f"Total authored headings: {len(ALL_HEADINGS)}")
 
@@ -1014,15 +1014,20 @@ async def run():
         batch_headings = []
         for pn in range(first_page, last_page + 1):
             batch_headings.extend(headings_by_page.get(pn, []))
-        page_blocks = {
-            pn: reference_index.parse_page_blocks(page_text_by_num.get(pn) or "")
-            for pn in range(first_page, last_page + 1)
-        }
+        page_blocks = {}
+        page_block_types = {}
+        page_row_ids = {}
+        for pn in range(first_page, last_page + 1):
+            texts, types, row_ids = reference_index.parse_page_blocks_with_row_ids(page_text_by_num.get(pn) or "")
+            page_blocks[pn] = texts
+            page_block_types[pn] = types
+            page_row_ids[pn] = row_ids
         if batch_headings:
             events_by_page, warnings = await ai_reference_index._ground_and_resolve_chunk(
                 batch_headings, page_blocks, carry_context, "gold-hand-authored",
                 has_next_page_fn=lambda pn: pn < total_pages,
                 resolve_parent_via_ai=False, provider_config=None,
+                page_block_types=page_block_types, page_row_ids=page_row_ids,
             )
             print(f"Batch {first_page}-{last_page}: {len(batch_headings)} headings, warnings={warnings}")
         else:

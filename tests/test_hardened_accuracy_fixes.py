@@ -126,8 +126,13 @@ def test_tribunal_and_form_noise_rejection():
             schema.AIHeading(heading_text="2. Mr. R.K. Aggarwal, Presiding Arbitrator, #607", start_page=1),
             schema.AIHeading(heading_text="(ORDER 41, RULE 1, CIVIL PROCEDURE CODE, 1908)", start_page=1),
             schema.AIHeading(heading_text="OPENING SHEET FOR CIVIL APPEALS", start_page=1),
-            schema.AIHeading(heading_text="CONSTRUCTION OF 400 KV SUB-STATION", start_page=1),
-            schema.AIHeading(heading_text="KIRORI (HISAR)", start_page=1),
+            # "CONSTRUCTION OF ... SUB-STATION"/"KIRORI (HISAR)" removed from
+            # this case: those were document-specific project-title strings
+            # hardcoded into the supposedly "generic" noise filter (D14),
+            # removed since they'd never match any other document's project
+            # title and were overfit to this one fixture — see
+            # test_document_specific_project_title_strings_are_not_generically_matched
+            # in test_ai_indexing_schema_noise_filters.py.
             schema.AIHeading(heading_text="CLAIM IN APPEAL", start_page=1),
             schema.AIHeading(heading_text="Enactment and section under which appeal lies", start_page=1),
             # Legitimate heading to ensure it is kept
