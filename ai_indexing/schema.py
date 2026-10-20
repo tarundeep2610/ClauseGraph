@@ -38,7 +38,7 @@ _GENERIC_LEGAL_NOISE_RE = re.compile(
     r"Advocate|Advocates|Counsel(?:\s+for\s+.*)?|Sr\.?\s*Advocate|ATOVOCATG|"
     r".*(?:\.{2,}|[-–—]{2,}|\()\s*(?:Appellants?|Respondents?|Petitioners?|Defendants?|Plaintiffs?)\s*[\.:\)]?|"
     r"(?:Dated\s*[:\.]?\s*)?\d{1,2}[\./\-]\d{1,2}[\./\-]\d{2,4}|"
-    r"Note\s*:\s*.*|Total\s+\d+.*|U·f\s+\d+.*|"
+    r"Total\s+\d+.*|U·f\s+\d+.*|"
     r"IN\s+THE\s+(?:HIGH\s*COURT|SUPREME\s*COURT|DISTRICT\s*COURT|COURT\s*OF)\b.*|"
     r"AT\s+[A-Z\s]+|JUDICIAL\s+DEPARTMENT|CIVIL\s+APPELLATE\s+SIDE|"
     r"(?:F\.?A\.?O\.?|Civil\s+Misc\.?|C\.?M\.?|W\.?P\.?|Arbitration\s+Case|Commercial\s+Appeal)(?:[\s\(\.\-].*|$)|"
@@ -70,7 +70,6 @@ _GENERIC_LEGAL_NOISE_RE = re.compile(
     r"Claim\s+in\s+appeal.*|"
     r"Enactment\s+and\s+section\s+under\s+which.*|"
     r"\(ORDER\s+\d+[\s,]+RULE\s+\d+.*?\)|"
-    r"(?:CONSTRUCTION\s+OF\s+.*SUB-STATION|SUPPLY\s+OF\s+EQUIPMENT\s+FOR|KIRORI\b(?:\s*\(HISAR\))?).*|"
     r"(?:\([A-Za-z\s\.]+\)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*,\s*(?:Presiding\s*Judge|(?:Addl\.?|Additional)\s*District\s*Judge|District\s*Judge|Commercial\s*Court|Tribunal\s*Member|Arbitrator|Sole\s*Arbitrator)\b.*|"
     r"(?:AIJ|ADJ|DJ|CJ)-cum-Presiding\s*Judge\b.*|"
     r"Date\s*[:\s]\s*.*|"
@@ -266,7 +265,7 @@ def _dedupe_key(h: AIHeading) -> tuple:
 
 
 def normalize_chunk(
-    chunk: AIStructureChunk, expected_pages: List[int],
+    chunk: AIStructureChunk, expected_pages: List[int], order_by_line_hint: bool = False,
 ) -> "tuple[AIStructureChunk, NormalizationReport]":
     """Lenient, order-preserving cleanup. Drops (never crashes on) headings
     that are off-page, blank, or exact-duplicate; caps to
@@ -352,8 +351,29 @@ def normalize_chunk(
     # A chunk's page order is authoritative, not the AI's list order —
     # stable sort (Python's sorted() preserves relative order among equal
     # keys) so same-page headings keep whatever relative order the model
-    # gave them, which is the only ordering signal available for those.
-    kept.sort(key=lambda h: h.start_page)
+    # gave them, which is the only ordering signal available for those —
+    # UNLESS order_by_line_hint is on and every heading on that page
+    # reports a non-null start_line_hint, in which case that hint is used
+    # as a secondary key instead. Conservative and opt-in (default off,
+    # mirroring ai_index_resolve_parent_via_ai's own rollout pattern): the
+    # hint is documented in the prompt itself as "stored for possible
+    # future use only — not required to be precise", with no measured
+    # accuracy data behind it, so an ALL-OR-NOTHING guard per page is used
+    # rather than ever interleaving a hinted heading among unhinted ones
+    # via a sentinel value, which could actively make ordering worse.
+    if order_by_line_hint:
+        page_all_hinted: Dict[int, bool] = {}
+        for h in kept:
+            if h.start_page not in page_all_hinted:
+                page_all_hinted[h.start_page] = True
+            if h.start_line_hint is None:
+                page_all_hinted[h.start_page] = False
+        kept.sort(key=lambda h: (
+            h.start_page,
+            h.start_line_hint if page_all_hinted.get(h.start_page) else 0,
+        ))
+    else:
+        kept.sort(key=lambda h: h.start_page)
 
     if len(kept) > config.AI_INDEX_MAX_HEADINGS_PER_CHUNK:
         report.dropped_overflow = len(kept) - config.AI_INDEX_MAX_HEADINGS_PER_CHUNK

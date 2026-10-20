@@ -26,6 +26,9 @@ from reference_index import (
     _fuzzy_family_match,
     build_targets_for_page,
     detect_subdoc_trigger,
+    mint_key_for_heading,
+    normalize_key,
+    reconcile_prefix_and_number,
 )
 
 
@@ -64,6 +67,78 @@ def test_exact_match_still_takes_priority_over_fuzzy():
     assert row["key"] == "annexure:a-1"
     assert row["heading_confidence"] == "high"
     assert row["heading_confidence_reasons"] == []
+
+
+def test_reconcile_prefix_and_number_recombines_a_wrongly_split_roman_numeral():
+    # Confirmed real bug: CORE_RE's optional prefix group is greedy with no
+    # hyphen requirement, so on "XI" it wrongly peels off "X" as a one-letter
+    # exhibit prefix, leaving "I" as the number.
+    assert reconcile_prefix_and_number("Annexure", "X", "I") == (None, "XI")
+    # Control: a genuine hyphenated exhibit prefix ("Annexure A-1") must be
+    # completely unaffected by the new recombination guard.
+    assert reconcile_prefix_and_number("Annexure", "A-", "1") == ("A-", "1")
+
+
+def test_annexure_space_and_hyphen_spellings_mint_the_identical_key():
+    space_candidates, _ = build_targets_for_page("Annexure XI: Service Level Agreement\n", seed_scope=None, has_next_page=False)
+    hyphen_candidates, _ = build_targets_for_page("Annexure-XI: Service Level Agreement\n", seed_scope=None, has_next_page=False)
+    assert space_candidates[0]["key"] == "annexure:xi"
+    assert hyphen_candidates[0]["key"] == "annexure:xi"
+
+
+def test_mint_key_for_heading_annexure_space_and_hyphen_spellings_match():
+    space = mint_key_for_heading("Annexure XI: Service Level Agreement", boundary_ordinal=0, label_occurrence_counts={})
+    hyphen = mint_key_for_heading("Annexure-XI: Service Level Agreement", boundary_ordinal=0, label_occurrence_counts={})
+    assert space[0] == "annexure"
+    assert space[1] == "annexure:xi"
+    assert hyphen[0] == "annexure"
+    assert hyphen[1] == "annexure:xi"
+
+
+def test_annexure_plain_multichar_roman_with_no_suffix():
+    candidates, _ = build_targets_for_page("Annexure XVII: Final Clause\n", seed_scope=None, has_next_page=False)
+    assert candidates[0]["key"] == "annexure:xvii"
+
+
+def test_annexure_lettered_suffix_both_spellings_match():
+    space_candidates, _ = build_targets_for_page("Annexure XIII-A: GIS Geoportal\n", seed_scope=None, has_next_page=False)
+    hyphen_candidates, _ = build_targets_for_page("Annexure-XIII-A: GIS Geoportal\n", seed_scope=None, has_next_page=False)
+    assert space_candidates[0]["key"] == "annexure:xiii-a"
+    assert hyphen_candidates[0]["key"] == "annexure:xiii-a"
+
+
+def test_annexure_with_and_without_suffix_do_not_collide():
+    # Confirmed real collision risk: the tender-spec fixture genuinely has
+    # BOTH a plain "Annexure XIII" and a distinct "Annexure XIII-A" heading
+    # — fixing the roman-split bug alone would make both mint "annexure:xiii"
+    # without the trailing-suffix capture.
+    plain_candidates, _ = build_targets_for_page("Annexure XIII: ERP Modules\n", seed_scope=None, has_next_page=False)
+    suffixed_candidates, _ = build_targets_for_page("Annexure XIII-A: GIS Geoportal\n", seed_scope=None, has_next_page=False)
+    assert plain_candidates[0]["key"] == "annexure:xiii"
+    assert suffixed_candidates[0]["key"] == "annexure:xiii-a"
+    assert plain_candidates[0]["key"] != suffixed_candidates[0]["key"]
+
+
+def test_detect_subdoc_trigger_defers_for_hyphenated_annexure_same_as_space():
+    assert detect_subdoc_trigger("Annexure-XI:", []) is None
+    assert detect_subdoc_trigger("Annexure XI:", []) is None
+
+
+def test_schedule_variant_non_regression_after_hyphen_annexure_fix():
+    # Non-regression guard: SCHEDULE-1A's number group can't cross the
+    # digit->letter word boundary, so the new hyphen regex correctly
+    # declines to match this shape — unaffected by this fix.
+    result = detect_subdoc_trigger("SCHEDULE-1A", [])
+    assert result is not None
+    assert result[0] == "Schedule"
+    assert result[1] is True
+
+
+def test_normalize_key_article_roman_still_converts_to_arabic():
+    # Confirms the roman-literal-preservation branch is correctly scoped to
+    # the prefix-eligible families only (annexure/schedule/appendix) —
+    # Article/Section's existing arabic-conversion behavior is untouched.
+    assert normalize_key("Article", "I", "I") == "article:2"
 
 
 def test_fuzzy_matched_container_still_anchors_later_headings():

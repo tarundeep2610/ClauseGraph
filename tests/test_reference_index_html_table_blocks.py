@@ -123,6 +123,35 @@ def test_html_table_plural_family_keyword_headers_do_not_crash_or_mint():
     assert "article:5" not in by_key
 
 
+# ─── parse_page_blocks_with_row_ids: opt-in row grouping for the AI-path's
+# row-merge grounding fallback (ai_reference_index.py). Never touches
+# parse_page_blocks/parse_page_blocks_with_types's own output -- see the
+# dedicated regression guard below. ──────────────────────────────────────
+
+
+def test_parse_page_blocks_with_row_ids_groups_cells_by_row():
+    texts, types, row_ids = ri.parse_page_blocks_with_row_ids(HTML_TABLE)
+    assert texts == ["A", "B", "C", "D"]
+    assert types == ["table_cell", "table_cell", "table_cell", "table_cell"]
+    assert row_ids == [0, 0, 1, 1]
+
+
+def test_parse_page_blocks_with_row_ids_does_not_change_the_shared_parser_contract():
+    # Regression guard: this whole feature must be a no-op for the
+    # rule-path's existing, already-tested contract.
+    assert ri.parse_page_blocks(HTML_TABLE) == ["A", "B", "C", "D"]
+    texts, types = ri.parse_page_blocks_with_types(HTML_TABLE)
+    assert texts == ["A", "B", "C", "D"]
+    assert types == ["table_cell", "table_cell", "table_cell", "table_cell"]
+
+
+def test_parse_page_blocks_with_row_ids_is_globally_unique_across_multiple_tables():
+    page_text = HTML_TABLE + "\n\n" + "<table><tr><td>E</td><td>F</td></tr></table>"
+    texts, _, row_ids = ri.parse_page_blocks_with_row_ids(page_text)
+    assert texts == ["A", "B", "C", "D", "E", "F"]
+    assert row_ids == [0, 0, 1, 1, 2, 2]
+
+
 def test_layout_aligned_degrades_gracefully_on_table_page():
     # A table-bearing page's det-tag count (one region) no longer lines up
     # with the post-fix per-cell block count (e.g. 1 det-tag vs 2 cell blocks)

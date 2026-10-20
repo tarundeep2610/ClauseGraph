@@ -156,3 +156,75 @@ def test_ai_path_suppresses_a_bare_numbered_row_under_an_index_listing_with_no_f
     events = [{"heading_text": "10. Letter of M/s Areva T&D India Ltd. dated 27.12.2007", "depth": 1, "end_page": None}]
     candidates, _ = ri.apply_heading_events_to_scope(events, seed_scope, page_num=62, has_next_page=True)
     assert candidates == []
+
+
+# ─── Content-shape gate (D6/D7 fix): a listing-labeled parent can contain
+# BOTH real noise AND real numbered clauses laid out as a table — confirmed
+# on a second, structurally different document (a tender spec, which
+# genuinely has real clauses inside "Price Schedule"-labeled containers,
+# unlike the arbitration-doc fixture these tests above were built against).
+# ─────────────────────────────────────────────────────────────────────────
+
+def test_a_genuine_clause_under_a_listing_labeled_parent_survives():
+    """The actual fix: a real, verb-bearing numbered clause must survive
+    even under a listing-labeled parent — confirmed against real
+    tender-doc gold-fixture text (Annexure-IV's price-schedule Note)."""
+    page_text = "11. Successful bidder (L1) will be declared on the basis of grand total amount.\n"
+    by_key, _ = _by_key(page_text, _seed("Annexure-IV: Format for Price Schedule"))
+    assert "ground:11" in by_key or "point:11" in by_key
+
+
+def test_same_number_same_parent_opposite_shape_opposite_outcome():
+    """Direct contrast with test_numheading_rows_under_a_price_schedule_are_
+    fully_suppressed's "4.10 Isolation valves" (suppressed) — same key
+    shape, same listing-labeled parent, but THIS row has a finite
+    verb/modal, so it must be kept. Proves the gate is content-driven, not
+    document- or parent-label-driven. Uses the AI-path convention (a real
+    AI-reported heading with an explicit family_hint) rather than
+    build_targets_for_page: the rule-based numheading DETECTOR itself (a
+    separate, earlier gate — is this shaped like a heading at all) rejects
+    a full sentence like this long before reaching the listing-container
+    gate being tested here, same as it would for any genuinely very long
+    heading; the AI path bypasses that unrelated rule-based shape check
+    exactly as the AI itself already asserted this is a real heading."""
+    seed_scope = {
+        "stack": [{"family": "subdoc", "key": "subdoc:price-schedule", "label": "Price Schedule"}],
+        "boundary_ordinal": 1, "label_occurrence_counts": {},
+        "last_bare_integer": None, "last_letter_ordinal": None,
+    }
+    events = [{
+        "heading_text": "4.10 The bidder shall submit documentary evidence of GST registration.",
+        "depth": 1, "end_page": None, "family_hint": "numheading",
+    }]
+    candidates, _ = ri.apply_heading_events_to_scope(events, seed_scope, page_num=83, has_next_page=True)
+    assert len(candidates) == 1
+    assert candidates[0]["key"] == "numheading:4.10"
+
+
+def test_long_verb_free_catalogue_entry_known_limitation_still_suppressed():
+    """Boundary case for the word-count backstop: a long (>8 words) but
+    still verb-free noun-phrase catalogue entry stays suppressed — the
+    backstop is generous (not a tight 8-word cap, since that broke a real
+    confirmed case) but not unbounded."""
+    page_text = "11. Relays, power contactors and isolation valves for 2000A switchgear panel assembly unit\n"
+    by_key, _ = _by_key(page_text, _seed("Price Schedule"))
+    assert "ground:11" not in by_key
+
+    control_by_key, _ = _by_key(page_text, _seed("Grounds of Appeal", key="subdoc:grounds-of-appeal"))
+    assert "ground:11" in control_by_key
+
+
+def test_short_field_value_rows_remain_a_known_documented_limitation():
+    """Explicitly honest, not silently glossed over: a short field-value
+    row (no listing-container-shaped parent label here, since these rows
+    are not currently gated by D7 at all in the real tender-doc fixture —
+    this test documents that fact directly, not a claim this heuristic
+    rescues them) — same shape as real noise, genuinely indistinguishable
+    by content alone. Not this fix's job to solve; recorded as a known gap."""
+    page_text = "2. Purchaser\n"
+    by_key, _ = _by_key(page_text, _seed("Price Schedule"))
+    # Still suppressed under a listing parent (short, verb-free) -- exactly
+    # the same as any other short field-value row. If this content ever
+    # needs to be kept, it needs a different parent label or its own
+    # dedicated signal, not a change to this content-shape heuristic.
+    assert "ground:2" not in by_key
