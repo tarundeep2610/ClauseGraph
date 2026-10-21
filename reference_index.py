@@ -1718,12 +1718,18 @@ def _pleading_scope_active(nested_stack: List[Dict[str, str]]) -> bool:
     stops inheritance from anything further out, same mechanism as
     _ground_scope_active, inverted (exclusion list, not allow-list — see
     that constant's docstring for why)."""
+    # If any container in the ancestor chain is an explicit non-pleading document
+    # (e.g. Contract Agreement, Purchase Order, Section-I through Section-XX),
+    # then child subdocs inside it are commercial clauses, never court pleadings.
+    if any(_NON_PLEADING_SUBDOC_LABELS_RE.search(s.get("label") or "") for s in nested_stack):
+        return False
     for s in reversed(nested_stack):
         if s.get("family") == "point":
             return True
         if s.get("family") == "subdoc":
             return not bool(_NON_PLEADING_SUBDOC_LABELS_RE.search(s.get("label") or ""))
     return False
+
 
 
 def _disambiguate_label(label: str, counts: Dict[str, int]) -> str:
@@ -3623,6 +3629,135 @@ def detect_pleading_points_for_page(
         if not is_roman:
             last_decimal_ground = {"key": key, "label": _format_label_from_key(key)}
     return results, last_decimal_ground
+
+
+def detect_contract_clauses_for_page(
+    page_text: str, scope: Dict[str, Any], existing_candidates: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Augments an AI-indexed page with multi-segment decimal clauses (e.g. '1.11.8',
+    '4.1', '24.3.2') and sequential letter points ('a.', 'b.') that the AI prompt
+    deliberately excludes as running prose, but which form canonical structural
+    clauses of commercial contracts and tenders.
+    """
+    nested_stack = (scope or {}).get("stack") or []
+    if _immediate_parent_is_listing_container(nested_stack):
+        return []
+    if _ground_scope_active(nested_stack) or _pleading_scope_active(nested_stack):
+        return []
+    if any(_STANDALONE_LEGAL_DOCS_RE.search(s.get("label") or "") for s in nested_stack):
+        return []
+
+    is_contract = any(
+        s.get("family") in ("section", "annexure", "schedule", "article", "clause", "subdoc")
+        for s in nested_stack
+    )
+    if not is_contract and not _NON_PLEADING_SUBDOC_LABELS_RE.search(page_text):
+        return []
+
+    already_claimed_fps = {c.get("fingerprint") for c in existing_candidates if c.get("fingerprint")}
+    existing_keys = {c.get("key") for c in existing_candidates if c.get("key")}
+
+    occurrence_counts: Dict[str, int] = {}
+    for c in existing_candidates:
+        k = c.get("key")
+        if k:
+            occurrence_counts[k] = occurrence_counts.get(k, 0) + 1
+
+    results: List[Dict[str, Any]] = []
+    blocks = parse_page_blocks(page_text)
+
+    # 1. Multi-segment decimal clauses (^\d+(\.\d+)+)
+    for block_text in blocks:
+        for line in (block_text or "").split("\n"):
+            text = line.strip()
+            if not text:
+                continue
+            fp = text[:30]
+            if fp in already_claimed_fps:
+                continue
+
+            m = _DECIMAL_NUMBER_HEAD_RE.match(text)
+            if not m:
+                continue
+            number = m.group("number")
+            if "." not in number or _is_date_shaped_number(number):
+                continue
+            if _is_backward_reference(text, m.end()):
+                continue
+            if _is_external_law(text):
+                continue
+
+            key = f"numheading:{number}"
+            if key in existing_keys:
+                continue
+
+            occ = occurrence_counts.get(key, 0)
+            occurrence_counts[key] = occ + 1
+            existing_keys.add(key)
+            already_claimed_fps.add(fp)
+
+            label_part = text[m.end():].strip()
+            own_label = f"{number} {label_part[:80]}".strip() if label_part else number
+
+            results.append({
+                "key": key,
+                "occurrence_index": occ,
+                "snippet": text[:400],
+                "truncated": False,
+                "continues_on_page": None,
+                "scope_key": "/".join(s["key"] for s in nested_stack),
+                "scope_label": " › ".join(s["label"] for s in nested_stack),
+                "scope_chain": [dict(s) for s in nested_stack],
+                "collapsed_key": collapse_key(key),
+                "fingerprint": fp,
+                "heading_confidence": "high",
+                "heading_confidence_reasons": ["hybrid_decimal_supplemented"],
+                "own_label": own_label,
+                "detection_source": "rule",
+                "detection_model": None,
+                "start_line_hint": None,
+            })
+
+    # 2. Sequential letter points (a., b., c.) under active contract clauses
+    for block_text in blocks:
+        for line in (block_text or "").split("\n"):
+            text = line.strip()
+            if not text:
+                continue
+            fp = text[:30]
+            if fp in already_claimed_fps:
+                continue
+
+            lm = re.match(r"^\s*(?P<marker>[a-z])[\.\)]\s+(?P<bodyText>[A-Z].*)", text)
+            if not lm:
+                continue
+
+            marker = lm.group("marker").lower()
+            key = f"point:{marker}"
+            occ = occurrence_counts.get(key, 0)
+            occurrence_counts[key] = occ + 1
+            already_claimed_fps.add(fp)
+
+            results.append({
+                "key": key,
+                "occurrence_index": occ,
+                "snippet": text[:400],
+                "truncated": False,
+                "continues_on_page": None,
+                "scope_key": "/".join(s["key"] for s in nested_stack),
+                "scope_label": " › ".join(s["label"] for s in nested_stack),
+                "scope_chain": [dict(s) for s in nested_stack],
+                "collapsed_key": collapse_key(key),
+                "fingerprint": fp,
+                "heading_confidence": "high",
+                "heading_confidence_reasons": ["hybrid_letter_point_supplemented"],
+                "own_label": text[:80].strip(),
+                "detection_source": "rule",
+                "detection_model": None,
+                "start_line_hint": None,
+            })
+
+    return results
 
 
 def mint_key_for_heading(

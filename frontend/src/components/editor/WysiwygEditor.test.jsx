@@ -16,6 +16,27 @@ describe('WysiwygEditor — basic rendering', () => {
   });
 });
 
+describe('WysiwygEditor — zoom', () => {
+  it('defaults to the base font size when no zoomLevel prop is given', async () => {
+    render(<WysiwygEditor value={'Plain text'} onChange={vi.fn()} />);
+    const content = await screen.findByTestId('editor-content');
+    expect(content.style.fontSize).toBe('0.92rem');
+  });
+
+  it('scales the rich-text font size with the zoomLevel prop, like the PDF pane\'s own zoom', async () => {
+    render(<WysiwygEditor value={'Plain text'} onChange={vi.fn()} zoomLevel={1.5} />);
+    const content = await screen.findByTestId('editor-content');
+    expect(content.style.fontSize).toBe('1.38rem');
+  });
+
+  it('also scales the Source-mode textarea font size', async () => {
+    render(<WysiwygEditor value={'# Title'} onChange={vi.fn()} zoomLevel={2} />);
+    await screen.findByTestId('wysiwyg-editor');
+    fireEvent.click(screen.getByTestId('editor-source-toggle-btn'));
+    expect(screen.getByTestId('editor-source-textarea').style.fontSize).toBe('1.64rem');
+  });
+});
+
 describe('WysiwygEditor — Source toggle', () => {
   it('switches to a raw-Markdown textarea showing the current content, and back', async () => {
     render(<WysiwygEditor value={'# Title\n\nBody text.'} onChange={vi.fn()} />);

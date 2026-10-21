@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import PdfCanvasViewer from '../PdfCanvasViewer';
 
 export default function DualPdfCompare({
@@ -13,9 +12,6 @@ export default function DualPdfCompare({
   onClose,
   pdfStatusLabel,
 }) {
-  const [syncZoom, setSyncZoom] = useState(false);
-  const [sharedZoom, setSharedZoom] = useState(1);
-
   const currentTarget = targets[activeTargetIndex] || {
     page: targetPage,
     section: targetPage ? `Page ${targetPage}` : '',
@@ -67,15 +63,6 @@ export default function DualPdfCompare({
           </div>
 
           <div className="dual-pdf-target-actions">
-            <button
-              type="button"
-              className={`btn btn-sm btn-outline btn-sync-zoom${syncZoom ? ' active' : ''}`}
-              onClick={() => setSyncZoom((v) => !v)}
-              title="Synchronize zoom between both comparison panes"
-              data-testid="sync-zoom-btn"
-            >
-              <i className="fa-solid fa-link" /> Sync Zoom: {syncZoom ? 'ON' : 'OFF'}
-            </button>
             <button
               type="button"
               className="btn btn-sm btn-secondary"

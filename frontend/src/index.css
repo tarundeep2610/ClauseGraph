@@ -389,11 +389,13 @@ input[type="range"]::-webkit-slider-thumb {
 .modal-option-count { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
 .modal-actions { display: flex; justify-content: flex-end; }
 
-/* Settings modal (replaces the old "Admin Settings" sidebar card) — wider
-   than the generic .modal-panel default and internally scrollable, since its
-   admin content (engine/prompt/output/indexing/session) is long. */
+/* Settings modal (replaces the old "Admin Settings" sidebar card) — an
+   Adobe/Acrobat-style preferences dialog: a left category rail
+   (.settings-modal-nav) plus one scrollable content panel on the right
+   (.settings-modal-content), rather than one long scrolling column. Wider
+   than the generic .modal-panel default to fit both panes side by side. */
 .settings-modal-panel {
-  max-width: 480px; max-height: 85vh;
+  max-width: 680px; max-height: 85vh;
   display: flex; flex-direction: column; padding: 0; overflow: hidden;
 }
 .settings-modal-header {
@@ -406,7 +408,22 @@ input[type="range"]::-webkit-slider-thumb {
   cursor: pointer; padding: 4px; line-height: 1; border-radius: 6px;
 }
 .btn-icon-close:hover { color: var(--text); background: rgba(var(--overlay), 0.08); }
-.settings-modal-body { padding: 20px; overflow-y: auto; }
+.settings-modal-layout { display: flex; min-height: 0; flex: 1; }
+.settings-modal-nav {
+  flex: 0 0 180px; width: 180px; border-right: 1px solid var(--border);
+  background: rgba(var(--overlay), 0.02); padding: 10px; display: flex; flex-direction: column;
+  gap: 2px; overflow-y: auto;
+}
+.settings-nav-item {
+  display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 8px;
+  background: transparent; border: none; color: var(--text); font-size: 0.82rem; font-weight: 600;
+  text-align: left; cursor: pointer; transition: background 0.15s;
+}
+.settings-nav-item i { width: 15px; text-align: center; color: var(--muted); }
+.settings-nav-item:hover { background: rgba(var(--overlay), 0.08); }
+.settings-nav-item.active { background: rgba(var(--primary-rgb), 0.16); color: var(--fg-primary-soft); }
+.settings-nav-item.active i { color: var(--fg-primary-soft); }
+.settings-modal-content { flex: 1; min-width: 0; padding: 20px; overflow-y: auto; }
 .settings-status-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .settings-toggle {
@@ -814,7 +831,17 @@ input[type="range"]::-webkit-slider-thumb {
 .page-reference-badge--undefined:hover { background: transparent; }
 
 .structure-tree-wrap { display: flex; flex-direction: column; gap: 8px; }
-.structure-tree-toolbar { display: flex; justify-content: flex-end; }
+/* Pinned to the top of .structure-sidebar's scrolling .view-box-content
+   (padding: 16px 20px, index.css:582-584) instead of scrolling away with the
+   tree below it — pulled out to the padding edges with negative margins and
+   re-padded internally, the standard way to stick a header flush inside an
+   already-padded scroll container. */
+.structure-tree-toolbar {
+  display: flex; justify-content: flex-end; gap: 8px;
+  position: sticky; top: -16px; z-index: 2;
+  margin: -16px -20px 10px; padding: 10px 20px;
+  background: var(--surface-drawer); border-bottom: 1px solid var(--border);
+}
 .structure-tree-toast {
   font-size: 0.76rem; color: var(--fg-warning-soft); background: rgba(var(--warning-rgb), 0.12);
   border: 1px solid rgba(var(--warning-rgb), 0.3); border-radius: 6px; padding: 5px 10px;
@@ -849,9 +876,11 @@ input[type="range"]::-webkit-slider-thumb {
   gap: 2px 4px;
 }
 .structure-tree-label-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
   min-width: 0;
   flex: 0 1 auto;
   max-width: 100%;
@@ -918,8 +947,17 @@ input[type="range"]::-webkit-slider-thumb {
    <textarea> — which has no content of its own to stretch it — render at
    the browser's tiny default textarea height instead. Making this a flex
    column with a real min-height gives .wysiwyg-editor's `flex: 1` below
-   something genuine to grow into, in both modes. */
-.ocr-page-block { display: flex; flex-direction: column; min-height: 100%; }
+   something genuine to grow into, in both modes.
+
+   `height` (not `min-height`) deliberately caps this at exactly the pane's
+   visible height instead of letting it grow with page content — min-height
+   let a long OCR page grow this block (and everything in it, including the
+   toolbar) taller than the pane, so the real scrolling happened one level up
+   at .view-box-content, dragging the toolbar off-screen with the body text.
+   Capping the height here forces .wysiwyg-editor's own overflow: hidden to
+   clip at the right boundary, so .editor-content's own overflow-y: auto
+   (below) does the scrolling instead and the toolbar never leaves view. */
+.ocr-page-block { display: flex; flex-direction: column; height: 100%; }
 
 .wysiwyg-editor {
   display: flex; flex-direction: column; flex: 1; height: 100%; min-height: 0;
@@ -1014,6 +1052,12 @@ input[type="range"]::-webkit-slider-thumb {
   background: var(--input-bg); color: var(--text); font-size: 0.8rem;
 }
 .export-range-error { margin-left: 24px; color: var(--fg-error-soft); font-size: 0.74rem; }
+
+.save-file-dialog-input {
+  width: 100%; box-sizing: border-box; padding: 9px 11px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--input-bg); color: var(--text);
+  font-size: 0.88rem; margin-bottom: 16px;
+}
 
 .export-metadata-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; cursor: pointer; color: var(--muted); }
 
@@ -1577,6 +1621,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .hud-cluster { display: flex; align-items: center; gap: 5px; }
 .hud-divider { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+.hud-zoom-cluster-icon { font-size: 0.7rem; color: var(--muted); margin-right: 2px; }
 
 .hud-btn {
   display: inline-flex;
@@ -1747,9 +1792,3 @@ input.hud-page-input:focus,
   align-items: center;
   gap: 6px;
 }
-.btn-sync-zoom.active {
-  background: rgba(var(--primary-rgb), 0.2);
-  border-color: var(--primary);
-  color: var(--fg-primary-soft);
-}
-

@@ -24,6 +24,7 @@ export default function WysiwygEditor({
   placeholder,
   onNodeFocused,
   onSaveStatusChange,
+  zoomLevel = 1,
 }) {
   const [sourceMode, setSourceMode] = useState(false);
   const [sourceText, setSourceText] = useState(value || '');
@@ -150,13 +151,19 @@ export default function WysiwygEditor({
           className="editor-source-view"
           data-testid="editor-source-textarea"
           value={sourceText}
+          style={{ fontSize: `${(0.82 * zoomLevel).toFixed(3)}rem` }}
           onChange={(e) => {
             setSourceText(e.target.value);
             setSaveStatus('pending');
           }}
         />
       ) : (
-        <EditorContent editor={editor} className="editor-content" data-testid="editor-content" />
+        <EditorContent
+          editor={editor}
+          className="editor-content"
+          data-testid="editor-content"
+          style={{ fontSize: `${(0.92 * zoomLevel).toFixed(3)}rem` }}
+        />
       )}
     </div>
   );

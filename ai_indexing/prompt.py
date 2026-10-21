@@ -8,6 +8,7 @@ risk. See ai_reference_index.py for how parent_ref is actually resolved.
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -221,6 +222,24 @@ WHAT IS NOT A HEADING
   "3. ...") or numbered lines introducing a list with a colon (e.g. "3. The
   Award is challenged on following grounds:") — those MUST be reported (see
   "NUMBERED PLEADING POINTS AND GROUNDS" and "A SHORT LINE ENDING IN COLON").
+  EXCEPTION FOR CONTRACT / TENDER NUMBERED CLAUSES IN TABLES:
+  In contracts, tenders, specifications, or RFPs, numbered clauses are often laid out
+  in multi-column tables where Column 1 contains the clause number (e.g. "9.1.", "24.2.1.", or "6")
+  and Column 2 contains the clause title or text (e.g. "Project site visit" or
+  "Bidder shall submit only one (1) unconditional bid...").
+  In such documents, these numbered clauses ARE the primary structural divisions of the
+  contract. You MUST report every single numbered clause row in sequence without omitting any!
+  If Column 2 contains long text, you may report the combined heading (e.g. "9.1. Bidder shall submit only one..."),
+  the clause number and its opening words (e.g. "24.2.1. Prior to the detailed evaluation"),
+  or simply the bare clause number ("24.2.1.").
+  This includes all 3-level decimal sub-clauses in tables (e.g. "24.2.1.", "24.2.2.", "24.2.3.", ..., "24.2.9.") —
+  report them with their parent clause (e.g. "24.2.") as "parent_ref".
+  Do NOT exclude a numbered clause in a contract/tender table merely because Column 2
+  contains a verb like "shall", "must", or "is".
+   This includes essential tender information tables, schedules of requirements, and specification tables where
+   Column 1 is an item/clause number (e.g. "1.", "2.", "3.") and Column 2 is an item or specification heading
+   (e.g. "Name of works/services to be procured", "Purchaser", "Contract Period", "Earnest Money Deposit").
+   Report every such numbered row under its section heading (e.g. "1. Name of works/services to be procured", "2. Purchaser").
 - ADMINISTRATIVE STAMPS, DOCKET/FORM CODES, AND COVER-PAGE MARGINALIA. A
   cover/opening page of a court filing or official document is often
   covered in printing-registration codes, docket numbers, and stamps —
@@ -258,9 +277,11 @@ WHAT IS NOT A HEADING
   quoted here for reference; they are not new headings of the appeal
   itself, and the ground that follows this quotation is still a sibling
   of the ground doing the quoting, not a child of "9.0".
-- A table row, a list item in a running list, a signature block, a running
+- A table row (EXCEPT for numbered contract/tender clauses in multi-column tables as described above), a list item in a running list, a signature block, a running
   header/footer, a page number, or a table-of-contents/index line that merely
   points at a heading printed elsewhere.
+- Table column headers ("S.No.", "Clause No.", "Description", "Particulars", "Remarks", "Compliance (Yes/No)", "Status", "Bidder's Response", "Page No.") are NOT headings — they are column labels of a table. Do NOT report them.
+- Form signature blocks and form field placeholders ("Authorized Signatory", "Name of Bidder", "Seal of Firm", "Date: ...", "Place: ...", "Signature of the Bidder") are NOT headings — they are fill-in metadata. Do NOT report them.
 
 FINDING THE FULL RUN OF AN ENUMERATED LIST — DON'T STOP AT THE FIRST ONE
 - Headings that enumerate a list (roman numerals in parens like "(VII) That
@@ -463,6 +484,13 @@ NUMBERED PLEADING POINTS AND GROUNDS ARE HEADINGS TOO (OVERRIDES THE EXCLUSION A
      destroys the document outline.
   2. NEVER invent, shift, or prepend paragraph numbers to an unnumbered line!
      If a line does not have a number printed on the page, copy it VERBATIM without adding any number.
+- NUMBERED CLAUSES AND SUB-CLAUSES OF CONTRACTS, TENDERS, AND SPECIFICATIONS:
+  In contracts, tenders, specifications, and conditions of contract (e.g. GCC, SCC), clauses and
+  sub-clauses are sequentially numbered (e.g. "1.1.", "1.9.1.", "1.11.1.", "1.15.2.", "1.18.4.", "1.19.1.", "24.2.1.", or "1.", "2.", "3.").
+  Report EVERY such numbered clause and sub-clause as a heading under its parent clause or section
+  (e.g. report "1.11.1. It is a condition of this Bid that the information", "1.18.4. Expiry or termination of a parallel contract", "1.19.1. Only Purchaser-approved AI models/services", "1.19.2. AI access shall respect").
+  Even though a contract clause contains full sentences with verbs like "shall", "must", or "is",
+  it is a numbered contract clause that must be indexed. Do NOT strip or exclude it under the noun-phrase test.
 """
 
 
@@ -495,6 +523,43 @@ FIELD RULES
   heading you can already read cleanly (most of them); only set these when
   "heading_text" itself is garbled/unclear but you recognize what it means.
 - "notes": at most one short sentence; "" when you have nothing to flag.
+"""
+
+
+MACRO_SYSTEM_PROMPT = """\
+You are an expert legal document analyst building a high-level Document Table of Contents (Macro Skeleton).
+Your ONLY job in this pass is to identify and report the TOP-LEVEL STRUCTURAL DIVISIONS of the document.
+
+WHAT TO REPORT:
+1. Major Structural Divisions: Parts, Sections, Chapters, Volumes, Titles (e.g. "SECTION I: INVITATION FOR BIDS", "SECTION II: INSTRUCTIONS TO BIDDERS", "PART-A", "CHAPTER 3").
+2. Annexures, Schedules, Appendices, Exhibits, Attachments (e.g. "ANNEXURE-I: BID FORM", "SCHEDULE-A", "APPENDIX-3", "ANNEXURE XVI").
+3. Standalone major document divisions: Cover Page, Table of Contents, Memo of Parties, Affidavit, Index, Summary.
+4. Top-level numbered section heads (e.g. "1.0 DEFINITIONS", "2.0 GENERAL CONDITIONS", "3.0 SCOPE OF WORK") only when they form the primary top-level divisions of the text.
+
+WHAT TO STRICTLY EXCLUDE (DO NOT REPORT):
+- DO NOT report individual contract clauses or sub-clauses (e.g. "1.1", "1.2", "6.1", "24.2.1").
+- DO NOT report table cell rows or individual specification items.
+- DO NOT report numbered body paragraphs, pleading grounds, or lettered list items ("(a)", "(1)").
+- DO NOT report signature blocks, form fill-ins, table column headers ("S.No.", "Description"), or page marginalia.
+
+OUTPUT FORMAT:
+Return a JSON object conforming exactly to the output contract:
+{
+  "headings": [
+    {
+      "heading_text": "verbatim title as printed",
+      "start_page": <page_num>,
+      "start_line_hint": null,
+      "end_page": null,
+      "still_open_at_chunk_end": true,
+      "parent_ref": null,
+      "level": 1,
+      "family_hint": null,
+      "number_hint": null
+    }
+  ],
+  "notes": ""
+}
 """
 
 
@@ -639,6 +704,112 @@ def plan_chunks(
     return chunks
 
 
+_CLAUSE_MARKER_RE = re.compile(r"^\s*\d+(?:\.\d+)+\.?", re.MULTILINE)
+
+
+def classify_page_density(text: str) -> str:
+    """Fast, lightweight pre-scanner classifying a page's clause/table density."""
+    if not text:
+        return "NARRATIVE"
+    table_rows = text.count("<tr>") + text.count("|---")
+    clause_markers = len(_CLAUSE_MARKER_RE.findall(text))
+    if table_rows >= 6 or clause_markers >= 8:
+        return "DENSE_TABLE"
+    if table_rows >= 3 or clause_markers >= 4:
+        return "MODERATE"
+    return "NARRATIVE"
+
+
+def plan_adaptive_chunks(
+    pages: List[PageInput],
+    max_pages: int = None,
+    max_chars: int = None,
+    overlap_pages: int = 0,
+    dense_page_limit: int = 2,
+    dense_chars_max: int = 16000,
+    dense_row_limit: int = 20,
+) -> List[ChunkPlan]:
+    """Density-aware adaptive chunk planner:
+    - Automatically classifies pages as DENSE_TABLE, MODERATE, or NARRATIVE.
+    - Flushes chunk immediately upon transition between NARRATIVE and DENSE_TABLE (Refinement 1).
+    - Clamps DENSE_TABLE chunks to dense_page_limit (default 2 pages) and dense_row_limit.
+    - Preserves large max_pages (default 15-20) for standard NARRATIVE sections.
+    """
+    max_pages = max_pages or config.AI_INDEX_CHUNK_PAGES
+    max_chars = max_chars or config.AI_INDEX_CHUNK_CHARS_MAX
+    overlap_pages = min(overlap_pages, max(max_pages - 1, 0))
+
+    chunks: List[ChunkPlan] = []
+    current: List[PageInput] = []
+    current_chars = 0
+    current_truncated: List[int] = []
+    current_density: Optional[str] = None
+    current_rows = 0
+    new_count = 0
+
+    def flush():
+        nonlocal current, current_chars, current_truncated, current_density, current_rows, new_count
+        if not current or new_count == 0:
+            return
+        chunks.append(ChunkPlan(pages=current, truncated_pages=current_truncated, total_chars=current_chars))
+        if overlap_pages > 0 and len(current) > 0:
+            carried = current[-overlap_pages:]
+            carried_page_nums = {p.page_num for p in carried}
+            carried_truncated = [pn for pn in current_truncated if pn in carried_page_nums]
+            current = list(carried)
+            current_truncated = list(carried_truncated)
+            current_chars = sum(len(p.text) for p in carried)
+            current_density = classify_page_density(carried[-1].text) if carried else None
+            current_rows = sum((p.text.count("<tr>") + p.text.count("|---")) for p in carried)
+        else:
+            current, current_chars, current_truncated = [], 0, []
+            current_density = None
+            current_rows = 0
+        new_count = 0
+
+    for p in pages:
+        text = p.text or ""
+        page = PageInput(page_num=p.page_num, text=text)
+        page_density = classify_page_density(text)
+        page_table_rows = text.count("<tr>") + text.count("|---")
+        page_clause_markers = len(_CLAUSE_MARKER_RE.findall(text))
+        effective_rows = max(page_table_rows, page_clause_markers)
+
+        # Transition Hysteresis (Refinement 1): flush when crossing DENSE_TABLE boundary
+        if current:
+            density_transition = (
+                (current_density == "DENSE_TABLE" and page_density != "DENSE_TABLE")
+                or (current_density != "DENSE_TABLE" and page_density == "DENSE_TABLE")
+            )
+            if density_transition:
+                flush()
+
+        # Capacity Limits based on active density
+        if current:
+            if current_density == "DENSE_TABLE":
+                if (
+                    len(current) >= dense_page_limit
+                    or current_chars + len(text) > dense_chars_max
+                    or current_rows + effective_rows > dense_row_limit
+                ):
+                    flush()
+            elif current_density == "MODERATE":
+                if len(current) >= 5 or current_chars + len(text) > 24000:
+                    flush()
+            else:  # NARRATIVE
+                if len(current) >= max_pages or current_chars + len(text) > max_chars:
+                    flush()
+
+        current.append(page)
+        current_chars += len(text)
+        current_rows += effective_rows
+        current_density = page_density
+        new_count += 1
+
+    flush()
+    return chunks
+
+
 @dataclass
 class CarryContext:
     """What the stitching layer hands back in from the previous chunk's
@@ -724,28 +895,58 @@ def _render_rule_prior(
     return text
 
 
+def _render_macro_context(macro_ctx: Optional[dict]) -> str:
+    if not macro_ctx:
+        return ""
+    root = macro_ctx.get("root_container")
+    parent = macro_ctx.get("parent_clause")
+    lines = ["# ACTIVE DOCUMENT DIVISION (FROM MACRO SKELETON)"]
+    lines.append("You are currently analyzing pages inside:")
+    if root:
+        lines.append(f'- Root Division: "{root}" (Level 1)')
+    if parent:
+        lines.append(f'- Active Section: "{parent}"')
+    lines.append(
+        "\nGUIDELINE: Report all clauses and sub-clauses belonging to this division.\n"
+        "NOTE (IMPORTANT): Active division context is a default guideline. If this page range "
+        "explicitly begins a NEW major section, chapter, or annexure (e.g. 'SECTION III' or 'ANNEXURE-XI'), "
+        "report it as a top-level heading ('level': 1, 'parent_ref': null) rather than nesting it under the previous division."
+    )
+    return "\n".join(lines)
+
+
 def build_structure_prompt(
     chunk: ChunkPlan, *, carry_context: Optional[CarryContext] = None, document_hint: str = "",
     include_pleading_points: bool = False,
     rule_prior: Optional[List[dict]] = None,
     review_rule_prior: bool = False,
+    is_macro_pass: bool = False,
+    macro_context: Optional[dict] = None,
 ) -> "tuple[str, str]":
-    system_prompt = STRUCTURE_SYSTEM_PROMPT
-    if include_pleading_points:
-        system_prompt = system_prompt + "\n\n" + PLEADING_POINTS_SECTION
-    if review_rule_prior:
-        system_prompt = system_prompt + "\n\n" + RULE_PRIOR_SECTION
+    if is_macro_pass:
+        system_prompt = MACRO_SYSTEM_PROMPT
+    else:
+        system_prompt = STRUCTURE_SYSTEM_PROMPT
+        if include_pleading_points:
+            system_prompt = system_prompt + "\n\n" + PLEADING_POINTS_SECTION
+        if review_rule_prior:
+            system_prompt = system_prompt + "\n\n" + RULE_PRIOR_SECTION
 
     parts = []
     page_nums = chunk.page_nums
     parts.append(f"# PAGE RANGE\nThis chunk contains pages {page_nums[0]}-{page_nums[-1]}. "
                  f"Valid values for \"start_page\"/\"end_page\": {json.dumps(page_nums)}.")
 
+    if not is_macro_pass and macro_context:
+        macro_block = _render_macro_context(macro_context)
+        if macro_block:
+            parts.append(macro_block)
+
     carry_block = _render_carry_in(carry_context)
     if carry_block:
         parts.append(carry_block)
 
-    if review_rule_prior and rule_prior:
+    if review_rule_prior and rule_prior and not is_macro_pass:
         prior_block = _render_rule_prior(rule_prior)
         if prior_block:
             parts.append(prior_block)
@@ -758,7 +959,7 @@ def build_structure_prompt(
         page_blocks.append(f"{PAGE_OPEN.format(n=p.page_num)}\n{p.text}\n{PAGE_CLOSE.format(n=p.page_num)}")
     parts.append("# PAGES\n" + "\n".join(page_blocks))
 
-    if review_rule_prior:
+    if review_rule_prior and not is_macro_pass:
         parts.append(STRUCTURE_OUTPUT_CONTRACT_WITH_PRIOR)
     else:
         parts.append(STRUCTURE_OUTPUT_CONTRACT)

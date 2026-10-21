@@ -57,7 +57,7 @@ describe('DualPdfCompare component', () => {
     expect(onSelect).toHaveBeenCalledWith(1);
   });
 
-  it('toggles sync zoom state', () => {
+  it('has no "Sync Zoom" control — it never actually synced the two panes\' zoom, so it was removed rather than fixed', () => {
     render(
       <DualPdfCompare
         pdfSrc="fake-src"
@@ -67,10 +67,6 @@ describe('DualPdfCompare component', () => {
       />
     );
 
-    const syncBtn = screen.getByTestId('sync-zoom-btn');
-    expect(syncBtn).toHaveTextContent('Sync Zoom: OFF');
-
-    fireEvent.click(syncBtn);
-    expect(syncBtn).toHaveTextContent('Sync Zoom: ON');
+    expect(screen.queryByTestId('sync-zoom-btn')).not.toBeInTheDocument();
   });
 });

@@ -357,7 +357,7 @@ function DragHandle({ id, testId }) {
   );
 }
 
-function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, onJumpContainer, rangeIndex, activePathIds, currentNodeId, onEditItem, onDeleteItem, onAddChild, collapseSignal, dragExpandIds }) {
+function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, onJumpContainer, rangeIndex, activePathIds, currentNodeId, onEditItem, onDeleteItem, onAddChild, collapseSignal, expandSignal, dragExpandIds }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const isCurrent = node.id === currentNodeId;
   const headerRef = useRef(null);
@@ -375,13 +375,18 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePathIds, dragExpandIds]);
 
-  // "Collapse all" — collapseSignal is a counter bumped by the toolbar
-  // button; any change (not just a first truthy value) means "collapse
+  // "Collapse all" / "Expand all" — each is a counter bumped by its own
+  // toolbar button; any change (not just a first truthy value) means "do it
   // now," including depth-0 nodes that default open.
   useEffect(() => {
     if (collapseSignal) setExpanded(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collapseSignal]);
+
+  useEffect(() => {
+    if (expandSignal) setExpanded(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandSignal]);
 
   // Scrolls the current node into view whenever it newly becomes current —
   // not on every render, and not for any other node.
@@ -566,6 +571,7 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
               onDeleteItem={onDeleteItem}
               onAddChild={onAddChild}
               collapseSignal={collapseSignal}
+              expandSignal={expandSignal}
               dragExpandIds={dragExpandIds}
             />
           ))}
@@ -668,8 +674,9 @@ export default function StructureTree({
     useSensor(KeyboardSensor),
   );
 
-  // "Collapse all" toolbar button — see TreeNode's matching useEffect.
+  // "Collapse all"/"Expand all" toolbar buttons — see TreeNode's matching useEffects.
   const [collapseSignal, setCollapseSignal] = useState(0);
+  const [expandSignal, setExpandSignal] = useState(0);
 
   // Hover-to-auto-expand during a drag, plus a short toast for a
   // rejected/no-op drop — see handleDragOver/handleDragEnd below.
@@ -827,6 +834,14 @@ export default function StructureTree({
         <button
           type="button"
           className="btn btn-sm btn-secondary"
+          onClick={() => setExpandSignal((s) => s + 1)}
+          data-testid="structure-expand-all"
+        >
+          <i className="fa-solid fa-angles-down" /> Expand all
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm btn-secondary"
           onClick={() => setCollapseSignal((s) => s + 1)}
           data-testid="structure-collapse-all"
         >
@@ -861,6 +876,7 @@ export default function StructureTree({
               onDeleteItem={onDeleteItem}
               onAddChild={onAddItem ? handleAddChildClick : undefined}
               collapseSignal={collapseSignal}
+              expandSignal={expandSignal}
               dragExpandIds={dragExpandIds}
             />
           ))}

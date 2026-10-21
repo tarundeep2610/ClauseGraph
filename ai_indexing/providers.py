@@ -93,7 +93,7 @@ def _require_https_or_local(base_url: str) -> None:
         import ipaddress
         try:
             ip = ipaddress.ip_address(host)
-            if ip.is_private or ip.is_loopback:
+            if ip.is_private or ip.is_loopback or (ip in ipaddress.ip_network("100.64.0.0/10")):
                 return
         except ValueError:
             if "." not in host:  # Docker compose internal service name (e.g. "ollama", "gpu-ocr-api")

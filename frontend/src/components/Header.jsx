@@ -19,12 +19,15 @@ export default function Header({ onOpenSettings }) {
           style={{ textDecoration: 'none' }}
           title="Return to Library Home"
         >
-          <span className="app-header-logo" aria-hidden="true">
+          <span className="app-header-logo" data-testid="app-header-logo" aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="5" y="3" width="14" height="18" rx="2" />
-              <line x1="8.5" y1="8" x2="15.5" y2="8" />
-              <line x1="8.5" y1="12" x2="15.5" y2="12" />
-              <line x1="8.5" y1="16" x2="13" y2="16" />
+              <rect x="4" y="3" width="14" height="18" rx="2" />
+              <line x1="9" y1="9" x2="14" y2="8" />
+              <line x1="14" y1="8" x2="12" y2="14" />
+              <line x1="9" y1="9" x2="12" y2="14" />
+              <circle cx="9" cy="9" r="1.1" fill="#ffffff" stroke="none" />
+              <circle cx="14" cy="8" r="1.1" fill="#ffffff" stroke="none" />
+              <circle cx="12" cy="14" r="1.1" fill="#ffffff" stroke="none" />
             </svg>
           </span>
           {APP_NAME}

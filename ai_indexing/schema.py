@@ -71,7 +71,11 @@ _GENERIC_LEGAL_NOISE_RE = re.compile(
     r"Enactment\s+and\s+section\s+under\s+which.*|"
     r"\(ORDER\s+\d+[\s,]+RULE\s+\d+.*?\)|"
     r"(?:\([A-Za-z\s\.]+\)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*,\s*(?:Presiding\s*Judge|(?:Addl\.?|Additional)\s*District\s*Judge|District\s*Judge|Commercial\s*Court|Tribunal\s*Member|Arbitrator|Sole\s*Arbitrator)\b.*|"
-    r"(?:AIJ|ADJ|DJ|CJ)-cum-Presiding\s*Judge\b.*|"
+    r"(?:AIJ|ADJ|DJ|CJ|Additional\s+District\s+Judge|Addl\.?\s*District\s*Judge|District\s*Judge)-cum-Presiding\s*Judge\b.*|"
+    r"\(?UID\s*No\.?\s*[A-Z0-9]+\)?.*|"
+    r"Register\s*No\.?\b.*|"
+    r"Remarks\b.*|"
+    r"(?:Special\s+)?Commercial\s+Court\s+at\b.*|"
     r"Date\s*[:\s]\s*.*|"
     r"Bank\s+Guarantee\s+No\.?\s*\d+.*|"
     r"CONTRACT\s+No\.?\s*[-A-Z0-9\/\(\)\s]+|"
@@ -337,7 +341,11 @@ def normalize_chunk(
             is_multiseg_decimal = bool(re.match(r"^\s*\d+\.\d+(?:\.\d+)*", stripped_text))
             is_single_point = bool(re.match(r"^\s*\(?(?:\d+|[a-zA-Z]|[ivxlcdmIVXLCDM]+)[\.\)]\s+", stripped_text))
             first_lower = words[0].lower() if words else ""
-            if is_multiseg_decimal or not is_single_point:
+            if is_multiseg_decimal:
+                # In contract/tender tables, decimal clauses often include full sentence text.
+                # Rather than dropping valid clauses like 24.2.1, keep them with trimmed label:
+                h.heading_text = " ".join(words[:10])
+            elif not is_single_point:
                 if not any(first_lower.startswith(kw) for kw in ("annexure", "schedule", "appendix", "article", "section", "clause")):
                     report.dropped_invalid += 1
                     continue

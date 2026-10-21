@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Served from public/pdfjs/ (copied from node_modules/pdfjs-dist at
@@ -39,15 +39,39 @@ const WASM_URL = '/pdfjs/wasm/';
 // Zoom is relative to "fit width" (zoomLevel === 1), not an absolute pdf.js
 // scale — see the project plan's investigation into why the viewer looked
 // blurry/unreadable and zooming did nothing visible.
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 3;
-const ZOOM_STEP = 0.15;
+export const ZOOM_MIN = 0.5;
+export const ZOOM_MAX = 3;
+export const ZOOM_STEP = 0.15;
 
-export default function PdfCanvasViewer({ pdfSrc, pageNum, totalPages, onPageChange, showPageNav = true }) {
+// Shared with the OCR editor pane's own zoom (ViewerPanel.jsx) so both panes
+// use the same bounds/step and "feel" identical to zoom, per the UX ask that
+// editor zoom behave just like PDF zoom.
+export function clampZoom(z) {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+}
+
+// forwardRef + useImperativeHandle expose {zoomIn, zoomOut, resetZoom} so a
+// parent (ViewerPanel, for its floating zoom HUD) can drive this component's
+// zoom from outside without lifting the zoom state itself up — the
+// reset-on-new-document and persist-across-page-navigation behaviors below
+// stay exactly as they are, entirely internal. `onZoomLevelChange` is purely
+// informational (lets the parent mirror the current percentage for display);
+// it never feeds back in. Both are optional — omitting them keeps this
+// exactly as before for every other caller (the non-Studio dual-viewport
+// panes, which have no external zoom UI of their own).
+const PdfCanvasViewer = forwardRef(function PdfCanvasViewer(
+  { pdfSrc, pageNum, totalPages, onPageChange, showPageNav = true, showZoomControls = true, onZoomLevelChange },
+  ref
+) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const docRef = useRef(null);
   const renderTaskRef = useRef(null);
+  // The current page's natural (scale-1) viewport, set alongside the fit-
+  // width `scale` computation below — lets fitPage() read the page's real
+  // width/height synchronously (no second async loadedDoc.getPage() call)
+  // to compute a zoomLevel that fits BOTH dimensions, not just width.
+  const baseViewportRef = useRef(null);
   const [loadedDoc, setLoadedDoc] = useState(null);
   const [error, setError] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -118,6 +142,7 @@ export default function PdfCanvasViewer({ pdfSrc, pageNum, totalPages, onPageCha
 
       const containerWidth = containerRef.current?.clientWidth || 800;
       const baseViewport = page.getViewport({ scale: 1 });
+      baseViewportRef.current = baseViewport;
       // containerRef is the scroll viewport (overflow: auto), not the
       // content — its clientWidth reflects the visible area regardless of
       // how large the canvas itself has grown from zooming, so this stays
@@ -180,10 +205,6 @@ export default function PdfCanvasViewer({ pdfSrc, pageNum, totalPages, onPageCha
     return () => el.removeEventListener('wheel', handleWheel);
   }, []);
 
-  function clampZoom(z) {
-    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
-  }
-
   function zoomIn() {
     setZoomLevel((z) => clampZoom(z + ZOOM_STEP));
   }
@@ -195,6 +216,27 @@ export default function PdfCanvasViewer({ pdfSrc, pageNum, totalPages, onPageCha
   function resetZoom() {
     setZoomLevel(1);
   }
+
+  // Unlike resetZoom (fit-WIDTH, zoomLevel=1 — unchanged, still what the
+  // inline/HUD "100%" button does), this fits the WHOLE page — both
+  // dimensions — by finding the zoomLevel multiplier that makes the
+  // existing fit-width formula land on min(widthFitRatio, heightFitRatio)
+  // instead of always widthFitRatio. A no-op if nothing has rendered yet.
+  function fitPage() {
+    const container = containerRef.current;
+    const base = baseViewportRef.current;
+    if (!container || !base) return;
+    const widthFitRatio = (container.clientWidth || 800) / base.width;
+    const heightFitRatio = (container.clientHeight || 600) / base.height;
+    const targetRatio = Math.min(widthFitRatio, heightFitRatio);
+    setZoomLevel(clampZoom(targetRatio / widthFitRatio));
+  }
+
+  useEffect(() => {
+    if (onZoomLevelChange) onZoomLevelChange(zoomLevel);
+  }, [zoomLevel, onZoomLevelChange]);
+
+  useImperativeHandle(ref, () => ({ zoomIn, zoomOut, resetZoom, fitPage }));
 
   function goToPage(n) {
     const clamped = Math.min(Math.max(n, 1), effectiveTotalPages || n);
@@ -235,6 +277,7 @@ export default function PdfCanvasViewer({ pdfSrc, pageNum, totalPages, onPageCha
             </button>
           </>
         )}
+        {showZoomControls && (
         <span className="pdf-canvas-zoom-group">
           <button
             className="btn btn-sm btn-secondary"
@@ -263,7 +306,10 @@ export default function PdfCanvasViewer({ pdfSrc, pageNum, totalPages, onPageCha
             <i className="fa-solid fa-magnifying-glass-plus" />
           </button>
         </span>
+        )}
       </div>
     </div>
   );
-}
+});
+
+export default PdfCanvasViewer;

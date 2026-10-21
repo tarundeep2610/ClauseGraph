@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 let mockIsAdmin = true;
 vi.mock('../utils/AuthContext', () => ({
@@ -50,6 +50,10 @@ const baseProps = {
   onTestAiConnection: vi.fn(),
 };
 
+function goTo(category) {
+  fireEvent.click(screen.getByTestId(`settings-nav-${category}`));
+}
+
 describe('SettingsModal — visibility', () => {
   it('renders nothing when closed', () => {
     mockIsAdmin = true;
@@ -64,25 +68,64 @@ describe('SettingsModal — visibility', () => {
   });
 });
 
-describe('SettingsModal — role gating', () => {
-  it('shows theme toggle for everyone, and Output/Session/Engine sections only for admin', () => {
+describe('SettingsModal — categorized nav (Adobe-style preferences layout)', () => {
+  it('defaults to the Appearance category on open, with no nav click needed', () => {
+    mockIsAdmin = true;
+    render(<SettingsModal {...baseProps} />);
+    expect(screen.getByTestId('settings-nav-appearance')).toHaveClass('active');
+    expect(screen.getByTestId('theme-toggle-btn')).toBeInTheDocument();
+  });
+
+  it('lists all 7 categories for an admin, and only Appearance for a non-admin', () => {
+    mockIsAdmin = true;
+    const { unmount } = render(<SettingsModal {...baseProps} />);
+    for (const id of ['appearance', 'session', 'engine', 'prompt', 'output', 'unlimited', 'ai-indexing']) {
+      expect(screen.getByTestId(`settings-nav-${id}`)).toBeInTheDocument();
+    }
+    unmount();
+
+    mockIsAdmin = false;
+    render(<SettingsModal {...baseProps} />);
+    expect(screen.getByTestId('settings-nav-appearance')).toBeInTheDocument();
+    for (const id of ['session', 'engine', 'prompt', 'output', 'unlimited', 'ai-indexing']) {
+      expect(screen.queryByTestId(`settings-nav-${id}`)).not.toBeInTheDocument();
+    }
+  });
+
+  it('clicking a nav category swaps the visible panel — only the active category\'s fields are in the DOM', () => {
     mockIsAdmin = true;
     render(<SettingsModal {...baseProps} />);
     expect(screen.getByTestId('theme-toggle-btn')).toBeInTheDocument();
-    expect(screen.getByText('Output')).toBeInTheDocument();
-    expect(screen.getByText('Session & GPU')).toBeInTheDocument();
+    expect(screen.queryByTestId('engine-select')).not.toBeInTheDocument();
+
+    goTo('engine');
+    expect(screen.getByTestId('settings-nav-engine')).toHaveClass('active');
+    expect(screen.getByTestId('engine-select')).toBeInTheDocument();
+    expect(screen.queryByTestId('theme-toggle-btn')).not.toBeInTheDocument();
+  });
+});
+
+describe('SettingsModal — role gating', () => {
+  it('shows theme toggle for everyone, and Output/Session/Engine nav items + Prompt Save/Reset only for admin', () => {
+    mockIsAdmin = true;
+    render(<SettingsModal {...baseProps} />);
+    expect(screen.getByTestId('theme-toggle-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('settings-nav-output')).toBeInTheDocument();
+    expect(screen.getByTestId('settings-nav-session')).toBeInTheDocument();
+
+    goTo('prompt');
     expect(screen.getByText('Save')).toBeInTheDocument();
     expect(screen.getByText('Reset')).toBeInTheDocument();
   });
 
-  it('shows only the theme toggle for a non-admin user — everything else (including idle/GPU) is hidden', () => {
+  it('shows only the theme toggle for a non-admin user — every admin-only category nav item (including Session/GPU) is hidden', () => {
     mockIsAdmin = false;
     render(<SettingsModal {...baseProps} />);
     expect(screen.getByTestId('theme-toggle-btn')).toBeInTheDocument();
-    expect(screen.queryByText('Output')).not.toBeInTheDocument();
-    expect(screen.queryByText('Session & GPU')).not.toBeInTheDocument();
-    expect(screen.queryByText('Engine')).not.toBeInTheDocument();
-    expect(screen.queryByText('Instructions / Prompt')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('settings-nav-output')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('settings-nav-session')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('settings-nav-engine')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('settings-nav-prompt')).not.toBeInTheDocument();
     expect(screen.queryByText('Save')).not.toBeInTheDocument();
     expect(screen.queryByText('Reset')).not.toBeInTheDocument();
   });
@@ -90,6 +133,7 @@ describe('SettingsModal — role gating', () => {
   it('shows GLM params only when engine=glm, and Unlimited params only when engine=unlimited', () => {
     mockIsAdmin = true;
     const { rerender } = render(<SettingsModal {...baseProps} form={{ ...baseProps.form, engine: 'glm' }} />);
+    goTo('engine');
     expect(screen.getByTestId('glm-params')).toBeInTheDocument();
     expect(screen.queryByTestId('unlimited-params')).not.toBeInTheDocument();
 
@@ -111,6 +155,7 @@ describe('SettingsModal — batch mode & escalation controls', () => {
   it('shows batch-mode controls only for the unlimited engine, not glm', () => {
     mockIsAdmin = true;
     const { rerender } = render(<SettingsModal {...baseProps} form={{ ...baseProps.form, engine: 'unlimited' }} />);
+    goTo('engine');
     expect(screen.getByTestId('batch-mode-params')).toBeInTheDocument();
 
     rerender(<SettingsModal {...baseProps} form={{ ...baseProps.form, engine: 'glm' }} />);
@@ -122,6 +167,7 @@ describe('SettingsModal — batch mode & escalation controls', () => {
     const { rerender } = render(
       <SettingsModal {...baseProps} form={{ ...baseProps.form, engine: 'unlimited', processingMode: 'single' }} />
     );
+    goTo('engine');
     expect(screen.queryByTestId('batch-size-input')).not.toBeInTheDocument();
 
     rerender(
@@ -134,6 +180,7 @@ describe('SettingsModal — batch mode & escalation controls', () => {
     mockIsAdmin = true;
     const updateForm = vi.fn();
     render(<SettingsModal {...baseProps} updateForm={updateForm} />);
+    goTo('engine');
     const checkbox = screen.getByTestId('escalate-before-flagging-checkbox');
     expect(checkbox.checked).toBe(true);
     checkbox.click();
@@ -145,6 +192,7 @@ describe('SettingsModal — batch mode & escalation controls', () => {
     const { rerender } = render(
       <SettingsModal {...baseProps} form={{ ...baseProps.form, engine: 'unlimited', processingMode: 'single' }} />
     );
+    goTo('engine');
     expect(screen.queryByTestId('enable-overlap-checkbox')).not.toBeInTheDocument();
 
     rerender(
@@ -159,6 +207,7 @@ describe('SettingsModal — Unlimited-OCR toggles', () => {
     mockIsAdmin = true;
     const onSaveLongPrompts = vi.fn();
     render(<SettingsModal {...baseProps} onSaveLongPrompts={onSaveLongPrompts} />);
+    goTo('unlimited');
     const checkbox = screen.getByTestId('enable-long-prompts-checkbox');
     expect(checkbox.checked).toBe(false);
     checkbox.click();
@@ -168,6 +217,7 @@ describe('SettingsModal — Unlimited-OCR toggles', () => {
   it('grounding toggle is hidden for a non-admin user', () => {
     mockIsAdmin = false;
     render(<SettingsModal {...baseProps} />);
+    expect(screen.queryByTestId('settings-nav-unlimited')).not.toBeInTheDocument();
     expect(screen.queryByTestId('enable-grounding-checkbox')).not.toBeInTheDocument();
   });
 });
@@ -183,6 +233,7 @@ describe('SettingsModal — AI-indexing review-rule-prior & chunk-overlap knobs'
   it('both controls are absent when AI indexing itself is off', () => {
     mockIsAdmin = true;
     render(<SettingsModal {...baseProps} />);
+    goTo('ai-indexing');
     expect(screen.queryByTestId('enable-ai-review-rule-prior-checkbox')).not.toBeInTheDocument();
     expect(screen.queryByText('Chunk overlap (pages)')).not.toBeInTheDocument();
   });
@@ -190,6 +241,7 @@ describe('SettingsModal — AI-indexing review-rule-prior & chunk-overlap knobs'
   it('chunk-overlap input defaults to 0 and saves the typed value on blur', () => {
     mockIsAdmin = true;
     render(<SettingsModal {...aiIndexingOnProps} />);
+    goTo('ai-indexing');
     const input = screen.getByTestId('ai-chunk-overlap-input');
     expect(input.value).toBe('0');
     input.focus();
@@ -203,18 +255,21 @@ describe('SettingsModal — idle/GPU status', () => {
   it('shows the idle pill and GPU pill for admin when gpuStatus has resolved', () => {
     mockIsAdmin = true;
     render(<SettingsModal {...baseProps} gpuStatus={{ gpu_ocr_service_connection: 'online', gpu_model_loaded: true }} />);
+    goTo('session');
     expect(screen.getByTestId('gpu-status-pill')).toHaveTextContent('GPU: Ready');
   });
 
   it('renders nothing before the first health poll resolves (gpuStatus still null)', () => {
     mockIsAdmin = true;
     render(<SettingsModal {...baseProps} gpuStatus={null} />);
+    goTo('session');
     expect(screen.queryByTestId('gpu-status-pill')).not.toBeInTheDocument();
   });
 
   it('renders "GPU: Offline" when the GPU service connection is unreachable', () => {
     mockIsAdmin = true;
     render(<SettingsModal {...baseProps} gpuStatus={{ gpu_ocr_service_connection: 'unreachable', gpu_model_loaded: false }} />);
+    goTo('session');
     const pill = screen.getByTestId('gpu-status-pill');
     expect(pill).toHaveTextContent('GPU: Offline');
     expect(pill.className).toContain('offline');
@@ -223,6 +278,7 @@ describe('SettingsModal — idle/GPU status', () => {
   it('renders "GPU: Idle" when online but the model is not loaded', () => {
     mockIsAdmin = true;
     render(<SettingsModal {...baseProps} gpuStatus={{ gpu_ocr_service_connection: 'online', gpu_model_loaded: false }} />);
+    goTo('session');
     const pill = screen.getByTestId('gpu-status-pill');
     expect(pill).toHaveTextContent('GPU: Idle');
     expect(pill.className).toContain('warn');
@@ -238,6 +294,7 @@ describe('SettingsModal — idle/GPU status', () => {
     mockIsAdmin = true;
     const onExit = vi.fn();
     render(<SettingsModal {...baseProps} onExit={onExit} />);
+    goTo('session');
     document.getElementById('exitBtn').click();
     expect(onExit).toHaveBeenCalled();
   });

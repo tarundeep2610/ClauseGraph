@@ -3,7 +3,7 @@ import { useAuth } from '../utils/AuthContext';
 import { getPageMentions } from '../utils/markdown';
 import RetryPagesModal from './RetryPagesModal';
 import RebuildIndexModal from './RebuildIndexModal';
-import PdfCanvasViewer from './PdfCanvasViewer';
+import PdfCanvasViewer, { clampZoom, ZOOM_STEP } from './PdfCanvasViewer';
 import PageNavBar from './PageNavBar';
 import StructureReadingModal from './StructureReadingModal';
 import StructureItemModal from './StructureItemModal';
@@ -89,7 +89,6 @@ export default function ViewerPanel({
   onEditStructureItem,
   onDeleteStructureItem,
   onMoveStructureItem,
-  onOpenSettings,
 }) {
   const { isAdmin } = useAuth();
   const showPdf = viewMode === 'split' || viewMode === 'pdf';
@@ -160,6 +159,63 @@ export default function ViewerPanel({
   const [searchQuery, setSearchQuery] = useState('');
   const [bothPanesSearch, setBothPanesSearch] = useState(true);
   const [searchMatchIndex, setSearchMatchIndex] = useState(0);
+
+  // Studio zoom: the PDF pane keeps owning its own zoom state internally
+  // (PdfCanvasViewer) — pdfZoomLevel here only mirrors it for the floating
+  // HUD's display, driven back out via pdfViewerRef's imperative zoomIn/
+  // zoomOut/resetZoom. The editor pane has no state of its own to drive
+  // (WysiwygEditor is remounted per page via its `key`, so its zoom has to
+  // live up here to persist across page navigation, same as the PDF pane's).
+  const pdfViewerRef = useRef(null);
+  const [pdfZoomLevel, setPdfZoomLevel] = useState(1);
+  const [editorZoom, setEditorZoom] = useState(1);
+  // A plain useEffect keyed on [showResult, showPinnedPdf] previously backed
+  // this listener, but that div is conditionally rendered on hasSelection &&
+  // currentPageBlock too (absent during "Loading page N…"/"Scanning..."),
+  // and neither was in the dependency array — so on first mount (or any
+  // transient loading state), the effect read a null ref, bailed out, and
+  // never got another chance to attach once the real div showed up. A
+  // callback ref sidesteps this entirely: it fires exactly when the DOM node
+  // itself mounts/unmounts, for whatever reason, so the listener is always
+  // attached to whatever's actually on screen.
+  const editorWheelCleanupRef = useRef(null);
+  function setEditorPaneContentRef(el) {
+    resultContentRef.current = el;
+    editorWheelCleanupRef.current?.();
+    editorWheelCleanupRef.current = null;
+    if (!el) return;
+    function handleWheel(e) {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setEditorZoom((z) => clampZoom(z + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP)));
+    }
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    editorWheelCleanupRef.current = () => el.removeEventListener('wheel', handleWheel);
+  }
+
+  function handleEditorZoomIn() {
+    setEditorZoom((z) => clampZoom(z + ZOOM_STEP));
+  }
+  function handleEditorZoomOut() {
+    setEditorZoom((z) => clampZoom(z - ZOOM_STEP));
+  }
+  function handleEditorZoomReset() {
+    setEditorZoom(1);
+  }
+  function handleFitBoth() {
+    pdfViewerRef.current?.fitPage();
+    setSplitRatio(50);
+    // Mirrors PdfCanvasViewer's fitPage() for reflowable text: shrink the
+    // editor's font just enough that its content fits the pane without
+    // scrolling, instead of just resetting to 100% (which still needed
+    // scrolling whenever a page's OCR text was taller than the pane).
+    const contentEl = resultContentRef.current?.querySelector('.editor-content');
+    if (contentEl && contentEl.scrollHeight > contentEl.clientHeight) {
+      setEditorZoom((z) => clampZoom(z * (contentEl.clientHeight / contentEl.scrollHeight)));
+    } else {
+      setEditorZoom(1);
+    }
+  }
 
   useEffect(() => {
     if (initialReviewOpen) setReviewSidebarOpen(true);
@@ -459,7 +515,6 @@ export default function ViewerPanel({
           totalMatches={0}
           bothPanesSearch={bothPanesSearch}
           onBothPanesSearchChange={setBothPanesSearch}
-          onOpenSettings={onOpenSettings}
         />
       ) : (
         <div className="viewer-toolbar">
@@ -665,11 +720,14 @@ export default function ViewerPanel({
                           )}
                           <div style={{ flex: 1, minHeight: 0 }}>
                             <PdfCanvasViewer
+                              ref={pdfViewerRef}
                               pdfSrc={pdfSrc}
                               pageNum={currentPdfPage}
                               totalPages={jobDetails?.total_pages}
                               onPageChange={handlePdfPageChange}
                               showPageNav={false}
+                              showZoomControls={false}
+                              onZoomLevelChange={setPdfZoomLevel}
                             />
                           </div>
                         </>
@@ -702,7 +760,7 @@ export default function ViewerPanel({
                       <span style={{ fontSize: '0.73rem', color: progressColor }}>{progressLabel}</span>
                     </div>
                     {hasSelection && currentPageBlock ? (
-                      <div ref={resultContentRef} className="view-box-content markdown-body">
+                      <div ref={setEditorPaneContentRef} className="view-box-content markdown-body">
                         <div id={`page-block-${currentPageBlock.page}`} className="ocr-page-block" data-testid={`page-block-${currentPageBlock.page}`}>
                           <h3 style={{ display: 'flex', alignItems: 'center', margin: '0 0 8px' }}>
                             Page {currentPageBlock.page}
@@ -724,6 +782,7 @@ export default function ViewerPanel({
                             value={currentPageBlock.pageText}
                             onChange={(md) => onSavePageText && onSavePageText(currentPageBlock.page, md)}
                             onSaveStatusChange={setEditorSaveStatus}
+                            zoomLevel={editorZoom}
                           />
                         </div>
                       </div>
@@ -747,6 +806,15 @@ export default function ViewerPanel({
             viewMode={viewMode}
             onViewModeChange={(m) => { setViewMode(m); setPinnedPdfPage(null); }}
             isDualCompare={showPinnedPdf}
+            zoomLevel={pdfZoomLevel}
+            onZoomIn={() => pdfViewerRef.current?.zoomIn()}
+            onZoomOut={() => pdfViewerRef.current?.zoomOut()}
+            onZoomReset={() => pdfViewerRef.current?.resetZoom()}
+            editorZoomLevel={editorZoom}
+            onEditorZoomIn={handleEditorZoomIn}
+            onEditorZoomOut={handleEditorZoomOut}
+            onEditorZoomReset={handleEditorZoomReset}
+            onFitBoth={handleFitBoth}
           />
         </div>
       ) : (

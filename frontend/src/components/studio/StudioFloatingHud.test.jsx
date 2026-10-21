@@ -161,3 +161,119 @@ describe('StudioFloatingHud component', () => {
     expect(screen.queryByTestId('hud-reset-pos-btn')).not.toBeInTheDocument();
   });
 });
+
+describe('StudioFloatingHud — PDF (scan) zoom cluster', () => {
+  it('is absent when no zoom handlers are passed', () => {
+    render(<StudioFloatingHud currentPage={1} totalPages={10} />);
+    expect(screen.queryByTestId('hud-zoom-in')).not.toBeInTheDocument();
+  });
+
+  it('calls onZoomIn/onZoomOut/onZoomReset and shows the current percentage', () => {
+    const onZoomIn = vi.fn();
+    const onZoomOut = vi.fn();
+    const onZoomReset = vi.fn();
+    render(
+      <StudioFloatingHud
+        currentPage={1} totalPages={10}
+        zoomLevel={1.15} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onZoomReset={onZoomReset}
+      />
+    );
+    expect(screen.getByTestId('hud-zoom-reset')).toHaveTextContent('115%');
+    fireEvent.click(screen.getByTestId('hud-zoom-in'));
+    expect(onZoomIn).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByTestId('hud-zoom-out'));
+    expect(onZoomOut).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByTestId('hud-zoom-reset'));
+    expect(onZoomReset).toHaveBeenCalledOnce();
+  });
+
+  it('is hidden in dual-compare mode, even with handlers passed — the scan pane it would drive is unmounted then', () => {
+    render(
+      <StudioFloatingHud
+        currentPage={1} totalPages={10}
+        onZoomIn={vi.fn()} onZoomOut={vi.fn()} onZoomReset={vi.fn()}
+        isDualCompare
+      />
+    );
+    expect(screen.queryByTestId('hud-zoom-in')).not.toBeInTheDocument();
+  });
+});
+
+describe('StudioFloatingHud — editor zoom cluster', () => {
+  it('is absent when no editor zoom handlers are passed', () => {
+    render(<StudioFloatingHud currentPage={1} totalPages={10} />);
+    expect(screen.queryByTestId('hud-editor-zoom-in')).not.toBeInTheDocument();
+  });
+
+  it('calls onEditorZoomIn/onEditorZoomOut/onEditorZoomReset independently of the PDF zoom cluster', () => {
+    const onZoomIn = vi.fn();
+    const onEditorZoomIn = vi.fn();
+    const onEditorZoomOut = vi.fn();
+    const onEditorZoomReset = vi.fn();
+    render(
+      <StudioFloatingHud
+        currentPage={1} totalPages={10}
+        zoomLevel={1} onZoomIn={onZoomIn} onZoomOut={vi.fn()} onZoomReset={vi.fn()}
+        editorZoomLevel={1.3} onEditorZoomIn={onEditorZoomIn} onEditorZoomOut={onEditorZoomOut} onEditorZoomReset={onEditorZoomReset}
+      />
+    );
+    expect(screen.getByTestId('hud-editor-zoom-reset')).toHaveTextContent('130%');
+    fireEvent.click(screen.getByTestId('hud-editor-zoom-in'));
+    expect(onEditorZoomIn).toHaveBeenCalledOnce();
+    expect(onZoomIn).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('hud-editor-zoom-out'));
+    expect(onEditorZoomOut).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByTestId('hud-editor-zoom-reset'));
+    expect(onEditorZoomReset).toHaveBeenCalledOnce();
+  });
+
+  it('is hidden in dual-compare mode — the editor pane it would drive isn\'t on screen then', () => {
+    render(
+      <StudioFloatingHud
+        currentPage={1} totalPages={10}
+        onEditorZoomIn={vi.fn()} onEditorZoomOut={vi.fn()} onEditorZoomReset={vi.fn()}
+        isDualCompare
+      />
+    );
+    expect(screen.queryByTestId('hud-editor-zoom-in')).not.toBeInTheDocument();
+  });
+});
+
+describe('StudioFloatingHud — Fit Both', () => {
+  it('is absent when onFitBoth is not passed', () => {
+    render(<StudioFloatingHud currentPage={1} totalPages={10} />);
+    expect(screen.queryByTestId('hud-fit-both-btn')).not.toBeInTheDocument();
+  });
+
+  it('calls onFitBoth when clicked', () => {
+    const onFitBoth = vi.fn();
+    render(<StudioFloatingHud currentPage={1} totalPages={10} onFitBoth={onFitBoth} />);
+    fireEvent.click(screen.getByTestId('hud-fit-both-btn'));
+    expect(onFitBoth).toHaveBeenCalledOnce();
+  });
+
+  it('is hidden in dual-compare mode — "fit both panes" doesn\'t make sense when one of them is a second PDF pane, not the editor', () => {
+    render(<StudioFloatingHud currentPage={1} totalPages={10} onFitBoth={vi.fn()} isDualCompare />);
+    expect(screen.queryByTestId('hud-fit-both-btn')).not.toBeInTheDocument();
+  });
+});
+
+describe('StudioFloatingHud — zoom controls reappear once dual-compare closes', () => {
+  it('shows all three zoom controls again when isDualCompare goes back to false', () => {
+    const props = {
+      currentPage: 1, totalPages: 10,
+      onZoomIn: vi.fn(), onZoomOut: vi.fn(),
+      onEditorZoomIn: vi.fn(), onEditorZoomOut: vi.fn(),
+      onFitBoth: vi.fn(),
+    };
+    const { rerender } = render(<StudioFloatingHud {...props} isDualCompare />);
+    expect(screen.queryByTestId('hud-zoom-in')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('hud-editor-zoom-in')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('hud-fit-both-btn')).not.toBeInTheDocument();
+
+    rerender(<StudioFloatingHud {...props} isDualCompare={false} />);
+    expect(screen.getByTestId('hud-zoom-in')).toBeInTheDocument();
+    expect(screen.getByTestId('hud-editor-zoom-in')).toBeInTheDocument();
+    expect(screen.getByTestId('hud-fit-both-btn')).toBeInTheDocument();
+  });
+});

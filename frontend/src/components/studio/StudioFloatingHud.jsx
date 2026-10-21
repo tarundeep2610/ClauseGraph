@@ -10,6 +10,11 @@ export default function StudioFloatingHud({
   onZoomIn,
   onZoomOut,
   onZoomReset,
+  editorZoomLevel = 1,
+  onEditorZoomIn,
+  onEditorZoomOut,
+  onEditorZoomReset,
+  onFitBoth,
   isDualCompare = false,
 }) {
   const [pageInput, setPageInput] = useState(String(currentPage));
@@ -250,10 +255,11 @@ export default function StudioFloatingHud({
         </div>
       )}
 
-      {!minimized && onZoomIn && onZoomOut && (
+      {!minimized && onZoomIn && onZoomOut && !isDualCompare && (
         <>
           <div className="hud-divider hud-divider-opt" />
-          <div className="hud-cluster hud-zoom-cluster">
+          <div className="hud-cluster hud-zoom-cluster" title="Scan zoom" aria-label="Scan zoom">
+            <i className="fa-regular fa-file-pdf hud-zoom-cluster-icon" aria-hidden="true" />
             <button
               type="button"
               className="hud-btn"
@@ -284,6 +290,59 @@ export default function StudioFloatingHud({
               <i className="fa-solid fa-plus" />
             </button>
           </div>
+        </>
+      )}
+
+      {!minimized && onEditorZoomIn && onEditorZoomOut && !isDualCompare && (
+        <>
+          <div className="hud-divider hud-divider-opt" />
+          <div className="hud-cluster hud-zoom-cluster" title="Editor zoom" aria-label="Editor zoom">
+            <i className="fa-solid fa-file-lines hud-zoom-cluster-icon" aria-hidden="true" />
+            <button
+              type="button"
+              className="hud-btn"
+              onClick={onEditorZoomOut}
+              title="Zoom editor out"
+              data-testid="hud-editor-zoom-out"
+            >
+              <i className="fa-solid fa-minus" />
+            </button>
+            {onEditorZoomReset && (
+              <button
+                type="button"
+                className="hud-btn"
+                onClick={onEditorZoomReset}
+                title="Reset editor zoom"
+                data-testid="hud-editor-zoom-reset"
+              >
+                {Math.round((editorZoomLevel || 1) * 100)}%
+              </button>
+            )}
+            <button
+              type="button"
+              className="hud-btn"
+              onClick={onEditorZoomIn}
+              title="Zoom editor in"
+              data-testid="hud-editor-zoom-in"
+            >
+              <i className="fa-solid fa-plus" />
+            </button>
+          </div>
+        </>
+      )}
+
+      {!minimized && onFitBoth && !isDualCompare && (
+        <>
+          <div className="hud-divider hud-divider-opt" />
+          <button
+            type="button"
+            className="hud-btn"
+            onClick={onFitBoth}
+            title="Fit both panes to the whole page at once"
+            data-testid="hud-fit-both-btn"
+          >
+            <i className="fa-solid fa-expand" />
+          </button>
         </>
       )}
 

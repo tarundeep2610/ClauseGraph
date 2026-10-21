@@ -1,9 +1,9 @@
 import { useState } from 'react';
 
 const FORMATS = [
-  { value: 'docx', label: '.docx', sub: 'Microsoft Word', icon: 'fa-file-word', recommended: true },
+  { value: 'md', label: '.md', sub: 'Markdown', icon: 'fa-file-lines' },
   { value: 'pdf', label: '.pdf', sub: 'Print-ready', icon: 'fa-file-pdf' },
-  { value: 'md', label: '.md', sub: 'GitHub Markdown', icon: 'fa-file-lines' },
+  { value: 'docx', label: '.docx', sub: 'Microsoft Word', icon: 'fa-file-word' },
 ];
 
 // Slide 08's multi-format export modal: format cards, a page-scope selector
@@ -14,7 +14,7 @@ const FORMATS = [
 // so this component has no network code of its own.
 export default function ExportDropdown({ currentPage, totalPages, onExport }) {
   const [open, setOpen] = useState(false);
-  const [format, setFormat] = useState('docx');
+  const [format, setFormat] = useState('md');
   const [scope, setScope] = useState('full');
   const [pageRange, setPageRange] = useState('');
   const [includeMetadata, setIncludeMetadata] = useState(true);

@@ -1024,3 +1024,51 @@ describe('StructureTree — hierarchy overrides (drag-and-drop reparent/reorder)
     expect(screen.getByTestId('structure-tree-root-dropzone')).toBeInTheDocument();
   });
 });
+
+describe('StructureTree — Expand all / Collapse all toolbar', () => {
+  function articleWithCollapsedClause() {
+    const sharedChain = [{ family: 'article', key: 'article:2', label: 'Article 2' }];
+    return storeFromRows({
+      2: {
+        'clause:4.1': [
+          candidate({ key: 'clause:4.1', anchor_id: 'occ-0', page: 2, occurrence_index: 0, scope_chain: sharedChain }),
+          candidate({ key: 'clause:4.1', anchor_id: 'occ-1', page: 2, occurrence_index: 1, scope_chain: sharedChain }),
+        ],
+      },
+    });
+  }
+
+  it('renders an "Expand all" button alongside "Collapse all"', () => {
+    render(<StructureTree referenceStore={articleWithCollapsedClause()} onSelect={vi.fn()} />);
+    expect(screen.getByTestId('structure-expand-all')).toHaveTextContent('Expand all');
+    expect(screen.getByTestId('structure-collapse-all')).toHaveTextContent('Collapse all');
+  });
+
+  it('"Expand all" reveals a collapsed depth-1 container\'s leaves without clicking it individually', () => {
+    render(<StructureTree referenceStore={articleWithCollapsedClause()} onSelect={vi.fn()} />);
+
+    // "Clause 4.1" (depth 1) is collapsed by default — its two leaf
+    // occurrences aren't in the document yet, same as the existing
+    // "two occurrences" test confirms for a manual click.
+    expect(screen.queryByTestId('structure-leaf-occ-0')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('structure-leaf-occ-1')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('structure-expand-all'));
+
+    expect(screen.getByTestId('structure-leaf-occ-0')).toBeInTheDocument();
+    expect(screen.getByTestId('structure-leaf-occ-1')).toBeInTheDocument();
+  });
+
+  it('"Collapse all" then "Expand all" fully toggle the tree, including the auto-expanded depth-0 root', () => {
+    render(<StructureTree referenceStore={articleWithCollapsedClause()} onSelect={vi.fn()} />);
+
+    // "Article 2" (depth 0) is auto-expanded, so "Clause 4.1" is already visible.
+    expect(screen.getByText('Clause 4.1')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('structure-collapse-all'));
+    expect(screen.queryByText('Clause 4.1')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('structure-expand-all'));
+    expect(screen.getByText('Clause 4.1')).toBeInTheDocument();
+  });
+});

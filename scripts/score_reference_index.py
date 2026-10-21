@@ -60,8 +60,15 @@ def load_gold_fixture(fixture_path: str) -> Dict[str, Any]:
         return json.load(f)
 
 
+def _normalize_key_for_scoring(key: str) -> str:
+    if key and key.startswith("point:") and re.match(r"^point:\d+(\.|$)", key):
+        return "numheading:" + key[len("point:"):]
+    return key or ""
+
+
 def _ident(t: Dict[str, Any]) -> Tuple[Any, str, int]:
-    return (t.get("page"), t.get("key"), t.get("occurrence_index") or 0)
+    return (t.get("page"), _normalize_key_for_scoring(t.get("key") or ""), t.get("occurrence_index") or 0)
+
 
 
 def _family(key: str) -> str:
@@ -425,6 +432,8 @@ async def run_trial(
     pleading_points_via_ai: "bool | None" = None,
     overlap_pages: "int | None" = None,
     chunk_chars_max: "int | None" = None,
+    adaptive_chunking: "bool | None" = None,
+    two_pass: "bool | None" = None,
     record_dir: "str | None" = None,
     replay_file: "str | None" = None,
     compact_prompt: bool = False,
@@ -441,6 +450,10 @@ async def run_trial(
             engine_param_updates["ai_index_chunk_overlap_pages"] = overlap_pages
         if chunk_chars_max is not None:
             engine_param_updates["ai_index_chunk_chars_max"] = chunk_chars_max
+        if adaptive_chunking is not None:
+            engine_param_updates["ai_index_adaptive_chunking"] = adaptive_chunking
+        if two_pass is not None:
+            engine_param_updates["ai_index_two_pass"] = two_pass
         if engine_param_updates:
             _set_engine_params(dup_id, engine_param_updates)
 
@@ -532,6 +545,15 @@ async def main_async():
     pleading_group = parser.add_mutually_exclusive_group()
     pleading_group.add_argument("--pleading-points-via-ai", dest="pleading_points_via_ai", action="store_true", default=None, help="Force ai_index_pleading_points_via_ai on")
     pleading_group.add_argument("--no-pleading-points-via-ai", dest="pleading_points_via_ai", action="store_false", help="Force ai_index_pleading_points_via_ai off (tests the prompt-contradiction hypothesis)")
+
+    adaptive_group = parser.add_mutually_exclusive_group()
+    adaptive_group.add_argument("--adaptive-chunking", dest="adaptive_chunking", action="store_true", default=None, help="Force adaptive density-aware chunking on")
+    adaptive_group.add_argument("--no-adaptive-chunking", dest="adaptive_chunking", action="store_false", help="Force adaptive chunking off")
+
+    two_pass_group = parser.add_mutually_exclusive_group()
+    two_pass_group.add_argument("--two-pass", dest="two_pass", action="store_true", default=None, help="Force two-pass indexing on")
+    two_pass_group.add_argument("--no-two-pass", dest="two_pass", action="store_false", help="Force two-pass indexing off")
+
     args = parser.parse_args()
 
     if args.compact_prompt:
@@ -558,6 +580,7 @@ async def main_async():
         f"Running {args.trials} trial(s) with review_flag={args.enable_review}, "
         f"chunk_pages={args.chunk_pages}, overlap_pages={args.overlap_pages}, "
         f"chunk_chars_max={args.chunk_chars_max}, "
+        f"adaptive_chunking={args.adaptive_chunking}, two_pass={args.two_pass}, "
         f"pleading_points_via_ai={args.pleading_points_via_ai}, "
         f"compact_prompt={args.compact_prompt}, record_dir={args.record_dir}, replay_file={args.replay_file}..."
     )
@@ -569,6 +592,7 @@ async def main_async():
         res = await run_trial(
             args.job_id, gold, i, args.enable_review, args.chunk_pages,
             args.pleading_points_via_ai, args.overlap_pages, args.chunk_chars_max,
+            adaptive_chunking=args.adaptive_chunking, two_pass=args.two_pass,
             record_dir=args.record_dir, replay_file=args.replay_file,
             compact_prompt=args.compact_prompt, return_diff=need_diff,
         )

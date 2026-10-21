@@ -667,7 +667,7 @@ def run_ocr_with_raw(
     of its existing callers.
 
     Returns:
-        (cleaned_text_with_timing_footer, raw_text_or_None)
+        (cleaned_text, raw_text_or_None)
     """
     prompt = prompt or DOCUMENT_PROMPT
 
@@ -747,10 +747,7 @@ def run_ocr_with_raw(
 
         # Clean detection coordinate tags (<|det|>...<|/det|>) for clean readability
         cleaned_text = clean_detection_tags(result_text)
-
-        # Append processing time footer
-        timing_footer = f"\n\n---\n*⏱️ **Unlimited-OCR Execution Time:** {time_str} ({elapsed_sec:.1f}s)*"
-        final_output = cleaned_text + timing_footer
+        final_output = cleaned_text
 
         # Print to stdout and optionally save debug copies
         print(f"\n⏱️ [Unlimited-OCR Execution Time]: {time_str} ({elapsed_sec:.2f} seconds)", flush=True)
@@ -847,8 +844,7 @@ def run_ocr_multi(pil_images: list, prompt: str | None = None, timeout: int | No
         page_markers = len(re.findall(r"<PAGE>", result_text, flags=re.IGNORECASE))
 
         cleaned_text = clean_detection_tags(result_text)
-        timing_footer = f"\n\n---\n*⏱️ **Unlimited-OCR Multi-Page Execution Time:** {elapsed_sec:.1f}s ({len(pil_images)} pages)*"
-        final_output = cleaned_text + timing_footer
+        final_output = cleaned_text
 
         print(
             f"\n⏱️ [Unlimited-OCR Multi-Page Execution Time]: {elapsed_sec:.2f}s for {len(pil_images)} pages "

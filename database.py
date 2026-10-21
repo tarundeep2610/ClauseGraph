@@ -7,6 +7,8 @@ import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
+from layout_format import _FOOTER_RE
+
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
 UPLOADS_DIR = os.path.join(DATA_DIR, "uploads")
 DB_PATH = os.path.join(DATA_DIR, "ocr_jobs.db")
@@ -1028,13 +1030,27 @@ def upsert_page(job_id: str, page_num: int, **fields):
     conn.close()
 
 
+def _strip_ocr_timing_footer(value: Optional[str]) -> Optional[str]:
+    """Strips the `*⏱️ ... Execution Time: ...*` footer unlimited_ocr_engine.py
+    used to append to every page's text — read-time only, never written back,
+    so it disappears for every consumer (editor preview, every export format)
+    immediately, for jobs already processed before the engine stopped
+    appending it, without touching a single stored row."""
+    return _FOOTER_RE.sub('', value) if value else value
+
+
 def get_page(job_id: str, page_num: int) -> Optional[Dict[str, Any]]:
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM ocr_pages WHERE job_id = ? AND page_num = ?", (job_id, page_num))
     row = cursor.fetchone()
     conn.close()
-    return dict(row) if row else None
+    if not row:
+        return None
+    page = dict(row)
+    page['text'] = _strip_ocr_timing_footer(page.get('text'))
+    page['formatted_text'] = _strip_ocr_timing_footer(page.get('formatted_text'))
+    return page
 
 
 def get_pages(job_id: str, page_from: Optional[int] = None, page_to: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -1055,6 +1071,8 @@ def get_pages(job_id: str, page_from: Optional[int] = None, page_to: Optional[in
     for r in rows:
         # Legacy-shaped keys for existing consumers (ViewerPanel.jsx, download-result, tests).
         r['page'] = r['page_num']
+        r['text'] = _strip_ocr_timing_footer(r.get('text'))
+        r['formatted_text'] = _strip_ocr_timing_footer(r.get('formatted_text'))
     return rows
 
 

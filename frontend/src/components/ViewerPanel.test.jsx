@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { forwardRef, useImperativeHandle } from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ViewerPanel from './ViewerPanel';
 import { createReferenceStore, mergeDelta } from '../utils/referenceStore';
@@ -17,16 +18,32 @@ beforeEach(() => {
   mockAuth = { isAdmin: true };
 });
 
+// Spies so a test can assert ViewerPanel's "Fit Both" calls the PDF pane's
+// fitPage() specifically — not resetZoom() (the old, fit-width-only
+// behavior this follow-up fix replaced it with).
+export const mockPdfFitPage = vi.fn();
+export const mockPdfResetZoom = vi.fn();
+
 // PdfCanvasViewer itself (pdf.js rendering) is tested in its own file — here
 // it's stubbed so ViewerPanel's own wiring (which page is passed down, the
 // onPageChange callback) can be tested without touching pdf.js/canvas at all.
 vi.mock('./PdfCanvasViewer', () => ({
-  default: ({ pageNum, onPageChange }) => (
-    <div data-testid="mock-pdf-canvas-viewer">
-      <span data-testid="mock-pdf-page">{pageNum}</span>
-      <button data-testid="mock-next-page" onClick={() => onPageChange(pageNum + 1)}>next</button>
-    </div>
-  ),
+  default: forwardRef(function MockPdfCanvasViewer({ pageNum, onPageChange, onZoomLevelChange }, ref) {
+    useImperativeHandle(ref, () => ({
+      zoomIn: vi.fn(), zoomOut: vi.fn(), resetZoom: mockPdfResetZoom, fitPage: mockPdfFitPage,
+    }));
+    return (
+      <div data-testid="mock-pdf-canvas-viewer">
+        <span data-testid="mock-pdf-page">{pageNum}</span>
+        <button data-testid="mock-next-page" onClick={() => onPageChange(pageNum + 1)}>next</button>
+        <button data-testid="mock-pdf-report-zoom-130" onClick={() => onZoomLevelChange && onZoomLevelChange(1.3)}>
+          report 130%
+        </button>
+      </div>
+    );
+  }),
+  clampZoom: (z) => Math.min(3, Math.max(0.5, z)),
+  ZOOM_STEP: 0.15,
 }));
 
 // Wraps the real getPageMentions in a spy (not a stub — ViewerPanel's badge
@@ -1267,5 +1284,126 @@ describe('ViewerPanel — Studio split group containment', () => {
     expect(splitGroup.querySelector('.studio-scan-pane')).toBeInTheDocument();
     expect(splitGroup.querySelector('.split-resizer')).toBeInTheDocument();
     expect(splitGroup.querySelector('.studio-editor-pane')).toBeInTheDocument();
+  });
+});
+
+describe('ViewerPanel — unified zoom (PDF mirror, editor zoom, Fit Both)', () => {
+  function renderStudioSplit(pages = [{ page: 1, text: 'Sample text' }]) {
+    const job = jobWithPages(pages);
+    return render(
+      <ViewerPanel {...baseProps} studioMode={true} viewMode="split" pdfSrc="blob:fake-url" jobDetails={job} />
+    );
+  }
+
+  it('mirrors the PDF pane\'s own reported zoom level into the HUD\'s scan-zoom cluster', () => {
+    renderStudioSplit();
+    expect(screen.getByTestId('hud-zoom-reset')).toHaveTextContent('100%');
+    fireEvent.click(screen.getByTestId('mock-pdf-report-zoom-130'));
+    expect(screen.getByTestId('hud-zoom-reset')).toHaveTextContent('130%');
+  });
+
+  it('the HUD\'s editor-zoom cluster scales the WysiwygEditor font size, independent of the PDF pane', () => {
+    renderStudioSplit();
+    const content = document.querySelector('.editor-content');
+    expect(content.style.fontSize).toBe('0.92rem');
+
+    fireEvent.click(screen.getByTestId('hud-editor-zoom-in'));
+    expect(document.querySelector('.editor-content').style.fontSize).toBe('1.058rem');
+    // The PDF pane's own (mocked) zoom level is untouched by the editor cluster.
+    expect(screen.getByTestId('hud-zoom-reset')).toHaveTextContent('100%');
+
+    fireEvent.click(screen.getByTestId('hud-editor-zoom-reset'));
+    expect(document.querySelector('.editor-content').style.fontSize).toBe('0.92rem');
+  });
+
+  it('Ctrl+scroll over the editor pane zooms it in/out, like the PDF pane\'s own Ctrl+scroll', () => {
+    renderStudioSplit();
+    const editorPaneContent = document.querySelector('.studio-editor-pane .view-box-content');
+
+    fireEvent.wheel(editorPaneContent, { deltaY: -100, ctrlKey: true });
+    expect(document.querySelector('.editor-content').style.fontSize).toBe('1.058rem');
+
+    fireEvent.wheel(editorPaneContent, { deltaY: 100, ctrlKey: true });
+    expect(document.querySelector('.editor-content').style.fontSize).toBe('0.92rem');
+  });
+
+  it('a plain (non-Ctrl) wheel over the editor pane does not zoom it', () => {
+    renderStudioSplit();
+    const editorPaneContent = document.querySelector('.studio-editor-pane .view-box-content');
+    fireEvent.wheel(editorPaneContent, { deltaY: -100, ctrlKey: false });
+    expect(document.querySelector('.editor-content').style.fontSize).toBe('0.92rem');
+  });
+
+  it('Fit Both resets the editor zoom and the split ratio back to 50/50 at once', () => {
+    renderStudioSplit();
+    fireEvent.click(screen.getByTestId('split-snap-30'));
+    expect(document.querySelector('.studio-scan-pane').style.width).toBe('30%');
+
+    fireEvent.click(screen.getByTestId('hud-editor-zoom-in'));
+    expect(document.querySelector('.editor-content').style.fontSize).toBe('1.058rem');
+
+    fireEvent.click(screen.getByTestId('hud-fit-both-btn'));
+    expect(document.querySelector('.editor-content').style.fontSize).toBe('0.92rem');
+    expect(document.querySelector('.studio-scan-pane').style.width).toBe('50%');
+    expect(document.querySelector('.studio-editor-pane').style.width).toBe('50%');
+  });
+
+  it('Fit Both shrinks the editor zoom just enough to eliminate scrolling, when the content is taller than the pane', () => {
+    renderStudioSplit();
+    const contentEl = document.querySelector('.editor-content');
+    // jsdom reports 0 for both by default (no real layout engine) — stub a
+    // case where the content is noticeably taller than the visible pane.
+    Object.defineProperty(contentEl, 'scrollHeight', { value: 400, configurable: true });
+    Object.defineProperty(contentEl, 'clientHeight', { value: 200, configurable: true });
+
+    fireEvent.click(screen.getByTestId('hud-fit-both-btn'));
+
+    // Starting zoom is 1 (100%, font-size 0.92rem) and the content is 2x
+    // taller than the pane, so the new zoom should land on 1 * (200/400) = 0.5.
+    expect(document.querySelector('.editor-content').style.fontSize).toBe('0.46rem');
+  });
+
+  it('Fit Both leaves the editor at 100% when its content already fits without scrolling', () => {
+    renderStudioSplit();
+    const contentEl = document.querySelector('.editor-content');
+    Object.defineProperty(contentEl, 'scrollHeight', { value: 150, configurable: true });
+    Object.defineProperty(contentEl, 'clientHeight', { value: 200, configurable: true });
+
+    fireEvent.click(screen.getByTestId('hud-editor-zoom-in')); // move away from 100% first
+    fireEvent.click(screen.getByTestId('hud-fit-both-btn'));
+
+    expect(document.querySelector('.editor-content').style.fontSize).toBe('0.92rem');
+  });
+
+  it('Fit Both calls the PDF pane\'s fitPage() (whole page visible), not resetZoom() (fit-width only)', () => {
+    mockPdfFitPage.mockClear();
+    mockPdfResetZoom.mockClear();
+    renderStudioSplit();
+    fireEvent.click(screen.getByTestId('hud-fit-both-btn'));
+    expect(mockPdfFitPage).toHaveBeenCalledOnce();
+    expect(mockPdfResetZoom).not.toHaveBeenCalled();
+  });
+
+  it('attaches the editor zoom-gesture listener even when the pane first mounts during a "Loading page N…" state (regression: the old effect, keyed only on [showResult, showPinnedPdf], could permanently miss this)', () => {
+    // page 1 (the current page) isn't in pages_data yet — pageMap.get(1) is
+    // undefined, so ViewerPanel renders the "Loading page 1…" branch (a
+    // plain dangerouslySetInnerHTML div with no ref), not the editor.
+    const loadingJob = jobWithPages([{ page: 2, text: 'other page, not page 1' }]);
+    const { rerender } = render(
+      <ViewerPanel {...baseProps} studioMode={true} viewMode="split" pdfSrc="blob:fake-url" jobDetails={loadingJob} />
+    );
+    expect(document.querySelector('.editor-content')).not.toBeInTheDocument();
+
+    // Page 1's data arrives — the editor pane (with the zoom-listener ref)
+    // mounts for the first time only now, well after initial mount.
+    const readyJob = jobWithPages([{ page: 1, text: 'Sample text' }]);
+    rerender(
+      <ViewerPanel {...baseProps} studioMode={true} viewMode="split" pdfSrc="blob:fake-url" jobDetails={readyJob} />
+    );
+    const editorPaneContent = document.querySelector('.studio-editor-pane .view-box-content');
+    expect(editorPaneContent).toBeInTheDocument();
+
+    fireEvent.wheel(editorPaneContent, { deltaY: -100, ctrlKey: true });
+    expect(document.querySelector('.editor-content').style.fontSize).toBe('1.058rem');
   });
 });

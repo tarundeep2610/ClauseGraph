@@ -16,6 +16,14 @@ describe('Header — unified top bar', () => {
     fireEvent.click(screen.getByTestId('open-settings-btn'));
     expect(onOpenSettings).toHaveBeenCalledOnce();
   });
+
+  it('renders the ClauseGraph wordmark and logo mark, not the old OCR Rokka branding', () => {
+    mockAuth = { user: null, logout: vi.fn() };
+    render(<Header onOpenSettings={vi.fn()} />);
+    expect(screen.getByText('ClauseGraph')).toBeInTheDocument();
+    expect(screen.queryByText('OCR Rokka')).not.toBeInTheDocument();
+    expect(screen.getByTestId('app-header-logo')).toBeInTheDocument();
+  });
 });
 
 describe('Header — user menu / logout', () => {
