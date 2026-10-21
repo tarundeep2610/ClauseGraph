@@ -59,7 +59,6 @@ export default function StudioView() {
         onEditStructureItem={ctx.handleEditStructureItem}
         onDeleteStructureItem={ctx.handleDeleteStructureItem}
         onMoveStructureItem={ctx.handleMoveStructureItem}
-        onOpenSettings={ctx.onOpenSettings}
       />
     </div>
   );

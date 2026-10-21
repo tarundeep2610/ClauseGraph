@@ -65,6 +65,7 @@ describe('Dashboard — job submission includes the new batch/escalation params'
     fireEvent.change(input, { target: { files: [file] } });
 
     fireEvent.click(screen.getByTestId('open-settings-btn'));
+    fireEvent.click(await screen.findByTestId('settings-nav-engine'));
     const batchParams = await screen.findByTestId('batch-mode-params');
     const processingModeSelect = batchParams.querySelector('select');
     fireEvent.change(processingModeSelect, { target: { value: 'batch' } });
@@ -94,6 +95,7 @@ describe('Dashboard — job submission includes the new batch/escalation params'
     fireEvent.change(input, { target: { files: [file] } });
 
     fireEvent.click(screen.getByTestId('open-settings-btn'));
+    fireEvent.click(await screen.findByTestId('settings-nav-engine'));
     const batchParams = await screen.findByTestId('batch-mode-params');
     const processingModeSelect = batchParams.querySelector('select');
     fireEvent.change(processingModeSelect, { target: { value: 'batch' } });

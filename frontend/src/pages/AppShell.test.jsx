@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { forwardRef } from 'react';
 import { screen, waitFor, fireEvent, act, within } from '@testing-library/react';
 import { apiFetch } from '../utils/api';
 import { renderApp } from './testRouteHelpers';
@@ -29,13 +30,17 @@ vi.mock('../utils/ThemeContext', () => ({
 // ViewerPanel's onCurrentPageChange) can be exercised without touching
 // real pdf.js/canvas rendering at all.
 vi.mock('../components/PdfCanvasViewer', () => ({
-  default: ({ pdfSrc, onPageChange }) => (
-    <div data-testid="mock-pdf-canvas-viewer" data-pdf-src={pdfSrc || ''}>
-      <button data-testid="mock-go-to-page-40" onClick={() => onPageChange && onPageChange(40)}>
-        go to page 40
-      </button>
-    </div>
-  ),
+  default: forwardRef(function MockPdfCanvasViewer({ pdfSrc, onPageChange }, ref) {
+    return (
+      <div data-testid="mock-pdf-canvas-viewer" data-pdf-src={pdfSrc || ''}>
+        <button data-testid="mock-go-to-page-40" onClick={() => onPageChange && onPageChange(40)}>
+          go to page 40
+        </button>
+      </div>
+    );
+  }),
+  clampZoom: (z) => Math.min(3, Math.max(0.5, z)),
+  ZOOM_STEP: 0.15,
 }));
 
 describe('AppShell/StudioView — PDF Remote Blob Preview & Regressions', () => {
@@ -441,6 +446,7 @@ describe('AppShell/StudioView — GPU status polling', () => {
       expect(apiFetch).toHaveBeenCalledWith('/health');
     });
     fireEvent.click(screen.getByTestId('open-settings-btn'));
+    fireEvent.click(await screen.findByTestId('settings-nav-session'));
     await waitFor(() => {
       expect(screen.getByTestId('gpu-status-pill')).toHaveTextContent('GPU: Ready');
     });
@@ -463,6 +469,7 @@ describe('AppShell/StudioView — GPU status polling', () => {
     });
     fireEvent.click(screen.getByTestId('open-settings-btn'));
     await screen.findByTestId('settings-modal');
+    fireEvent.click(screen.getByTestId('settings-nav-session'));
     expect(screen.queryByTestId('gpu-status-pill')).not.toBeInTheDocument();
   });
 });
@@ -506,6 +513,7 @@ describe('AppShell/StudioView — settings persistence (localStorage)', () => {
     renderApp('/');
 
     fireEvent.click(await screen.findByTestId('open-settings-btn'));
+    fireEvent.click(await screen.findByTestId('settings-nav-engine'));
     await waitFor(() => {
       expect(screen.getByTestId('engine-select').value).toBe('glm');
     });
@@ -521,6 +529,7 @@ describe('AppShell/StudioView — settings persistence (localStorage)', () => {
     renderApp('/');
 
     fireEvent.click(await screen.findByTestId('open-settings-btn'));
+    fireEvent.click(await screen.findByTestId('settings-nav-engine'));
     const engineSelect = await screen.findByTestId('engine-select');
     fireEvent.change(engineSelect, { target: { value: 'glm' } });
 
@@ -534,6 +543,7 @@ describe('AppShell/StudioView — settings persistence (localStorage)', () => {
     renderApp('/');
 
     fireEvent.click(await screen.findByTestId('open-settings-btn'));
+    fireEvent.click(await screen.findByTestId('settings-nav-engine'));
     const engineSelect = await screen.findByTestId('engine-select');
     fireEvent.change(engineSelect, { target: { value: 'glm' } });
 
@@ -552,6 +562,7 @@ describe('AppShell/StudioView — settings persistence (localStorage)', () => {
 
     expect(() => renderApp('/')).not.toThrow();
     fireEvent.click(await screen.findByTestId('open-settings-btn'));
+    fireEvent.click(await screen.findByTestId('settings-nav-engine'));
     await waitFor(() => {
       expect(screen.getByTestId('engine-select')).toBeInTheDocument();
     });
@@ -1486,5 +1497,142 @@ describe('AppShell/StudioView — add-as-child chains create with one move', () 
       new_parent_key: 'annexure:a-2', new_parent_page: 427, new_parent_occurrence_index: 0,
       ordered_siblings: [{ item_key: 'manual:new1', item_page: 427, item_occurrence_index: 0 }],
     });
+  });
+});
+
+describe('AppShell — export asks for filename + location before downloading', () => {
+  let createObjectURLMock;
+  let revokeObjectURLMock;
+  let originalShowSaveFilePicker;
+
+  function mockJobApi() {
+    const job = {
+      job_id: 'job-1', filename: 'first.pdf', status: 'completed',
+      total_pages: 2, processed_pages: 2, engine: 'unlimited', created_at: new Date().toISOString(),
+    };
+    apiFetch.mockImplementation(async (url) => {
+      if (url === '/api/prompts') return { ok: true, json: async () => ({ prompts: {}, defaults: {} }) };
+      if (url === '/api/jobs') return { ok: true, json: async () => [job] };
+      if (url.startsWith('/api/jobs/job-1/export')) {
+        return {
+          ok: true,
+          headers: { get: (name) => (name === 'Content-Disposition' ? 'attachment; filename="job-1_ocr_result.docx"' : null) },
+          blob: async () => new Blob(['fake docx bytes'], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
+        };
+      }
+      if (url.startsWith('/api/jobs/job-')) {
+        if (url.endsWith('/file')) return { ok: true, blob: async () => new Blob(['pdf binary'], { type: 'application/pdf' }) };
+        return { ok: true, json: async () => ({ ...job, pages: [] }) };
+      }
+      return { ok: false };
+    });
+  }
+
+  // Loading the Studio PDF preview itself calls URL.createObjectURL once
+  // (the remote-file blob preview — unrelated to export), so assertions
+  // about the export flow's own createObjectURL usage compare against this
+  // baseline count rather than an absolute zero.
+  async function openExportAndConfirm() {
+    renderApp('/studio/job-1');
+    await screen.findByTestId('mock-pdf-canvas-viewer');
+    await waitFor(() => expect(createObjectURLMock).toHaveBeenCalledTimes(1));
+    const baselineObjectUrlCalls = createObjectURLMock.mock.calls.length;
+    fireEvent.click(screen.getByTestId('export-dropdown-toggle'));
+    fireEvent.click(await screen.findByTestId('export-confirm-btn'));
+    return { baselineObjectUrlCalls };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAuth = { isAdmin: true };
+    mockJobApi();
+
+    createObjectURLMock = vi.fn(() => 'blob:fake-export-url');
+    revokeObjectURLMock = vi.fn();
+    global.URL.createObjectURL = createObjectURLMock;
+    global.URL.revokeObjectURL = revokeObjectURLMock;
+
+    originalShowSaveFilePicker = window.showSaveFilePicker;
+  });
+
+  afterEach(() => {
+    if (originalShowSaveFilePicker === undefined) delete window.showSaveFilePicker;
+    else window.showSaveFilePicker = originalShowSaveFilePicker;
+  });
+
+  it('uses the native Save-As picker when the browser supports it, writing the fetched blob to the chosen handle', async () => {
+    const write = vi.fn().mockResolvedValue(undefined);
+    const close = vi.fn().mockResolvedValue(undefined);
+    const createWritable = vi.fn().mockResolvedValue({ write, close });
+    window.showSaveFilePicker = vi.fn().mockResolvedValue({ createWritable });
+
+    const { baselineObjectUrlCalls } = await openExportAndConfirm();
+
+    // The picker has to be called with the generic client-side fallback name
+    // (not the server's nicer Content-Disposition one) — it must fire before
+    // the export fetch even starts, to stay inside the click's user-gesture
+    // window (confirmed against real Chromium: calling it after an awaited
+    // fetch throws SecurityError), so the real filename isn't known yet.
+    await waitFor(() => {
+      expect(window.showSaveFilePicker).toHaveBeenCalledWith(
+        expect.objectContaining({ suggestedName: 'job-1_export.md' })
+      );
+    });
+    await waitFor(() => expect(write).toHaveBeenCalledOnce());
+    expect(close).toHaveBeenCalledOnce();
+    expect(screen.queryByTestId('save-file-dialog')).not.toBeInTheDocument();
+    // Native picker handled it end-to-end — the universal anchor-download
+    // fallback path must not also have fired.
+    expect(createObjectURLMock).toHaveBeenCalledTimes(baselineObjectUrlCalls);
+  });
+
+  it('calls the native picker BEFORE fetching the export, not after — calling it post-fetch loses the click\'s user-activation and throws SecurityError in real Chromium (caught via a live run, not assumed)', async () => {
+    const order = [];
+    window.showSaveFilePicker = vi.fn(async (...args) => {
+      order.push('picker');
+      return { createWritable: vi.fn().mockResolvedValue({ write: vi.fn(), close: vi.fn() }) };
+    });
+    const originalImpl = apiFetch.getMockImplementation();
+    apiFetch.mockImplementation(async (url, ...rest) => {
+      if (url.startsWith('/api/jobs/job-1/export')) order.push('export-fetch');
+      return originalImpl(url, ...rest);
+    });
+
+    await openExportAndConfirm();
+
+    await waitFor(() => expect(order).toContain('export-fetch'));
+    expect(order.indexOf('picker')).toBeLessThan(order.indexOf('export-fetch'));
+  });
+
+  it('falls back to the in-app filename prompt when the native picker is unavailable, then downloads with the chosen name', async () => {
+    delete window.showSaveFilePicker;
+
+    const { baselineObjectUrlCalls } = await openExportAndConfirm();
+
+    const dialog = await screen.findByTestId('save-file-dialog');
+    expect(within(dialog).getByTestId('save-file-dialog-input')).toHaveValue('job-1_ocr_result.docx');
+
+    fireEvent.change(within(dialog).getByTestId('save-file-dialog-input'), { target: { value: 'my-renamed-export.docx' } });
+    fireEvent.click(within(dialog).getByTestId('save-file-dialog-save'));
+
+    await waitFor(() => expect(createObjectURLMock).toHaveBeenCalledTimes(baselineObjectUrlCalls + 1));
+    expect(revokeObjectURLMock).toHaveBeenCalledOnce();
+    expect(screen.queryByTestId('save-file-dialog')).not.toBeInTheDocument();
+  });
+
+  it('treats a cancelled native picker (AbortError) as a silent no-op — no error alert, no fallback download, and no export fetch at all', async () => {
+    const abortError = Object.assign(new Error('The user aborted a request.'), { name: 'AbortError' });
+    window.showSaveFilePicker = vi.fn().mockRejectedValue(abortError);
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+
+    const { baselineObjectUrlCalls } = await openExportAndConfirm();
+
+    await waitFor(() => expect(window.showSaveFilePicker).toHaveBeenCalledOnce());
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(createObjectURLMock).toHaveBeenCalledTimes(baselineObjectUrlCalls);
+    expect(screen.queryByTestId('save-file-dialog')).not.toBeInTheDocument();
+    // Cancelling the picker (before any fetch was ever made, by design)
+    // must not still trigger the export request behind the user's back.
+    expect(apiFetch.mock.calls.some(([url]) => url.startsWith('/api/jobs/job-1/export'))).toBe(false);
   });
 });

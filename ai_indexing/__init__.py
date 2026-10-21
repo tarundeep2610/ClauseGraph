@@ -57,6 +57,8 @@ from ai_indexing.prompt import (
     build_docref_review_prompt,
     build_structure_prompt,
     plan_chunks,
+    plan_adaptive_chunks,
+    classify_page_density,
 )
 from ai_indexing.client import ChunkOutcome, ChunkStructureResult, StructureIndexer
 from ai_indexing.credentials import ResolvedAIConfig, resolve_active_config, describe_active_config

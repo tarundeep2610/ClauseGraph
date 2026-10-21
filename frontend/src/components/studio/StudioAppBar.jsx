@@ -31,7 +31,6 @@ export default function StudioAppBar({
   onOpenRetryModal,
   onToggleSidebar,
   sidebarCollapsed = false,
-  onOpenSettings,
 }) {
   const searchInputRef = useRef(null);
 

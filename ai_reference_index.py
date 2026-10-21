@@ -23,9 +23,12 @@ Core design decisions (see the approved plan for the full reasoning):
 import asyncio
 import difflib
 import json
+import logging
 import time
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+logger = logging.getLogger("ai_reference_index")
 
 import ai_indexing
 import config
@@ -312,6 +315,148 @@ def _try_row_merge_match(
         if ratio >= _FUZZY_PARENT_CUTOFF:
             return i0, "row_merged", ratio
     return None
+
+
+_STATUS_BOILERPLATE_CELLS = {
+    "yes", "no", "na", "n/a", "nil", "none", "true", "false", "ok",
+    "complied", "not complied", "applicable", "not applicable",
+}
+
+_TABLE_COLUMN_HEADERS = {
+    "s no", "sr no", "sl no", "sn", "serial no",
+    "clause", "clause no", "cl no", "cl",
+    "description", "particulars", "specification", "specifications", "scope",
+    "remarks", "compliance", "compliance yes no", "status", "deviations",
+    "bidder response", "bidder s response", "deviation", "page no", "item no", "details", "unit", "qty", "quantity",
+}
+
+_FORM_FIELD_RE = re.compile(
+    r"^\s*(?:"
+    r"Authorized\s+Signator(?:y|ies)|Name\s+of\s+(?:the\s+)?(?:Bidder|Firm|Company|Tenderer)|"
+    r"Seal\s+(?:&\s*Signature|of\s+(?:the\s+)?(?:Firm|Company|Bidder|Tenderer))|"
+    r"(?:Firm|Company)\s+Seal|"
+    r"Signature\s+of\s+(?:the\s+)?(?:Bidder|Firm|Company|Tenderer|Authorized\s+Signatory)|Witness|"
+    r"Date\s*:?|Place\s*:?|"
+    r"Name\s+in\s+Block\s+Letters|Designation\s*:?|Address\s*:?|"
+    r"Seal\s*&\s*Signature"
+    r")\s*[:\.]?\s*(?:[\._]{3,}|\([^\)]*\))?\s*$",
+    re.IGNORECASE,
+)
+_FORM_DOTTED_FIELD_RE = re.compile(r"^[\w\s]{2,35}[:\.]\s*[\._]{3,}\s*$")
+
+
+def _is_table_header_or_form_field(text: str) -> bool:
+    """True if text is a generic table column header (e.g. 'S.No.', 'Description')
+    or a form/signature placeholder ('Authorized Signatory:', 'Date: ....')."""
+    stripped = (text or "").strip()
+    if not stripped:
+        return False
+    # Normalize punctuation and spacing to spaces for robust matching:
+    norm = re.sub(r"[^\w]+", " ", stripped.lower()).strip()
+    if norm in _TABLE_COLUMN_HEADERS:
+        return True
+    if _FORM_FIELD_RE.match(stripped):
+        return True
+    if _FORM_DOTTED_FIELD_RE.match(stripped):
+        return True
+    return False
+
+
+def _is_index_or_toc_page(blocks: List[str]) -> bool:
+    """True if any of the opening blocks on this page explicitly titles it as an Index or Table of Contents."""
+    if not blocks:
+        return False
+    return any(
+        re.sub(r"[^\w]+", " ", b).strip().lower() in ("index", "table of contents", "contents", "table of content")
+        for b in blocks[:6]
+    )
+
+
+_RUNNING_HEADER_PATTERNS = [
+    re.compile(r"^Tender\s+Specification\s+No\b", re.I),
+    re.compile(r"^(?:Chief\s+General\s+Manager|General\s+Manager|Superintending\s+Engineer|Executive\s+Engineer)\b", re.I),
+    re.compile(r"^M\.P\.P\.K\.V", re.I),
+    re.compile(r"^(?:Jabalpur|SAVE\s+ELECTRICITY)\b", re.I),
+    re.compile(r"^(?:Online\s+tenders|The\s+bidder\s+shall|The\s+essential\s+eligibility|The\s+SI\s+shall|Following\s+are\s+the\s+key|For\s+the\s+purpose\s+of|AND\s+I\s+MAKE|I\s+am\s+currently|MADE\s+AND\s+DECLARED|AS\s+MUTUAL\s+UNDERSTANDING)", re.I),
+]
+
+
+def _is_document_noise_or_running_header(text: str, page_num: int) -> bool:
+    """True if text is a repeating document running header (e.g. 'Tender Specification No...'
+    on page > 1), correspondence office/date metadata, or full prose body sentence hallucinated as a heading."""
+    stripped = (text or "").strip()
+    if not stripped:
+        return True
+    for pat in _RUNNING_HEADER_PATTERNS:
+        if pat.search(stripped):
+            if pat.pattern.startswith("^Tender") and page_num == 1:
+                return False
+            return True
+    return False
+
+
+
+def _is_substantive_heading_companion(text: str) -> bool:
+    """Validates whether a table cell companion contains genuine descriptive
+    heading text, filtering out pure numbers, financial amounts, dates,
+    percentages, booleans, placeholder status cells, column headers, and form fields."""
+    stripped = (text or "").strip()
+    if len(stripped) < 3:
+        return False
+    # Must contain at least one alphabetic word with >= 2 letters
+    # (filters out 50000.00, 25%, 12/04/2024, etc.)
+    if not re.search(r"[A-Za-z]{2,}", stripped):
+        return False
+    # Filter out boilerplate status, booleans, and placeholder cells
+    clean_lower = re.sub(r"[^a-z/ ]", "", stripped.lower()).strip()
+    if clean_lower in _STATUS_BOILERPLATE_CELLS:
+        return False
+    # Filter out table column headers and signature/form fields
+    if _is_table_header_or_form_field(stripped):
+        return False
+    return True
+
+
+_BARE_ENUMERATED_RE = re.compile(r"^\s*\(?(?:[A-Za-z0-9]+|[ivxlcdmIVXLCDM]+)(?:\)\.?|\.)\s*$")
+
+
+def _is_bare_heading_marker(text: str) -> Tuple[bool, bool]:
+    """Inspects text to determine if it is a bare heading marker without a
+    substantive title (e.g. '6.1.', '9.1.', '6', '(1)', 'i.', 'a.').
+    Returns (is_bare, is_enumerated).
+    - is_bare: True if text lacks a substantive label.
+    - is_enumerated: True if text is an enumerated list marker like (1), (a), i.
+      requiring family_hint='point'."""
+    stripped = (text or "").strip()
+    if not stripped:
+        return False, False
+
+    # Decimal-numbered marker (e.g. "6.1.", "9.1.", "23.2.1.", "1.1")
+    dm = reference_index._DECIMAL_NUMBER_HEAD_RE.match(stripped)
+    if dm and not reference_index._is_date_shaped_number(dm.group("number")):
+        num_str = dm.group("number")
+        parts = num_str.split(".")
+        try:
+            # Reject financial figures like 50000.00 (clause segments are reasonable integers < 1000)
+            if all(0 <= int(p) < 1000 for p in parts if p):
+                label_part = stripped[dm.end():].strip()
+                if len(label_part) < 2:
+                    return True, False
+        except ValueError:
+            pass
+
+    # Bare integer (e.g. "6", "6.", "1", "10")
+    if re.match(r"^\s*\(?\d{1,3}\)?\.?\s*$", stripped):
+        # Is it parenthesized like "(1)"? If so, treat as enumerated
+        if stripped.startswith("(") and stripped.endswith(")"):
+            return True, True
+        return True, False
+
+    # Enumerated sublist/point marker (e.g. "(1)", "(i)", "i.", "(a)", "a.")
+    if _BARE_ENUMERATED_RE.match(stripped):
+        return True, True
+
+    return False, False
 
 
 def locate_heading_block(
@@ -861,6 +1006,11 @@ async def _ground_and_resolve_chunk(
         )
         if is_inside_toc and h.heading_text.strip().upper() not in ("INDEX", "TABLE OF CONTENTS"):
             continue
+        if _is_table_header_or_form_field(h.heading_text) or _is_document_noise_or_running_header(h.heading_text, h.start_page):
+            warning_counts["ai_table_header_or_form_field_dropped"] = (
+                warning_counts.get("ai_table_header_or_form_field_dropped", 0) + 1
+            )
+            continue
         depth, warn = _resolve_depth_for_heading(
             h.parent_ref, h.level, carry_ref_map, chunk_heading_depths, sim_stack_len,
             carry_label_map=carry_label_map,
@@ -994,6 +1144,75 @@ async def _ground_and_resolve_chunk(
                     ]
                     if partner_idxs:
                         used_block_idxs[found_page].add(partner_idxs[0])
+            elif match_kind in ("exact", "prefix"):
+                types = (page_block_types or {}).get(found_page) or []
+                rids = (page_row_ids or {}).get(found_page) or []
+                blocks = page_blocks.get(found_page) or []
+                is_tbl_cell = (
+                    block_idx < len(types)
+                    and types[block_idx] == "table_cell"
+                    and block_idx < len(rids)
+                    and rids[block_idx] is not None
+                )
+                if is_tbl_cell:
+                    is_bare, is_enum = _is_bare_heading_marker(h.heading_text)
+                    if is_bare:
+                        row_id = rids[block_idx]
+                        already_used = used_block_idxs[found_page]
+                        # Forward search first (Refinement B)
+                        forward_candidates = [
+                            j for j, r in enumerate(rids)
+                            if r == row_id and j > block_idx and j not in already_used
+                        ]
+                        comp_idx = None
+                        for j in forward_candidates:
+                            if j < len(blocks) and _is_substantive_heading_companion(blocks[j]):
+                                comp_idx = j
+                                break
+                        # Backward fallback only if no forward cell matches
+                        if comp_idx is None:
+                            backward_candidates = [
+                                j for j, r in enumerate(rids)
+                                if r == row_id and j < block_idx and j not in already_used
+                            ]
+                            for j in backward_candidates:
+                                if j < len(blocks) and _is_substantive_heading_companion(blocks[j]):
+                                    comp_idx = j
+                                    break
+                        if comp_idx is not None:
+                            comp_text = blocks[comp_idx].strip()
+                            clean_marker = h.heading_text.rstrip(".")
+                            if is_enum:
+                                h.heading_text = f"{h.heading_text.strip()} {comp_text}"
+                                h.family_hint = "point"  # Refinement D
+                                if not h.number_hint:
+                                    h.number_hint = re.sub(r"[^A-Za-z0-9]", "", clean_marker)
+                            elif re.match(r"^\d+$", clean_marker):
+                                h.heading_text = f"{clean_marker} {comp_text}"
+                            else:
+                                h.heading_text = f"{clean_marker}. {comp_text}"
+
+                            used_block_idxs[found_page].add(comp_idx)
+                            match_kind = "row_merged"
+                            ground_reason = "ai_row_merged_grounded"
+                            chunk_heading_depths[_norm_for_match(h.heading_text)] = depth  # Refinement E
+
+                            # Refinement E: Table rows are universal leaves (table_row_sourced),
+                            # so they never push to nested_stack. Rewind sim_stack_labels if pushed:
+                            sim_stack_len = depth
+                            sim_stack_labels = sim_stack_labels[:depth]
+                        elif found_page != h.start_page:
+                            ground_reason = "ai_page_corrected"
+                        else:
+                            ground_reason = None
+                    elif found_page != h.start_page:
+                        ground_reason = "ai_page_corrected"
+                    else:
+                        ground_reason = None
+                elif found_page != h.start_page:
+                    ground_reason = "ai_page_corrected"
+                else:
+                    ground_reason = None
             elif match_kind == "fuzzy":
                 ground_reason = "ai_fuzzy_grounded"
             elif found_page != h.start_page:
@@ -1006,6 +1225,12 @@ async def _ground_and_resolve_chunk(
             found_page, block_idx = h.start_page, None
             ground_reason = "ai_unlocated"
             warning_counts["ai_unlocated"] = warning_counts.get("ai_unlocated", 0) + 1
+
+        # Reject headings on an INDEX / Table of Contents page (they merely point elsewhere)
+        if found_page is not None:
+            found_blocks = page_blocks.get(found_page, [])
+            if _is_index_or_toc_page(found_blocks):
+                continue
 
         located.append({
             "heading": h, "depth": depth, "warn": warn,
@@ -1135,7 +1360,7 @@ async def _ground_and_resolve_chunk(
                             if b.strip().startswith(('<table', '<tr')) or '<td>' in b:
                                 is_table = True
                             break
-            if minted_fam == 'subdoc' and not is_subdoc_root:
+            if minted_fam in ('subdoc', 'point') and not is_subdoc_root:
                 if is_table or not fp:
                     continue
             kept.append(ev)
@@ -1511,10 +1736,271 @@ async def review_docrefs_for_job(job_id: str, engine_params: Optional[Dict[str, 
 
 
 
+async def _extract_macro_skeleton(
+    pages: List[ai_indexing.PageInput],
+    indexer: ai_indexing.StructureIndexer,
+    cancel_check=None,
+    raw_text_by_page: Optional[Dict[int, str]] = None,
+    coarse_chunk_pages: int = 20,
+) -> List[Dict[str, Any]]:
+    """Pass 1: Fast macro skeleton extraction using coarse chunks (~20 pages)
+    and MACRO_SYSTEM_PROMPT.
+    Returns list of macro containers bounded by sibling start_page - 1.
+    Refinement 2: Graceful degradation / non-fatal.
+    """
+    if not pages:
+        return []
+    total_pages = pages[-1].page_num if pages else 0
+    macro_chunks = ai_indexing.plan_chunks(
+        pages,
+        max_pages=coarse_chunk_pages,
+        max_chars=60000,
+        overlap_pages=0,
+    )
+    raw_macro_headings: List[Any] = []
+    for m_chunk in macro_chunks:
+        if cancel_check and cancel_check():
+            break
+        annotated_m_chunk = ai_indexing.ChunkPlan(
+            pages=[
+                ai_indexing.PageInput(
+                    page_num=p.page_num,
+                    text=reference_index.build_layout_annotated_text(p.text, (raw_text_by_page or {}).get(p.page_num)),
+                )
+                for p in m_chunk.pages
+            ],
+            truncated_pages=m_chunk.truncated_pages,
+            total_chars=m_chunk.total_chars,
+        )
+        # Parse plain page blocks and block types for grounding validation
+        m_page_blocks = {}
+        m_page_types = {}
+        for p in m_chunk.pages:
+            b, t, _ = reference_index.parse_page_blocks_with_row_ids(p.text)
+            m_page_blocks[p.page_num] = b
+            m_page_types[p.page_num] = t
+        try:
+            m_res = await indexer.extract_structure_for_chunk(
+                annotated_m_chunk,
+                is_macro_pass=True,
+                cancel_check=cancel_check,
+            )
+            if m_res.outcome == ai_indexing.ChunkOutcome.OK and m_res.headings:
+                for h in m_res.headings:
+                    txt = (h.heading_text or "").strip()
+                    if not txt:
+                        continue
+                    if _is_table_header_or_form_field(txt) or _is_document_noise_or_running_header(txt, h.start_page):
+                        continue
+                    is_bare, _ = _is_bare_heading_marker(txt)
+                    if is_bare:
+                        continue
+
+                    # Grounding check: verify that this macro container actually exists
+                    # on its claimed start_page (or an immediate neighbor within the chunk).
+                    sp = h.start_page
+                    blocks = m_page_blocks.get(sp, [])
+                    loc = locate_heading_block(blocks, txt, used_block_idxs=set())
+                    actual_page = sp
+                    if loc is None and (sp - 1) in m_page_blocks:
+                        loc = locate_heading_block(m_page_blocks[sp - 1], txt, used_block_idxs=set())
+                        if loc is not None:
+                            h.start_page = sp - 1
+                            actual_page = sp - 1
+                    elif loc is None and (sp + 1) in m_page_blocks:
+                        loc = locate_heading_block(m_page_blocks[sp + 1], txt, used_block_idxs=set())
+                        if loc is not None:
+                            h.start_page = sp + 1
+                            actual_page = sp + 1
+
+                    # Exclude unlocated macro hallucinations (e.g. LLM guessing section pages from TOC)
+                    if loc is None:
+                        continue
+
+                    # A macro container is a major top-level document division
+                    # (Section, Chapter, Annexure, Schedule, Part), never an internal table cell.
+                    act_types = m_page_types.get(actual_page, [])
+                    if loc[0] < len(act_types) and act_types[loc[0]] == "table_cell":
+                        continue
+
+                    # Grounding check for TOC pages: An INDEX / Table of Contents page is merely
+                    # an outline pointing elsewhere, not a substantive container starting on this page.
+                    actual_blocks = m_page_blocks.get(h.start_page, [])
+                    if _is_index_or_toc_page(actual_blocks):
+                        continue
+
+                    raw_macro_headings.append(h)
+        except Exception as e:
+            logger.warning("Pass 1 macro chunk %s encountered error: %s", m_chunk.page_nums, e)
+            continue
+
+    if not raw_macro_headings:
+        return []
+
+    raw_macro_headings.sort(key=lambda h: (h.start_page, h.level or 1))
+
+    # Deduplicate headings on the same page with identical normalized text
+    seen_on_page: Set[Tuple[int, str]] = set()
+    unique_macro: List[Any] = []
+    for h in raw_macro_headings:
+        norm = _norm_for_match(h.heading_text)
+        key = (h.start_page, norm)
+        if key in seen_on_page:
+            continue
+        seen_on_page.add(key)
+        unique_macro.append(h)
+
+    # Compute container boundaries (end_page)
+    containers: List[Dict[str, Any]] = []
+    for idx, h in enumerate(unique_macro):
+        lvl = h.level or 1
+        end_p = None
+        for next_h in unique_macro[idx + 1:]:
+            next_lvl = next_h.level or 1
+            if next_lvl <= lvl:
+                if next_h.start_page > h.start_page:
+                    end_p = next_h.start_page - 1
+                else:
+                    end_p = h.start_page
+                break
+        if end_p is None:
+            end_p = total_pages
+
+        containers.append({
+            "heading_text": h.heading_text.strip(),
+            "level": lvl,
+            "start_page": h.start_page,
+            "end_page": end_p,
+            "parent_ref": h.parent_ref,
+            "raw_heading": h,
+        })
+
+    return containers
+
+
+def _get_active_macro_context(
+    macro_skeleton: Optional[List[Dict[str, Any]]],
+    page_num: int,
+) -> Optional[Dict[str, Any]]:
+    """Finds the open level-1 and level-2 macro container active on page_num."""
+    if not macro_skeleton:
+        return None
+    active_root = None
+    active_parent = None
+    for c in macro_skeleton:
+        start_p = c["start_page"]
+        end_p = c.get("end_page") or 999999
+        if start_p <= page_num <= end_p:
+            if c.get("level", 1) == 1:
+                active_root = c["heading_text"]
+            elif c.get("level") == 2:
+                active_parent = c["heading_text"]
+
+    if not active_root and not active_parent:
+        return None
+    return {
+        "root_container": active_root,
+        "parent_clause": active_parent,
+    }
+
+
+def _merge_macro_and_micro_events(
+    macro_skeleton: Optional[List[Dict[str, Any]]],
+    events_by_page: Dict[int, List[Dict[str, Any]]],
+    page_blocks: Dict[int, List[str]],
+    detection_model: str = "",
+) -> Dict[int, List[Dict[str, Any]]]:
+    """Refinement 3: Macro & Micro Event Merging on the Same Page:
+    - Union with Block Deduplication: For each page, the event stream fed to
+      apply_heading_events_to_scope must be the union of Pass 1 macro containers
+      starting on that page + Pass 2 micro clauses on that page.
+    - If Pass 2 also emitted the section title, match them by block_idx or
+      fingerprint/normalized text and deduplicate (keeping Pass 1's level/container metadata).
+    - If Pass 2 omitted the section title, Pass 1's container is placed first in the
+      page's event list, guaranteeing the root container is pushed before its child clauses.
+    """
+    if not macro_skeleton:
+        return events_by_page
+
+    merged_by_page = {p: list(evs) for p, evs in events_by_page.items()}
+
+    macro_by_page: Dict[int, List[Dict[str, Any]]] = {}
+    for mc in macro_skeleton:
+        sp = mc.get("start_page")
+        if sp is not None:
+            macro_by_page.setdefault(sp, []).append(mc)
+
+    for page_num, mc_list in macro_by_page.items():
+        cur_events = merged_by_page.setdefault(page_num, [])
+        blocks = page_blocks.get(page_num, [])
+        used_idxs = {ev.get("block_idx") for ev in cur_events if ev.get("block_idx") is not None}
+
+        for mc in mc_list:
+            mc_text = mc.get("heading_text", "").strip()
+            if not mc_text:
+                continue
+            mc_norm = _norm_for_match(mc_text)
+
+            found_existing = False
+            for ev in cur_events:
+                ev_norm = _norm_for_match(ev.get("heading_text", ""))
+                if ev_norm == mc_norm or (len(mc_norm) >= 10 and mc_norm in ev_norm) or (len(ev_norm) >= 10 and ev_norm in mc_norm):
+                    ev["depth"] = 0 if mc.get("level", 1) == 1 else ev.get("depth", 0)
+                    ev["end_page"] = mc.get("end_page") or ev.get("end_page")
+                    reasons = ev.get("heading_confidence_reasons") or []
+                    ev["heading_confidence_reasons"] = [r for r in reasons if r != "table_row_sourced"]
+                    found_existing = True
+                    break
+
+            if not found_existing:
+                block_idx = None
+                snippet = mc_text
+                fingerprint = ""
+                loc = locate_heading_block(blocks, mc_text, used_block_idxs=used_idxs)
+                if loc is not None:
+                    block_idx = loc[0]
+                    used_idxs.add(block_idx)
+                    fingerprint = blocks[block_idx][:30]
+                    snippet = blocks[block_idx]
+
+                macro_ev = {
+                    "heading_text": mc_text,
+                    "depth": 0 if mc.get("level", 1) == 1 else 1,
+                    "end_page": mc.get("end_page"),
+                    "block_idx": block_idx,
+                    "fingerprint": fingerprint,
+                    "snippet": snippet,
+                    "truncated": False,
+                    "heading_confidence": "high" if block_idx is not None else "low",
+                    "heading_confidence_reasons": [] if block_idx is not None else ["ai_unlocated"],
+                    "detection_model": detection_model,
+                    "start_line_hint": None,
+                    "family_hint": None,
+                    "number_hint": None,
+                }
+
+                if block_idx is None or not cur_events:
+                    cur_events.insert(0, macro_ev)
+                else:
+                    insert_pos = 0
+                    while insert_pos < len(cur_events):
+                        ev_b = cur_events[insert_pos].get("block_idx")
+                        if ev_b is not None and ev_b < block_idx:
+                            insert_pos += 1
+                        else:
+                            break
+                    cur_events.insert(insert_pos, macro_ev)
+
+    return merged_by_page
+
+
+
 async def reindex_job_with_ai(
     job_id: str, start_page: Optional[int] = None, chunk_pages_override: Optional[int] = None,
     review_rule_prior_override: Optional[bool] = None, overlap_pages_override: Optional[int] = None,
     chunk_chars_max_override: Optional[int] = None,
+    adaptive_chunking_override: Optional[bool] = None,
+    two_pass_override: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Full-job AI reindex, chunked, with per-chunk fallback to the
     rule-based detector. `start_page`, when given, is a targeted re-run
@@ -1600,6 +2086,14 @@ async def reindex_job_with_ai(
         chunk_chars_max_override if chunk_chars_max_override is not None
         else engine_params.get("ai_index_chunk_chars_max", config.AI_INDEX_CHUNK_CHARS_MAX)
     )
+    adaptive_chunking = (
+        adaptive_chunking_override if adaptive_chunking_override is not None
+        else bool(engine_params.get("ai_index_adaptive_chunking", config.AI_INDEX_ADAPTIVE_CHUNKING))
+    )
+    two_pass = (
+        two_pass_override if two_pass_override is not None
+        else bool(engine_params.get("ai_index_two_pass", config.AI_INDEX_TWO_PASS))
+    )
     review_mentions = bool(engine_params.get("ai_index_review_mentions", False))
 
     try:
@@ -1637,20 +2131,48 @@ async def reindex_job_with_ai(
     # per-chunk right before the model call (see build_layout_annotated_text).
     raw_text_by_page: Dict[int, str] = {p["page_num"]: (p.get("raw_ocr_text") or "") for p in pages}
     page_inputs = [ai_indexing.PageInput(page_num=p["page_num"], text=_page_text(p)) for p in pages]
-    chunks = ai_indexing.plan_chunks(
-        page_inputs,
-        max_pages=chunk_pages_size,
-        max_chars=chunk_chars_max,
-        overlap_pages=overlap_pages,
-    )
+
+    if adaptive_chunking:
+        chunks = ai_indexing.plan_adaptive_chunks(
+            page_inputs,
+            max_pages=chunk_pages_size,
+            max_chars=chunk_chars_max,
+            overlap_pages=overlap_pages,
+        )
+    else:
+        chunks = ai_indexing.plan_chunks(
+            page_inputs,
+            max_pages=chunk_pages_size,
+            max_chars=chunk_chars_max,
+            overlap_pages=overlap_pages,
+        )
     total_chunks = len(chunks)
     bounded_stop = start_page is not None
+
+    def _cancel_check():
+        return task_queue.is_job_paused(job_id)
+
+    macro_skeleton: Optional[List[Dict[str, Any]]] = None
+    if two_pass:
+        try:
+            macro_skeleton = await _extract_macro_skeleton(
+                pages=page_inputs,
+                indexer=indexer,
+                cancel_check=_cancel_check,
+                raw_text_by_page=raw_text_by_page,
+            )
+            logger.info("Pass 1 extracted %d macro containers for job %s", len(macro_skeleton or []), job_id)
+        except Exception as e:
+            # Refinement 2: Pass 1 Graceful Degradation / non-fatal fallback
+            logger.warning("Pass 1 Macro Skeleton extraction failed, proceeding with standard carry context: %s", e)
+            macro_skeleton = None
 
     continuing = start_page is not None or resume_from is not None
     report = database.get_ai_index_report(job_id)
     report.update({
         "status": "running", "provider": resolved.provider_config.provider,
         "model": resolved.provider_config.model, "chunk_pages": chunk_pages_size,
+        "adaptive_chunking": adaptive_chunking, "two_pass": two_pass,
         "current_chunk": 0, "total_chunks": total_chunks,
         "pages_done": report.get("pages_done", 0) if continuing else 0,
         "chunks": report.get("chunks") if continuing else [],
@@ -1669,9 +2191,6 @@ async def reindex_job_with_ai(
     carried_headings: Dict[int, List[Any]] = {}
     highest_processed_this_run: int = 0
     rejected_so_far: Set[Tuple[int, str]] = set()
-
-    def _cancel_check():
-        return task_queue.is_job_paused(job_id)
 
     for chunk_idx, chunk in enumerate(chunks):
         if task_queue.is_job_paused(job_id):
@@ -1715,13 +2234,26 @@ async def reindex_job_with_ai(
                 chunk, seed_scope, total_pages, rejected_so_far, raw_text_by_page,
             )
 
+        macro_ctx = None
+        if two_pass and macro_skeleton:
+            chunk_first_page = chunk.page_nums[0]
+            macro_ctx = _get_active_macro_context(macro_skeleton, chunk_first_page)
+
+        extract_kwargs = {
+            "carry_context": carry_context,
+            "cancel_check": _cancel_check,
+            "include_pleading_points": pleading_points_via_ai,
+            "rule_prior": priors,
+            "review_rule_prior": review_rule_prior,
+            "order_by_line_hint": order_by_line_hint,
+        }
+        if macro_ctx is not None:
+            extract_kwargs["macro_context"] = macro_ctx
+
         try:
             result = await indexer.extract_structure_for_chunk(
-                annotated_chunk, carry_context=carry_context, cancel_check=_cancel_check,
-                include_pleading_points=pleading_points_via_ai,
-                rule_prior=priors,
-                review_rule_prior=review_rule_prior,
-                order_by_line_hint=order_by_line_hint,
+                annotated_chunk,
+                **extract_kwargs,
             )
         except ai_indexing.AIConfigError as e:
             final_status, final_error = "failed", str(e)
@@ -1831,6 +2363,12 @@ async def reindex_job_with_ai(
             )
             warning_counts.update(grounding_warnings)
 
+            # Refinement 3: Macro & Micro Event Merging on the Same Page
+            if two_pass and macro_skeleton:
+                events_by_page = _merge_macro_and_micro_events(
+                    macro_skeleton, events_by_page, page_blocks, resolved.provider_config.model,
+                )
+
             # Review degradation fallback:
             # If review_rule_prior is on, len(priors) >= 3, every prior was rejected,
             # and no AI heading was grounded -> review failure, fall back to rule prior, log review_degraded.
@@ -1900,6 +2438,20 @@ async def reindex_job_with_ai(
                     cands = cands + to_add
                     if last_decimal_ground:
                         new_scope["last_decimal_ground"] = last_decimal_ground
+
+                # Hybrid supplementation: run deterministic contract decimal clause and letter point detection
+                # to supplement any contract sub-clauses the AI missed, deduplicating against existing candidates.
+                contract_cands = reference_index.detect_contract_clauses_for_page(
+                    text, new_scope, cands,
+                )
+                if contract_cands:
+                    existing_keys = {c.get("key") for c in cands}
+                    existing_fps = {c.get("fingerprint") for c in cands if c.get("fingerprint")}
+                    to_add = [
+                        cc for cc in contract_cands
+                        if cc.get("key") not in existing_keys and cc.get("fingerprint") not in existing_fps
+                    ]
+                    cands = cands + to_add
             else:
                 cands, new_scope = reference_index.build_targets_for_page(
                     text, seed_scope, has_next_page=page_num < total_pages,

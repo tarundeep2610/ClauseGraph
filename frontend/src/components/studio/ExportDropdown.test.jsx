@@ -10,12 +10,30 @@ describe('ExportDropdown', () => {
     expect(screen.getByTestId('export-dropdown-panel')).toBeInTheDocument();
   });
 
-  it('defaults to docx + full document + include metadata, and calls onExport with that', () => {
+  it('defaults to md + full document + include metadata, and calls onExport with that', () => {
     const onExport = vi.fn();
     render(<ExportDropdown currentPage={3} totalPages={42} onExport={onExport} />);
     fireEvent.click(screen.getByTestId('export-dropdown-toggle'));
+    expect(screen.getByTestId('export-format-md')).toHaveClass('active');
     fireEvent.click(screen.getByTestId('export-confirm-btn'));
-    expect(onExport).toHaveBeenCalledWith({ format: 'docx', scope: 'full', includeMetadata: true, pageNum: undefined, pageRange: undefined });
+    expect(onExport).toHaveBeenCalledWith({ format: 'md', scope: 'full', includeMetadata: true, pageNum: undefined, pageRange: undefined });
+  });
+
+  it('shows no "Recommended" badge on any format card, and the .md card\'s subtitle is plain "Markdown"', () => {
+    render(<ExportDropdown currentPage={3} totalPages={42} onExport={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('export-dropdown-toggle'));
+    expect(screen.queryByText(/Recommended/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('export-format-md')).toHaveTextContent('Markdown');
+    expect(screen.queryByText('GitHub Markdown')).not.toBeInTheDocument();
+  });
+
+  it('renders the format cards in md, pdf, docx order', () => {
+    render(<ExportDropdown currentPage={3} totalPages={42} onExport={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('export-dropdown-toggle'));
+    const cards = screen.getAllByTestId(/^export-format-/);
+    expect(cards.map((c) => c.dataset.testid)).toEqual([
+      'export-format-md', 'export-format-pdf', 'export-format-docx',
+    ]);
   });
 
   it('switching format and scope changes what onExport is called with', () => {
@@ -39,7 +57,7 @@ describe('ExportDropdown', () => {
 
     fireEvent.change(screen.getByTestId('export-range-input'), { target: { value: '1-5,12' } });
     fireEvent.click(screen.getByTestId('export-confirm-btn'));
-    expect(onExport).toHaveBeenCalledWith({ format: 'docx', scope: 'range', includeMetadata: true, pageNum: undefined, pageRange: '1-5,12' });
+    expect(onExport).toHaveBeenCalledWith({ format: 'md', scope: 'range', includeMetadata: true, pageNum: undefined, pageRange: '1-5,12' });
   });
 
   it('unchecking the metadata toggle is reflected in the export call', () => {

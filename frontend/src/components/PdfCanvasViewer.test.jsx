@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { createRef } from 'react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import PdfCanvasViewer from './PdfCanvasViewer';
 
 // pdf.js itself (real WASM/JBIG2 decoding, real canvas rendering) is
@@ -238,6 +239,75 @@ describe('PdfCanvasViewer — zoom', () => {
       deltaY: -100, ctrlKey: false,
     });
     expect(screen.getByTestId('pdf-zoom-reset')).toHaveTextContent('100%');
+  });
+});
+
+describe('PdfCanvasViewer — externally driven zoom (ref + onZoomLevelChange)', () => {
+  it('reports its zoom level to onZoomLevelChange, including the initial 100%', async () => {
+    const onZoomLevelChange = vi.fn();
+    render(<PdfCanvasViewer pdfSrc="blob:fake-url" pageNum={1} totalPages={5} onZoomLevelChange={onZoomLevelChange} />);
+    await waitFor(() => expect(onZoomLevelChange).toHaveBeenCalledWith(1));
+
+    fireEvent.click(screen.getByTestId('pdf-zoom-in'));
+    await waitFor(() => expect(onZoomLevelChange).toHaveBeenLastCalledWith(1.15));
+  });
+
+  it('exposes zoomIn/zoomOut/resetZoom via ref so a parent can drive zoom without its own UI', async () => {
+    const ref = createRef();
+    render(<PdfCanvasViewer ref={ref} pdfSrc="blob:fake-url" pageNum={1} totalPages={5} showZoomControls={false} />);
+    await waitFor(() => expect(mockRender).toHaveBeenCalledTimes(1));
+
+    expect(screen.queryByTestId('pdf-zoom-in')).not.toBeInTheDocument();
+
+    act(() => ref.current.zoomIn());
+    await waitFor(() => expect(mockRender).toHaveBeenCalledTimes(2));
+
+    act(() => ref.current.resetZoom());
+    await waitFor(() => expect(mockRender).toHaveBeenCalledTimes(3));
+  });
+
+  it('hides its own zoom UI when showZoomControls is false, but still shows page nav when asked', async () => {
+    render(<PdfCanvasViewer pdfSrc="blob:fake-url" pageNum={1} totalPages={5} showZoomControls={false} showPageNav />);
+    await waitFor(() => expect(mockRender).toHaveBeenCalled());
+    expect(screen.queryByTestId('pdf-zoom-in')).not.toBeInTheDocument();
+    expect(screen.getByTestId('pdf-next-page')).toBeInTheDocument();
+  });
+});
+
+describe('PdfCanvasViewer — fitPage (whole page visible, not just fit-width)', () => {
+  it('computes a zoomLevel that fits BOTH width and height, not the fit-width 100% baseline', async () => {
+    // mockGetViewport returns {width: 100*scale, height: 150*scale} and jsdom
+    // reports 0 for clientWidth/clientHeight, so both fall back to this
+    // component's own 800/600 defaults: widthFitRatio = 800/100 = 8,
+    // heightFitRatio = 600/150 = 4 — the page is "portrait" relative to the
+    // pane, so the height constraint should win and land on 4/8 = 50%,
+    // not fit-width's 100%.
+    const onZoomLevelChange = vi.fn();
+    const ref = createRef();
+    render(
+      <PdfCanvasViewer ref={ref} pdfSrc="blob:fake-url" pageNum={1} totalPages={5} onZoomLevelChange={onZoomLevelChange} />
+    );
+    await waitFor(() => expect(mockRender).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('pdf-zoom-reset')).toHaveTextContent('100%');
+
+    act(() => ref.current.fitPage());
+    await waitFor(() => expect(screen.getByTestId('pdf-zoom-reset')).toHaveTextContent('50%'));
+    expect(onZoomLevelChange).toHaveBeenLastCalledWith(0.5);
+  });
+
+  it('is a safe no-op when called before any page has rendered', () => {
+    const ref = createRef();
+    render(<PdfCanvasViewer ref={ref} pdfSrc={null} pageNum={1} totalPages={5} />);
+    expect(() => act(() => ref.current.fitPage())).not.toThrow();
+  });
+
+  it('does not change what resetZoom/the inline "100%" button do — fit-width stays fit-width', async () => {
+    render(<PdfCanvasViewer pdfSrc="blob:fake-url" pageNum={1} totalPages={5} />);
+    await waitFor(() => expect(mockRender).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByTestId('pdf-zoom-in'));
+    await waitFor(() => expect(screen.getByTestId('pdf-zoom-reset')).toHaveTextContent('115%'));
+    fireEvent.click(screen.getByTestId('pdf-zoom-reset'));
+    await waitFor(() => expect(screen.getByTestId('pdf-zoom-reset')).toHaveTextContent('100%'));
   });
 });
 

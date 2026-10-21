@@ -76,6 +76,8 @@ class StructureIndexer:
         rule_prior: Optional[List[dict]] = None,
         review_rule_prior: bool = False,
         order_by_line_hint: bool = False,
+        is_macro_pass: bool = False,
+        macro_context: Optional[dict] = None,
     ) -> ChunkStructureResult:
         page_nums = chunk.page_nums
 
@@ -110,6 +112,8 @@ class StructureIndexer:
             include_pleading_points=include_pleading_points,
             rule_prior=rule_prior,
             review_rule_prior=review_rule_prior,
+            is_macro_pass=is_macro_pass,
+            macro_context=macro_context,
         )
 
         attempts = 0

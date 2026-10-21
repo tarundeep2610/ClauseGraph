@@ -3239,41 +3239,6 @@
     },
     {
       "page": 47,
-      "key": "numheading:10.3",
-      "occurrence_index": 0,
-      "label": "10.3 In the event of any accident and/or injury",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 47,
-      "key": "numheading:10.4",
-      "occurrence_index": 0,
-      "label": "10.4 In case it is found that any theft or damage has occurred",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 47,
-      "key": "numheading:10.5",
-      "occurrence_index": 0,
-      "label": "10.5 In case any personnel of the Agency is implicated in any law suit",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 47,
-      "key": "numheading:10.6",
-      "occurrence_index": 0,
-      "label": "10.6 The Purchaser shall be deemed to be indemnified by the Agency",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 47,
-      "key": "numheading:10.7",
-      "occurrence_index": 0,
-      "label": "10.7 Claims arising due to \u201cany activity\u201d shall be liable for adjustment",
-      "scope_key": "subdoc:section-v-general-conditions-of-contract"
-    },
-    {
-      "page": 47,
       "key": "numheading:5",
       "occurrence_index": 0,
       "label": "5 Checks and Supervision by the Agency",
@@ -3361,6 +3326,41 @@
       "key": "numheading:9.4",
       "occurrence_index": 0,
       "label": "9.4 The authority as decided by the Purchaser (including committee, etc.) shall decide",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 48,
+      "key": "numheading:10.3",
+      "occurrence_index": 0,
+      "label": "10.3 In the event of any accident and/or injury",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 48,
+      "key": "numheading:10.4",
+      "occurrence_index": 0,
+      "label": "10.4 In case it is found that any theft or damage has occurred",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 48,
+      "key": "numheading:10.5",
+      "occurrence_index": 0,
+      "label": "10.5 In case any personnel of the Agency is implicated in any law suit",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 48,
+      "key": "numheading:10.6",
+      "occurrence_index": 0,
+      "label": "10.6 The Purchaser shall be deemed to be indemnified by the Agency",
+      "scope_key": "subdoc:section-v-general-conditions-of-contract"
+    },
+    {
+      "page": 48,
+      "key": "numheading:10.7",
+      "occurrence_index": 0,
+      "label": "10.7 Claims arising due to \u201cany activity\u201d shall be liable for adjustment",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
@@ -3630,14 +3630,14 @@
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
-      "page": 50,
+      "page": 51,
       "key": "numheading:18.6",
       "occurrence_index": 0,
       "label": "18.6 The Purchaser may declare a bidder ineligible for issue of Contract/Award",
       "scope_key": "subdoc:section-v-general-conditions-of-contract"
     },
     {
-      "page": 50,
+      "page": 51,
       "key": "numheading:18.7",
       "occurrence_index": 0,
       "label": "18.7 Any act of fraudulence, which can be purported or being attempted",
@@ -3803,6 +3803,27 @@
       "occurrence_index": 0,
       "label": "1.4 Project Schedule",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac"
+    },
+    {
+      "page": 54,
+      "key": "numheading:1.4.1",
+      "occurrence_index": 0,
+      "label": "1.4.1 The indicative modernization schedule for the new tender shall be as below",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.4"
+    },
+    {
+      "page": 54,
+      "key": "numheading:1.4.2",
+      "occurrence_index": 0,
+      "label": "1.4.2 The Bidder shall deploy its required resources in accordance with the approved schedule",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.4"
+    },
+    {
+      "page": 54,
+      "key": "numheading:1.4.3",
+      "occurrence_index": 0,
+      "label": "1.4.3 Milestone dates shall be finalized after HOTO/Discovery",
+      "scope_key": "subdoc:section-vi-special-conditions-of-contrac/numheading:1.4"
     },
     {
       "page": 54,
@@ -4114,7 +4135,7 @@
     },
     {
       "page": 59,
-      "key": "point:1.15.1",
+      "key": "numheading:1.15.1",
       "occurrence_index": 0,
       "label": "1.15.1. Agency shall comply with Purchaser security policies",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
@@ -4128,224 +4149,224 @@
     },
     {
       "page": 60,
-      "key": "point:1.15.2",
+      "key": "numheading:1.15.2",
       "occurrence_index": 0,
       "label": "1.15.2. Agency shall support VAPT, security audit, configuration review",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.15.3",
+      "key": "numheading:1.15.3",
       "occurrence_index": 0,
       "label": "1.15.3. Purchaser/auditor shall have reasonable rights to audit service records",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.15.4",
+      "key": "numheading:1.15.4",
       "occurrence_index": 0,
       "label": "1.15.4. Critical vulnerabilities or exposures presenting material business risk",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.16",
+      "key": "numheading:1.16",
       "occurrence_index": 0,
       "label": "1.16. Intellectual Property, Source Code and Configuration Ownership",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.16.1",
+      "key": "numheading:1.16.1",
       "occurrence_index": 0,
       "label": "1.16.1. All Purchaser-specific source code (as applicable), APEX applications/ex",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.16.2",
+      "key": "numheading:1.16.2",
       "occurrence_index": 0,
       "label": "1.16.2. Pre-existing bidder/OEM intellectual property shall remain with its owne",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.16.3",
+      "key": "numheading:1.16.3",
       "occurrence_index": 0,
       "label": "1.16.3. No technical lock-in, undisclosed dependency, encrypted source/configura",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.17",
+      "key": "numheading:1.17",
       "occurrence_index": 0,
       "label": "1.17. Cloud, OCI and Account/Tenancy Control",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.17.1",
+      "key": "numheading:1.17.1",
       "occurrence_index": 0,
       "label": "1.17.1. Where cloud services are used, production tenancy/account/subscription",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.17.2",
+      "key": "numheading:1.17.2",
       "occurrence_index": 0,
       "label": "1.17.2. Agency shall not create production resources in a personal/vendor-owned ",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.17.3",
+      "key": "numheading:1.17.3",
       "occurrence_index": 0,
       "label": "1.17.3. Cloud architecture changes affecting cost, security, residency",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.17.4",
+      "key": "numheading:1.17.4",
       "occurrence_index": 0,
       "label": "1.17.4. Agency shall provide monthly utilization/cost/FinOps reporting",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.18",
+      "key": "numheading:1.18",
       "occurrence_index": 0,
       "label": "1.18. Parallel Contracts, Existing Licenses and Interface Responsibility",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.18.1",
+      "key": "numheading:1.18.1",
       "occurrence_index": 0,
       "label": "1.18.1. The Agency shall perform the Contract with full knowledge that Oracle li",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.18.2",
+      "key": "numheading:1.18.2",
       "occurrence_index": 0,
       "label": "1.18.2. The Agency shall prepare and maintain the approved Four-CSI + Parallel-C",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 60,
-      "key": "point:1.18.3",
+      "key": "numheading:1.18.3",
       "occurrence_index": 0,
       "label": "1.18.3. The Agency shall provide technical information and reasonable assistance",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.18.4",
+      "key": "numheading:1.18.4",
       "occurrence_index": 0,
       "label": "1.18.4. Expiry or termination of a parallel contract shall not constitute an aut",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.19",
+      "key": "numheading:1.19",
       "occurrence_index": 0,
       "label": "1.19. Enterprise AI / GenAI Specific Conditions",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.19.1",
+      "key": "numheading:1.19.1",
       "occurrence_index": 0,
       "label": "1.19.1. Only Purchaser-approved AI models/services and data sources",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.19.2",
+      "key": "numheading:1.19.2",
       "occurrence_index": 0,
       "label": "1.19.2. AI access shall respect the underlying authorization",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.19.3",
+      "key": "numheading:1.19.3",
       "occurrence_index": 0,
       "label": "1.19.3. AI-generated recommendations shall not directly create, approve or post ",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.19.4",
+      "key": "numheading:1.19.4",
       "occurrence_index": 0,
       "label": "1.19.4. Existing OCI GPU resources shall be assessed and used",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.19.5",
+      "key": "numheading:1.19.5",
       "occurrence_index": 0,
       "label": "1.19.5. Prompt, output, embedding/vector and model-data retention",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.20",
+      "key": "numheading:1.20",
       "occurrence_index": 0,
       "label": "1.20. Change Control and Technology Currency",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.20.1",
+      "key": "numheading:1.20.1",
       "occurrence_index": 0,
       "label": "1.20.1. All material scope, architecture, production configuration",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.20.2",
+      "key": "numheading:1.20.2",
       "occurrence_index": 0,
       "label": "1.20.2. Where these tender references a product/release",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.20.3",
+      "key": "numheading:1.20.3",
       "occurrence_index": 0,
       "label": "1.20.3. Agency shall maintain an annual technology roadmap",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.21",
+      "key": "numheading:1.21",
       "occurrence_index": 0,
       "label": "1.21. Exit Management and Transition Assistance",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.21.1",
+      "key": "numheading:1.21.1",
       "occurrence_index": 0,
       "label": "1.21.1. Agency shall submit an Exit Management Plan 90 days prior to the Contrac",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.21.2",
+      "key": "numheading:1.21.2",
       "occurrence_index": 0,
       "label": "1.21.2. At least 90 days before normal expiry, or immediately upon termination n",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.21.3",
+      "key": "numheading:1.21.3",
       "occurrence_index": 0,
       "label": "1.21.3. Exit deliverables shall include complete inventory/CMDB",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
     },
     {
       "page": 61,
-      "key": "point:1.21.4",
+      "key": "numheading:1.21.4",
       "occurrence_index": 0,
       "label": "1.21.4. Final payment and formal exit acceptance shall be subject to completion",
       "scope_key": "subdoc:section-vi-special-conditions-of-contrac/subdoc:1-15-cybersecurity-regulatory-and-audit"
@@ -4401,101 +4422,101 @@
     },
     {
       "page": 66,
-      "key": "subdoc:annexure-iv-format-for-price-schedule",
+      "key": "annexure:iv",
       "occurrence_index": 0,
-      "label": "Annexure-IV: Format for Price Schedule",
-      "scope_key": "section:7"
+      "label": null,
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:item-ii-cost-for-operations-and"
     },
     {
       "page": 66,
       "key": "subdoc:item-ii-cost-for-operations-and",
       "occurrence_index": 0,
       "label": "Item II - Cost for Operations and Maintenance for five (5) Y",
-      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule"
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking"
     },
     {
       "page": 68,
-      "key": "point:1",
+      "key": "numheading:1",
       "occurrence_index": 0,
       "label": "1. Successful bidder (L1) will be declared on the basis of grand total amount.",
-      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
     },
     {
       "page": 68,
-      "key": "point:10",
+      "key": "numheading:10",
       "occurrence_index": 0,
       "label": "10. It is to certify that the relevant portion of Input Tax Credit",
-      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
     },
     {
       "page": 68,
-      "key": "point:11",
+      "key": "numheading:11",
       "occurrence_index": 0,
       "label": "11. If user wants to enter any decimal value than please enter as per given exam",
-      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
     },
     {
       "page": 68,
-      "key": "point:2",
+      "key": "numheading:2",
       "occurrence_index": 0,
       "label": "2. Grand total amount should be same in both words & figures.",
-      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
     },
     {
       "page": 68,
-      "key": "point:3",
+      "key": "numheading:3",
       "occurrence_index": 0,
       "label": "3. The total amount quoted against Line Item 1 & Item 3 (Oracle ERP Version Upgr",
-      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
     },
     {
       "page": 68,
-      "key": "point:4",
+      "key": "numheading:4",
       "occurrence_index": 0,
       "label": "4. It may be noted that Payment for services to be performed under this Contract",
-      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
     },
     {
       "page": 68,
-      "key": "point:5",
+      "key": "numheading:5",
       "occurrence_index": 0,
       "label": "5. GST as applicable shall be paid extra.",
-      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
     },
     {
       "page": 68,
-      "key": "point:6",
+      "key": "numheading:6",
       "occurrence_index": 0,
       "label": "6. The financial evaluation shall be done as per procedure prescribed in Section",
-      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
     },
     {
       "page": 68,
-      "key": "point:7",
+      "key": "numheading:7",
       "occurrence_index": 0,
       "label": "7. Only blank fields are mandatory to be filled.",
-      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
     },
     {
       "page": 68,
-      "key": "point:8",
+      "key": "numheading:8",
       "occurrence_index": 0,
       "label": "8. In case of discrepancy in the price quoted by the Bidder",
-      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
     },
     {
       "page": 68,
-      "key": "point:9",
+      "key": "numheading:9",
       "occurrence_index": 0,
       "label": "9. The UNIT of measurement lump sum (LS) for quoting rate of the item specified",
-      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule/subdoc:note-2"
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
     },
     {
       "page": 68,
       "key": "subdoc:note-2",
       "occurrence_index": 0,
       "label": "Note (2)",
-      "scope_key": "section:7/subdoc:annexure-iv-format-for-price-schedule"
+      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking"
     },
     {
       "page": 68,
@@ -4516,13 +4537,6 @@
       "key": "subdoc:annex-vi-performa-for-blacklisting",
       "occurrence_index": 0,
       "label": "Annex-VI: Performa for Blacklisting",
-      "scope_key": "section:7"
-    },
-    {
-      "page": 71,
-      "key": "subdoc:annex-vii-performa-for-pending-litigatio",
-      "occurrence_index": 0,
-      "label": "Annex-VII: Performa for Pending Litigation",
       "scope_key": "section:7"
     },
     {
@@ -4569,171 +4583,171 @@
     },
     {
       "page": 75,
-      "key": "subdoc:annexure-ix-guidelines-for-e-procurement",
+      "key": "annexure:ix",
       "occurrence_index": 0,
-      "label": "Annexure-IX: Guidelines for E-Procurement System",
-      "scope_key": "section:7"
+      "label": null,
+      "scope_key": "section:7/subdoc:annex-viii-b-bank-guarantee-checklist"
     },
     {
       "page": 76,
-      "key": "subdoc:annexure-x-pre-bid-query-format",
+      "key": "annexure:x",
       "occurrence_index": 0,
-      "label": "Annexure-X: Pre-bid Query format",
+      "label": null,
       "scope_key": "section:7"
+    },
+    {
+      "page": 77,
+      "key": "annexure:xi",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "section:7/annexure:x/letterheading:I"
+    },
+    {
+      "page": 77,
+      "key": "letterheading:I",
+      "occurrence_index": 0,
+      "label": "I. Project Management",
+      "scope_key": "section:7/annexure:x"
     },
     {
       "page": 77,
       "key": "point:a",
       "occurrence_index": 0,
       "label": "a. Purpose of this Agreement",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
+      "scope_key": "section:7/annexure:x"
     },
     {
       "page": 77,
       "key": "point:b",
       "occurrence_index": 0,
       "label": "b. Description of Services Provided",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
+      "scope_key": "section:7/annexure:x"
     },
     {
       "page": 77,
       "key": "point:c",
       "occurrence_index": 0,
       "label": "c. Duration of SLA",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
+      "scope_key": "section:7/annexure:x"
     },
     {
       "page": 77,
       "key": "point:d",
       "occurrence_index": 0,
       "label": "d. Service Level Agreements and Targets",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
+      "scope_key": "section:7/annexure:x"
     },
     {
       "page": 77,
       "key": "point:e",
       "occurrence_index": 0,
       "label": "e. General principle of Service Level Agreements",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
-    },
-    {
-      "page": 77,
-      "key": "point:i",
-      "occurrence_index": 0,
-      "label": "I. Project Management",
-      "scope_key": ""
-    },
-    {
-      "page": 77,
-      "key": "subdoc:annexure-xi-service-level-agreement",
-      "occurrence_index": 0,
-      "label": "Annexure-XI: Service Level Agreement",
-      "scope_key": "section:7"
+      "scope_key": "section:7/annexure:x"
     },
     {
       "page": 78,
-      "key": "point:ii",
+      "key": "subdoc:ii-availability-management",
       "occurrence_index": 0,
       "label": "II. Availability Management",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
+      "scope_key": "section:7/annexure:x/letterheading:I"
     },
     {
       "page": 79,
       "key": "point:iii",
       "occurrence_index": 0,
       "label": "III. Service Management",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
+      "scope_key": "section:7/annexure:x/letterheading:I/subdoc:ii-availability-management"
     },
     {
       "page": 80,
       "key": "point:iv",
       "occurrence_index": 0,
       "label": "IV. Application Performance Management",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
+      "scope_key": "section:7/annexure:x/letterheading:I/subdoc:ii-availability-management"
     },
     {
       "page": 81,
       "key": "point:f",
       "occurrence_index": 0,
       "label": "f. Breach of SLA",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
+      "scope_key": "section:7/annexure:x/letterheading:I/subdoc:note-3"
     },
     {
       "page": 81,
       "key": "point:g",
       "occurrence_index": 0,
       "label": "g. Monitoring & Auditing",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
+      "scope_key": "section:7/annexure:x/letterheading:I/subdoc:note-3"
     },
     {
       "page": 81,
       "key": "point:h",
       "occurrence_index": 0,
       "label": "h. Reporting Procedure",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
+      "scope_key": "section:7/annexure:x/letterheading:I/subdoc:note-3"
     },
     {
       "page": 81,
       "key": "point:i",
       "occurrence_index": 0,
       "label": "i. Issue Management Procedures",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
+      "scope_key": "section:7/annexure:x/letterheading:I/subdoc:note-3"
     },
     {
       "page": 81,
       "key": "subdoc:note-3",
       "occurrence_index": 0,
       "label": "Note (3)",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement"
+      "scope_key": "section:7/annexure:x/letterheading:I"
     },
     {
       "page": 82,
       "key": "point:a",
       "occurrence_index": 0,
       "label": "a) General",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/subdoc:note-3/subdoc:issue-management-process"
+      "scope_key": "section:7/annexure:x/letterheading:I/subdoc:issue-management-process"
     },
     {
       "page": 82,
       "key": "point:b",
       "occurrence_index": 0,
       "label": "b) SLA Change Process",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/subdoc:note-3/subdoc:issue-management-process"
+      "scope_key": "section:7/annexure:x/letterheading:I/subdoc:issue-management-process"
     },
     {
       "page": 82,
       "key": "point:c",
       "occurrence_index": 0,
       "label": "c) Version Control",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/subdoc:note-3/subdoc:issue-management-process"
+      "scope_key": "section:7/annexure:x/letterheading:I/subdoc:issue-management-process"
     },
     {
       "page": 82,
       "key": "point:d",
       "occurrence_index": 0,
       "label": "d) Management Escalation Procedures",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/subdoc:note-3/subdoc:issue-management-process"
+      "scope_key": "section:7/annexure:x/letterheading:I/subdoc:issue-management-process"
     },
     {
       "page": 82,
       "key": "point:j",
       "occurrence_index": 0,
       "label": "j. SLA Change Control",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/subdoc:note-3/subdoc:issue-management-process"
+      "scope_key": "section:7/annexure:x/letterheading:I/subdoc:issue-management-process"
     },
     {
       "page": 82,
       "key": "subdoc:issue-management-process",
       "occurrence_index": 0,
       "label": "\u2022 Issue Management Process",
-      "scope_key": "section:7/subdoc:annexure-xi-service-level-agreement/subdoc:note-3"
+      "scope_key": "section:7/annexure:x/letterheading:I"
     },
     {
       "page": 83,
-      "key": "subdoc:annexure-xii-list-of-software-oracle",
+      "key": "annexure:xii",
       "occurrence_index": 0,
-      "label": "Annexure-XII: List of Software Oracle ERP licenses available",
-      "scope_key": "section:7"
+      "label": null,
+      "scope_key": "section:7/annexure:x/letterheading:I/subdoc:issue-management-process"
     },
     {
       "page": 83,
@@ -4758,9 +4772,9 @@
     },
     {
       "page": 85,
-      "key": "subdoc:annexure-xiii-erp-modules-implemented-in",
+      "key": "annexure:xiii",
       "occurrence_index": 0,
-      "label": "Annexure-XIII \u2013 ERP Modules implemented in MPPKVVCL",
+      "label": null,
       "scope_key": "section:7"
     },
     {
@@ -4771,13 +4785,6 @@
       "scope_key": ""
     },
     {
-      "page": 117,
-      "key": "subdoc:inventory-and-order-management-supply-ch",
-      "occurrence_index": 0,
-      "label": "Inventory and Order Management (Supply Chain Management)",
-      "scope_key": "section:7/subdoc:annexure-xiii-erp-modules-implemented-in"
-    },
-    {
       "page": 119,
       "key": "term:rma",
       "occurrence_index": 0,
@@ -4786,16 +4793,16 @@
     },
     {
       "page": 121,
-      "key": "subdoc:annexure-xiv-cv-format-at-most",
+      "key": "annexure:xiv",
       "occurrence_index": 0,
-      "label": "Annexure-XIV: CV Format (At most 2 pages)",
+      "label": null,
       "scope_key": "section:7"
     },
     {
       "page": 122,
-      "key": "subdoc:annexure-xv-list-of-major-integrations",
+      "key": "annexure:xv",
       "occurrence_index": 0,
-      "label": "Annexure-XV: List of Major Integrations & Customizations",
+      "label": null,
       "scope_key": "section:7"
     },
     {
@@ -4803,448 +4810,448 @@
       "key": "subdoc:bank-eft-generation",
       "occurrence_index": 0,
       "label": "Bank EFT generation",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:finance"
+      "scope_key": "section:7/annexure:xv/subdoc:finance"
     },
     {
       "page": 122,
       "key": "subdoc:customer-management",
       "occurrence_index": 0,
       "label": "Customer Management",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:finance"
+      "scope_key": "section:7/annexure:xv/subdoc:finance"
     },
     {
       "page": 122,
       "key": "subdoc:employee-asset-tracking",
       "occurrence_index": 0,
       "label": "Employee Asset Tracking",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:finance"
+      "scope_key": "section:7/annexure:xv/subdoc:finance"
     },
     {
       "page": 122,
       "key": "subdoc:finance",
       "occurrence_index": 0,
       "label": "Finance",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations"
+      "scope_key": "section:7/annexure:xv"
     },
     {
       "page": 122,
       "key": "subdoc:gst-e-invoicing-for-b2b-and",
       "occurrence_index": 0,
       "label": "GST e-Invoicing for B2B and B2C",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:finance"
+      "scope_key": "section:7/annexure:xv/subdoc:finance"
     },
     {
       "page": 122,
       "key": "subdoc:meter-reader-invoicing",
       "occurrence_index": 0,
       "label": "Meter Reader Invoicing",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:finance"
+      "scope_key": "section:7/annexure:xv/subdoc:finance"
     },
     {
       "page": 122,
       "key": "subdoc:supplier-deductions",
       "occurrence_index": 0,
       "label": "Supplier Deductions",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:finance"
+      "scope_key": "section:7/annexure:xv/subdoc:finance"
     },
     {
       "page": 122,
       "key": "subdoc:supplier-deposits",
       "occurrence_index": 0,
       "label": "Supplier Deposits",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:finance"
+      "scope_key": "section:7/annexure:xv/subdoc:finance"
     },
     {
       "page": 123,
       "key": "subdoc:cra",
       "occurrence_index": 0,
       "label": "CRA",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:finance"
+      "scope_key": "section:7/annexure:xv/subdoc:finance"
     },
     {
       "page": 123,
       "key": "subdoc:item-transfer-between-projects",
       "occurrence_index": 0,
       "label": "Item Transfer between Projects",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:projects"
+      "scope_key": "section:7/annexure:xv/subdoc:projects"
     },
     {
       "page": 123,
       "key": "subdoc:labor-contract-automation",
       "occurrence_index": 0,
       "label": "Labor Contract Automation",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:projects"
+      "scope_key": "section:7/annexure:xv/subdoc:projects"
     },
     {
       "page": 123,
       "key": "subdoc:projects",
       "occurrence_index": 0,
       "label": "Projects",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations"
+      "scope_key": "section:7/annexure:xv"
     },
     {
       "page": 123,
       "key": "subdoc:smart-bijli-app-integration-to-create",
       "occurrence_index": 0,
       "label": "Smart Bijli app integration to create Estimate",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:projects"
+      "scope_key": "section:7/annexure:xv/subdoc:projects"
     },
     {
       "page": 123,
       "key": "subdoc:smart-bijli-integration-with-ar",
       "occurrence_index": 0,
       "label": "Smart Bijli integration with AR",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:finance"
+      "scope_key": "section:7/annexure:xv/subdoc:finance"
     },
     {
       "page": 123,
       "key": "subdoc:tcs-1-process",
       "occurrence_index": 0,
       "label": "TCS.1% Process",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:finance"
+      "scope_key": "section:7/annexure:xv/subdoc:finance"
     },
     {
       "page": 123,
       "key": "subdoc:turnkey-estimate-process-and-measurement",
       "occurrence_index": 0,
       "label": "Turnkey Estimate Process and Measurement Book",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:projects"
+      "scope_key": "section:7/annexure:xv/subdoc:projects"
     },
     {
       "page": 124,
       "key": "subdoc:asset-creation-and-capitalization-automa",
       "occurrence_index": 0,
       "label": "Asset creation and capitalization automation.",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:projects"
+      "scope_key": "section:7/annexure:xv/subdoc:projects"
     },
     {
       "page": 124,
       "key": "subdoc:budget-form-and-workflow-estimate-boq",
       "occurrence_index": 0,
       "label": "Budget Form and Workflow (Estimate BoQ)",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:projects"
+      "scope_key": "section:7/annexure:xv/subdoc:projects"
     },
     {
       "page": 124,
       "key": "subdoc:move-order-release",
       "occurrence_index": 0,
       "label": "Move Order Release",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:projects"
+      "scope_key": "section:7/annexure:xv/subdoc:projects"
     },
     {
       "page": 124,
       "key": "subdoc:project-funds-control",
       "occurrence_index": 0,
       "label": "Project Funds Control",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:projects"
+      "scope_key": "section:7/annexure:xv/subdoc:projects"
     },
     {
       "page": 124,
       "key": "subdoc:project-workflow",
       "occurrence_index": 0,
       "label": "Project workflow",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:projects"
+      "scope_key": "section:7/annexure:xv/subdoc:projects"
     },
     {
       "page": 124,
       "key": "subdoc:web-adi-project-upload",
       "occurrence_index": 0,
       "label": "Web-Adi Project Upload",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:projects"
+      "scope_key": "section:7/annexure:xv/subdoc:projects"
     },
     {
       "page": 124,
       "key": "subdoc:work-order",
       "occurrence_index": 0,
       "label": "Work order",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:projects"
+      "scope_key": "section:7/annexure:xv/subdoc:projects"
     },
     {
       "page": 125,
       "key": "subdoc:appraisal-process-acr",
       "occurrence_index": 0,
       "label": "Appraisal Process(ACR)",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms"
     },
     {
       "page": 125,
       "key": "subdoc:employee-as-supplier-creation",
       "occurrence_index": 0,
       "label": "Employee as Supplier creation",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:scm"
+      "scope_key": "section:7/annexure:xv/subdoc:scm"
     },
     {
       "page": 125,
       "key": "subdoc:employee-number-generation-program",
       "occurrence_index": 0,
       "label": "Employee Number Generation program",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms"
     },
     {
       "page": 125,
       "key": "subdoc:gpf-process",
       "occurrence_index": 0,
       "label": "GPF Process",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms"
     },
     {
       "page": 125,
       "key": "subdoc:hrms",
       "occurrence_index": 0,
       "label": "HRMS",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations"
+      "scope_key": "section:7/annexure:xv"
     },
     {
       "page": 125,
       "key": "subdoc:leave-process",
       "occurrence_index": 0,
       "label": "Leave process",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms"
     },
     {
       "page": 125,
       "key": "subdoc:po-control",
       "occurrence_index": 0,
       "label": "PO Control",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:scm"
+      "scope_key": "section:7/annexure:xv/subdoc:scm"
     },
     {
       "page": 125,
       "key": "subdoc:return-indent",
       "occurrence_index": 0,
       "label": "Return Indent",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:scm"
+      "scope_key": "section:7/annexure:xv/subdoc:scm"
     },
     {
       "page": 125,
       "key": "subdoc:scm",
       "occurrence_index": 0,
       "label": "SCM",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations"
+      "scope_key": "section:7/annexure:xv"
     },
     {
       "page": 125,
       "key": "subdoc:serial-number-correction",
       "occurrence_index": 0,
       "label": "Serial Number correction",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:scm"
+      "scope_key": "section:7/annexure:xv/subdoc:scm"
     },
     {
       "page": 125,
       "key": "subdoc:travel-process",
       "occurrence_index": 0,
       "label": "Travel process",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms"
     },
     {
       "page": 126,
       "key": "subdoc:annual-increment-program",
       "occurrence_index": 0,
       "label": "Annual Increment Program",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms"
     },
     {
       "page": 126,
       "key": "subdoc:d17-process-all-class-i-and",
       "occurrence_index": 0,
       "label": "D17 Process: All Class I and II fills D17 details",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms/subdoc:ess-processes"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms/subdoc:ess-processes"
     },
     {
       "page": 126,
       "key": "subdoc:da-arrear-program",
       "occurrence_index": 0,
       "label": "DA Arrear Program",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms"
     },
     {
       "page": 126,
       "key": "subdoc:ess-processes",
       "occurrence_index": 0,
       "label": "ESS processes",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms"
     },
     {
       "page": 126,
       "key": "subdoc:increment-reversal-program",
       "occurrence_index": 0,
       "label": "Increment reversal Program",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms"
     },
     {
       "page": 126,
       "key": "subdoc:seven-pay-matrix",
       "occurrence_index": 0,
       "label": "Seven Pay Matrix",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms"
     },
     {
       "page": 126,
       "key": "subdoc:transfer-process-transfer-process-can-be",
       "occurrence_index": 0,
       "label": "Transfer Process: Transfer process can be initiated by super",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms/subdoc:ess-processes"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms/subdoc:ess-processes"
+    },
+    {
+      "page": 127,
+      "key": "annexure:xiii-a",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "section:7/annexure:xv/subdoc:hrms/subdoc:seven-pay-matrix"
     },
     {
       "page": 127,
       "key": "point:1",
       "occurrence_index": 0,
       "label": "1. Objective",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms/subdoc:seven-pay-matrix"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms/subdoc:seven-pay-matrix"
     },
     {
       "page": 127,
       "key": "point:2",
       "occurrence_index": 0,
       "label": "2. Major GIS Functionalities",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms/subdoc:seven-pay-matrix"
-    },
-    {
-      "page": 127,
-      "key": "subdoc:annexure-xiii-a-gis-geoportal-functional",
-      "occurrence_index": 0,
-      "label": "Annexure-XIII-A: GIS / GeoPortal Functionalities, Modernizat",
-      "scope_key": "section:7"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms/subdoc:seven-pay-matrix"
     },
     {
       "page": 129,
       "key": "point:3",
       "occurrence_index": 0,
       "label": "3. Data Migration & Reconciliation",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms/subdoc:seven-pay-matrix"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms/subdoc:seven-pay-matrix"
     },
     {
       "page": 129,
       "key": "point:4",
       "occurrence_index": 0,
       "label": "4. Technology & Interoperability",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms/subdoc:seven-pay-matrix"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms/subdoc:seven-pay-matrix"
     },
     {
       "page": 129,
       "key": "point:5",
       "occurrence_index": 0,
       "label": "5. Functional Continuity",
-      "scope_key": "section:7/subdoc:annexure-xv-list-of-major-integrations/subdoc:hrms/subdoc:seven-pay-matrix"
+      "scope_key": "section:7/annexure:xv/subdoc:hrms/subdoc:seven-pay-matrix"
     },
     {
       "page": 130,
-      "key": "point:1",
+      "key": "annexure:xvi",
       "occurrence_index": 0,
-      "label": "1. The Sole Bidder/Lead Bidder and Consortium Partner (in case of consortium) sh",
-      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
-    },
-    {
-      "page": 130,
-      "key": "point:2",
-      "occurrence_index": 0,
-      "label": "2. The bidder should be registered in India with GST",
-      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
-    },
-    {
-      "page": 130,
-      "key": "point:3",
-      "occurrence_index": 0,
-      "label": "3. Bidder should not have been blacklisted by any entity of GoMP",
-      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
-    },
-    {
-      "page": 130,
-      "key": "point:4",
-      "occurrence_index": 0,
-      "label": "4. The Sole bidder/Lead bidder should have a Minimum Average Annual Turnover",
-      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
-    },
-    {
-      "page": 130,
-      "key": "point:5",
-      "occurrence_index": 0,
-      "label": "5. The bidder must have positive net worth during last all three (03) financial ",
-      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
-    },
-    {
-      "page": 130,
-      "key": "point:6",
-      "occurrence_index": 0,
-      "label": "6. The Sole bidder/Lead bidder should have successfully executed at least three ",
-      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
-    },
-    {
-      "page": 130,
-      "key": "point:7",
-      "occurrence_index": 0,
-      "label": "7. The Sole Bidder, in case of an individual bid, or the Lead Bidder/Lead Consor",
-      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
-    },
-    {
-      "page": 130,
-      "key": "subdoc:annexure-xvi-check-list",
-      "occurrence_index": 0,
-      "label": "Annexure-XVI: Check List",
+      "label": null,
       "scope_key": "section:7"
     },
     {
-      "page": 131,
-      "key": "point:10",
+      "page": 130,
+      "key": "numheading:1",
       "occurrence_index": 0,
-      "label": "10. The Sole bidder/Lead bidder should have at least 50 Full-Time Technical Prof",
-      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
+      "label": "1 The Sole Bidder/Lead Bidder and Consortium Partner (in case of consortium) shall be a company registered",
+      "scope_key": "section:7/annexure:xvi"
+    },
+    {
+      "page": 130,
+      "key": "numheading:2",
+      "occurrence_index": 0,
+      "label": "2 The bidder should be registered in India with GST",
+      "scope_key": "section:7/annexure:xvi"
+    },
+    {
+      "page": 130,
+      "key": "numheading:3",
+      "occurrence_index": 0,
+      "label": "3 Bidder should not have been blacklisted by any entity of GoMP",
+      "scope_key": "section:7/annexure:xvi"
+    },
+    {
+      "page": 130,
+      "key": "numheading:4",
+      "occurrence_index": 0,
+      "label": "4 The Sole bidder/Lead bidder should have a Minimum Average Annual Turnover",
+      "scope_key": "section:7/annexure:xvi"
+    },
+    {
+      "page": 130,
+      "key": "numheading:5",
+      "occurrence_index": 0,
+      "label": "5 The bidder must have positive net worth during last all three (03) financial years",
+      "scope_key": "section:7/annexure:xvi"
+    },
+    {
+      "page": 130,
+      "key": "numheading:6",
+      "occurrence_index": 0,
+      "label": "6 The Sole bidder/Lead bidder should have successfully executed at least three projects",
+      "scope_key": "section:7/annexure:xvi"
+    },
+    {
+      "page": 130,
+      "key": "numheading:7",
+      "occurrence_index": 0,
+      "label": "7 The Sole Bidder, in case of an individual bid, or the Lead Bidder/Lead Consortium Member, in case of",
+      "scope_key": "section:7/annexure:xvi"
     },
     {
       "page": 131,
-      "key": "point:8",
+      "key": "numheading:10",
       "occurrence_index": 0,
-      "label": "8. The Sole bidder/Lead bidder and Consortium Partner (in case of consortium) mu",
-      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
+      "label": "10 The Sole bidder/Lead bidder should have at least 50 Full-Time Technical Professionals",
+      "scope_key": "section:7/annexure:xvi"
     },
     {
       "page": 131,
-      "key": "point:9",
+      "key": "numheading:8",
       "occurrence_index": 0,
-      "label": "9. The Sole Bidder/Lead Bidder shall be an active Oracle PartnerNetwork (OPN) me",
-      "scope_key": "section:7/subdoc:annexure-xvi-check-list"
+      "label": "8 The Sole bidder/Lead bidder and Consortium Partner (in case of consortium) must have ISO 9001:2015",
+      "scope_key": "section:7/annexure:xvi"
+    },
+    {
+      "page": 131,
+      "key": "numheading:9",
+      "occurrence_index": 0,
+      "label": "9 The Sole Bidder/Lead Bidder shall be an active Oracle PartnerNetwork (OPN) member",
+      "scope_key": "section:7/annexure:xvi"
+    },
+    {
+      "page": 132,
+      "key": "annexure:xvii",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "section:7"
     },
     {
       "page": 132,
       "key": "point:a",
       "occurrence_index": 0,
       "label": "a. Submit a response jointly to Bid",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement"
     },
     {
       "page": 132,
       "key": "point:b",
       "occurrence_index": 0,
       "label": "b. Provide and perform the services which would be ordered",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement"
     },
     {
       "page": 132,
       "key": "point:c",
       "occurrence_index": 0,
       "label": "c. This Agreement shall not be construed as establishing",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement"
     },
     {
       "page": 132,
       "key": "point:d",
       "occurrence_index": 0,
       "label": "d. The Parties shall be jointly and severally responsible",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement"
-    },
-    {
-      "page": 132,
-      "key": "subdoc:annexure-xvii",
-      "occurrence_index": 0,
-      "label": "Annexure-XVII",
-      "scope_key": "section:7"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement"
     },
     {
       "page": 132,
       "key": "subdoc:consortium-agreement",
       "occurrence_index": 0,
       "label": "Consortium Agreement",
-      "scope_key": "section:7/subdoc:annexure-xvii"
+      "scope_key": "section:7/annexure:xvii"
     },
     {
       "page": 132,
@@ -5258,97 +5265,97 @@
       "key": "point:e",
       "occurrence_index": 0,
       "label": "e. ---- (Name of Party) shall act as Lead Partner of the Consortium",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement"
     },
     {
       "page": 133,
       "key": "point:f",
       "occurrence_index": 0,
       "label": "f. That the consortium partner <......> shall carry out all responsibilities",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement/point:e"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement/point:e"
     },
     {
       "page": 133,
       "key": "point:g",
       "occurrence_index": 0,
       "label": "g. That the broad roles and the responsibilities of each Party at each stage of ",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement/point:e"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement/point:e"
     },
     {
       "page": 133,
       "key": "point:h",
       "occurrence_index": 0,
       "label": "h. That the broad roles and the responsibilities of each Party at each stage of ",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement/point:e"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement/point:e"
     },
     {
       "page": 133,
       "key": "point:h",
       "occurrence_index": 1,
       "label": "h. That the broad roles and the responsibilities of each Party at each stage of ",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement/point:e"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement/point:e"
     },
     {
       "page": 133,
       "key": "point:i",
       "occurrence_index": 0,
       "label": "i. To ensure the technical, commercial and administrative co-ordination",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement/point:e"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement/point:e"
     },
     {
       "page": 133,
       "key": "point:i",
       "occurrence_index": 1,
       "label": "i. That the Parties affirm that they shall implement the Project in good faith a",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement/point:e"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement/point:e"
     },
     {
       "page": 133,
       "key": "point:i",
       "occurrence_index": 2,
       "label": "i. That the Parties affirm that they shall implement the Project in good faith",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement/point:e"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement/point:e"
     },
     {
       "page": 133,
       "key": "point:ii",
       "occurrence_index": 0,
       "label": "ii. To lead the contract negotiations of the work package",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement/point:e"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement/point:e"
     },
     {
       "page": 133,
       "key": "point:iii",
       "occurrence_index": 0,
       "label": "iii. The Lead partner is authorized to receive instructions",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement/point:e"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement/point:e"
     },
     {
       "page": 133,
       "key": "point:iv",
       "occurrence_index": 0,
       "label": "iv. In case of an award, act as channel of communication",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement/point:e"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement/point:e"
     },
     {
       "page": 133,
       "key": "point:j",
       "occurrence_index": 0,
       "label": "j. That this MoU shall be governed in accordance with the laws of India and cour",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement/point:e"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement/point:e"
     },
     {
       "page": 133,
       "key": "point:j",
       "occurrence_index": 1,
       "label": "j. That this MoU shall be governed in accordance with the laws of India",
-      "scope_key": "section:7/subdoc:annexure-xvii/subdoc:consortium-agreement/point:e"
+      "scope_key": "section:7/annexure:xvii/subdoc:consortium-agreement/point:e"
     },
     {
       "page": 135,
-      "key": "subdoc:annexure-xviii",
+      "key": "annexure:xviii",
       "occurrence_index": 0,
-      "label": "Annexure-XVIII",
+      "label": null,
       "scope_key": "section:7"
     },
     {
@@ -5356,7 +5363,7 @@
       "key": "subdoc:schedule-format-of-power-of-attorney",
       "occurrence_index": 0,
       "label": "Schedule - . Format of Power of Attorney by Consortium Membe",
-      "scope_key": "section:7/subdoc:annexure-xviii"
+      "scope_key": "section:7/annexure:xviii"
     }
   ],
   "mentions": [
@@ -5435,7 +5442,7 @@
     {
       "page": 2,
       "occurrence_index": 7,
-      "key": "annexure:1",
+      "key": "annexure:i",
       "raw_text": "Annexure-I",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -5443,7 +5450,7 @@
     {
       "page": 2,
       "occurrence_index": 8,
-      "key": "annexure:i-1",
+      "key": "annexure:ii",
       "raw_text": "Annexure II",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -5451,7 +5458,7 @@
     {
       "page": 2,
       "occurrence_index": 9,
-      "key": "annexure:i-2",
+      "key": "annexure:iii",
       "raw_text": "Annexure III",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -5459,10 +5466,10 @@
     {
       "page": 2,
       "occurrence_index": 10,
-      "key": "annexure:i-5",
+      "key": "annexure:iv",
       "raw_text": "Annexure IV",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 2,
@@ -5475,7 +5482,7 @@
     {
       "page": 2,
       "occurrence_index": 12,
-      "key": "annexure:5",
+      "key": "annexure:v",
       "raw_text": "Annexure V",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -5483,7 +5490,7 @@
     {
       "page": 2,
       "occurrence_index": 13,
-      "key": "annexure:v-1",
+      "key": "annexure:vi",
       "raw_text": "Annexure VI",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -5491,7 +5498,7 @@
     {
       "page": 2,
       "occurrence_index": 14,
-      "key": "annexure:v-2",
+      "key": "annexure:vii",
       "raw_text": "Annexure VII",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -5499,7 +5506,7 @@
     {
       "page": 2,
       "occurrence_index": 15,
-      "key": "annexure:v-3",
+      "key": "annexure:viii",
       "raw_text": "Annexure VIII",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -5507,7 +5514,7 @@
     {
       "page": 2,
       "occurrence_index": 16,
-      "key": "annexure:v-3",
+      "key": "annexure:viii",
       "raw_text": "Annexure VIII",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -5515,66 +5522,66 @@
     {
       "page": 2,
       "occurrence_index": 17,
-      "key": "annexure:i-10",
+      "key": "annexure:ix",
       "raw_text": "Annexure IX",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 2,
       "occurrence_index": 18,
-      "key": "annexure:10",
+      "key": "annexure:x",
       "raw_text": "Annexure X",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 2,
       "occurrence_index": 19,
-      "key": "annexure:x-1",
+      "key": "annexure:xi",
       "raw_text": "Annexure XI",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 2,
       "occurrence_index": 20,
-      "key": "annexure:x-2",
+      "key": "annexure:xii",
       "raw_text": "Annexure XII",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 2,
       "occurrence_index": 21,
-      "key": "annexure:x-3",
+      "key": "annexure:xiii",
       "raw_text": "Annexure XIII",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 2,
       "occurrence_index": 22,
-      "key": "annexure:x-4",
+      "key": "annexure:xiv",
       "raw_text": "Annexure XIV",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 2,
       "occurrence_index": 23,
-      "key": "annexure:x-5",
+      "key": "annexure:xv",
       "raw_text": "Annexure XV",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 2,
       "occurrence_index": 24,
-      "key": "annexure:x-6",
+      "key": "annexure:xvi",
       "raw_text": "Annexure XVI",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 2,
@@ -5827,10 +5834,10 @@
     {
       "page": 10,
       "occurrence_index": 0,
-      "key": "annexure:x-6",
+      "key": "annexure:xvi",
       "raw_text": "Annexure-XVI",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 10,
@@ -6099,10 +6106,10 @@
     {
       "page": 15,
       "occurrence_index": 2,
-      "key": "annexure:10",
+      "key": "annexure:x",
       "raw_text": "Annexure-X",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 15,
@@ -6331,10 +6338,10 @@
     {
       "page": 17,
       "occurrence_index": 1,
-      "key": "annexure:i-5",
+      "key": "annexure:iv",
       "raw_text": "Annexure-IV",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 17,
@@ -6483,10 +6490,10 @@
     {
       "page": 20,
       "occurrence_index": 1,
-      "key": "schedule:1",
+      "key": "schedule:i",
       "raw_text": "Schedule-I",
-      "resolution": "approximate",
-      "suppressed_reason": null
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
     },
     {
       "page": 20,
@@ -6979,10 +6986,10 @@
     {
       "page": 26,
       "occurrence_index": 1,
-      "key": "annexure:x-3",
+      "key": "annexure:xiii",
       "raw_text": "Annexure-XIII",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 26,
@@ -7635,10 +7642,10 @@
     {
       "page": 31,
       "occurrence_index": 0,
-      "key": "annexure:i-5",
+      "key": "annexure:iv",
       "raw_text": "Annexure-IV",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 31,
@@ -8707,10 +8714,10 @@
     {
       "page": 44,
       "occurrence_index": 0,
-      "key": "annexure:x-3",
+      "key": "annexure:xiii",
       "raw_text": "Annexure-XIII",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 44,
@@ -8867,10 +8874,10 @@
     {
       "page": 45,
       "occurrence_index": 0,
-      "key": "annexure:x-2",
+      "key": "annexure:xii",
       "raw_text": "Annexure-XII",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 45,
@@ -9619,10 +9626,10 @@
     {
       "page": 52,
       "occurrence_index": 3,
-      "key": "annexure:i-5",
+      "key": "annexure:iv",
       "raw_text": "Annexure-IV",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 52,
@@ -9963,10 +9970,10 @@
     {
       "page": 56,
       "occurrence_index": 0,
-      "key": "annexure:i-5",
+      "key": "annexure:iv",
       "raw_text": "Annexure -IV",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 56,
@@ -10627,7 +10634,7 @@
     {
       "page": 64,
       "occurrence_index": 0,
-      "key": "annexure:i-1",
+      "key": "annexure:ii",
       "raw_text": "Annexure II",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -10643,7 +10650,7 @@
     {
       "page": 65,
       "occurrence_index": 0,
-      "key": "annexure:i-2",
+      "key": "annexure:iii",
       "raw_text": "Annexure III",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -10683,10 +10690,10 @@
     {
       "page": 66,
       "occurrence_index": 0,
-      "key": "annexure:i-5",
+      "key": "annexure:iv",
       "raw_text": "Annexure IV",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 66,
@@ -10971,7 +10978,7 @@
     {
       "page": 69,
       "occurrence_index": 0,
-      "key": "annexure:5",
+      "key": "annexure:v",
       "raw_text": "Annexure V",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -10995,7 +11002,7 @@
     {
       "page": 70,
       "occurrence_index": 0,
-      "key": "annexure:v-1",
+      "key": "annexure:vi",
       "raw_text": "Annexure VI",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -11019,7 +11026,7 @@
     {
       "page": 71,
       "occurrence_index": 0,
-      "key": "annexure:v-2",
+      "key": "annexure:vii",
       "raw_text": "Annexure VII",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -11051,7 +11058,7 @@
     {
       "page": 72,
       "occurrence_index": 0,
-      "key": "annexure:v-3",
+      "key": "annexure:viii",
       "raw_text": "Annexure VIII",
       "resolution": "suppressed",
       "suppressed_reason": "unresolved"
@@ -11475,10 +11482,10 @@
     {
       "page": 75,
       "occurrence_index": 0,
-      "key": "annexure:i-10",
+      "key": "annexure:ix",
       "raw_text": "Annexure IX",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 75,
@@ -11491,10 +11498,10 @@
     {
       "page": 76,
       "occurrence_index": 0,
-      "key": "annexure:10",
+      "key": "annexure:x",
       "raw_text": "Annexure X",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 76,
@@ -11507,10 +11514,10 @@
     {
       "page": 77,
       "occurrence_index": 0,
-      "key": "annexure:x-1",
+      "key": "annexure:xi",
       "raw_text": "Annexure XI",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 77,
@@ -11891,10 +11898,10 @@
     {
       "page": 85,
       "occurrence_index": 0,
-      "key": "annexure:x-3",
+      "key": "annexure:xiii",
       "raw_text": "Annexure-XIII",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 85,
@@ -12619,10 +12626,10 @@
     {
       "page": 121,
       "occurrence_index": 0,
-      "key": "annexure:x-4",
+      "key": "annexure:xiv",
       "raw_text": "Annexure XIV",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 121,
@@ -12643,10 +12650,10 @@
     {
       "page": 122,
       "occurrence_index": 0,
-      "key": "annexure:x-5",
+      "key": "annexure:xv",
       "raw_text": "Annexure XV",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 122,
@@ -12819,10 +12826,10 @@
     {
       "page": 127,
       "occurrence_index": 0,
-      "key": "annexure:x-3",
+      "key": "annexure:xiii",
       "raw_text": "Annexure XIII",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 127,
@@ -12939,10 +12946,10 @@
     {
       "page": 130,
       "occurrence_index": 0,
-      "key": "annexure:x-6",
+      "key": "annexure:xvi",
       "raw_text": "Annexure XVI",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 130,
@@ -13027,10 +13034,10 @@
     {
       "page": 132,
       "occurrence_index": 0,
-      "key": "annexure:x-7",
+      "key": "annexure:xvii",
       "raw_text": "Annexure XVII",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 132,
@@ -13107,10 +13114,10 @@
     {
       "page": 135,
       "occurrence_index": 0,
-      "key": "annexure:x-8",
+      "key": "annexure:xviii",
       "raw_text": "Annexure XVIII",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 135,

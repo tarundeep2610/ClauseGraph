@@ -266,7 +266,7 @@ def run_ocr_with_raw(
     unchanged for all of its existing callers.
 
     Returns:
-        (cleaned_text_with_timing_footer, raw_text_or_None)
+        (cleaned_text, raw_text_or_None)
     """
     if not _loaded:
         print("[Unlimited-OCR] 📥 First OCR request — loading model now (this may take a while)...")
@@ -371,10 +371,7 @@ def run_ocr_with_raw(
 
         # Clean detection coordinate tags (<|det|>...<|/det|>) for clean readability
         cleaned_text = clean_detection_tags(result_text)
-
-        # Append processing time footer
-        timing_footer = f"\n\n---\n*⏱️ **Unlimited-OCR Execution Time:** {time_str} ({elapsed_sec:.1f}s)*"
-        final_output = cleaned_text + timing_footer
+        final_output = cleaned_text
 
         # Print to stdout and optionally save debug copies
         print(f"\n⏱️ [Unlimited-OCR Execution Time]: {time_str} ({elapsed_sec:.2f} seconds)", flush=True)

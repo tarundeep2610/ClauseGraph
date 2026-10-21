@@ -5,6 +5,7 @@ import { useAuth } from '../utils/AuthContext';
 import { loadPersistedSettings, savePersistedSettings } from '../utils/persistedSettings';
 import Header from '../components/Header';
 import SettingsModal from '../components/SettingsModal';
+import SaveFileDialog from '../components/SaveFileDialog';
 import IdleBanner from '../components/IdleBanner';
 import ControlBar from '../components/ControlBar';
 import { createReferenceStore, mergeDelta } from '../utils/referenceStore';
@@ -42,6 +43,10 @@ const DEFAULT_FORM = {
 export default function AppShell() {
   const { isAdmin } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // { blob, suggestedName } while the fallback "Save As" filename prompt is
+  // open (browsers with no window.showSaveFilePicker — Firefox/Safari), null
+  // otherwise. See _downloadViaAuthedFetch below.
+  const [saveDialog, setSaveDialog] = useState(null);
 
   const [form, setForm] = useState(() => {
     const persisted = loadPersistedSettings().form || {};
@@ -846,17 +851,17 @@ export default function AppShell() {
     return match ? match[1] : fallback;
   }
 
-  async function _downloadViaAuthedFetch(url, fallbackFilename) {
-    // window.open()/plain navigation never carries the Authorization header
-    // apiFetch attaches, so authenticated downloads have to go through a
-    // real fetch and be saved from the resulting blob instead.
-    const resp = await apiFetch(url);
-    if (!resp.ok) {
-      alert(`Download failed: ${resp.status} ${resp.statusText}`);
-      return;
-    }
-    const blob = await resp.blob();
-    const filename = _filenameFromContentDisposition(resp.headers.get('Content-Disposition'), fallbackFilename);
+  const _MIME_BY_EXT = {
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    pdf: 'application/pdf',
+    md: 'text/markdown',
+  };
+  function _extensionOf(filename) {
+    const m = /\.([a-zA-Z0-9]+)$/.exec(filename || '');
+    return m ? m[1].toLowerCase() : '';
+  }
+
+  function _anchorDownloadBlob(blob, filename) {
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = blobUrl;
@@ -865,6 +870,78 @@ export default function AppShell() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(blobUrl);
+  }
+
+  function _pickerTypesFor(suggestedName) {
+    const ext = _extensionOf(suggestedName);
+    const mime = _MIME_BY_EXT[ext] || 'application/octet-stream';
+    return [{ description: ext ? `${ext.toUpperCase()} file` : 'File', accept: { [mime]: [`.${ext || 'bin'}`] } }];
+  }
+
+  // Resolves to the fetched Response, or null (after already alerting) on a
+  // non-OK status — callers just check truthiness and return.
+  async function _fetchDownload(url) {
+    // window.open()/plain navigation never carries the Authorization header
+    // apiFetch attaches, so authenticated downloads have to go through a
+    // real fetch and be saved from the resulting blob instead.
+    const resp = await apiFetch(url);
+    if (!resp.ok) {
+      alert(`Download failed: ${resp.status} ${resp.statusText}`);
+      return null;
+    }
+    return resp;
+  }
+
+  async function _downloadViaAuthedFetch(url, fallbackFilename) {
+    if (typeof window.showSaveFilePicker === 'function') {
+      // The File System Access API's save picker is only callable while the
+      // click that triggered it still has an active user gesture — calling
+      // it after even one `await apiFetch(...)` (confirmed against real
+      // Chromium, not assumed) loses that gesture and throws SecurityError,
+      // silently falling back to a plain auto-download every time instead of
+      // ever showing the picker. So the picker has to come FIRST, using the
+      // generic fallback name (the server's nicer Content-Disposition name
+      // isn't known yet) — only fetching afterward, once a location is
+      // actually chosen.
+      let handle = null;
+      try {
+        handle = await window.showSaveFilePicker({
+          suggestedName: fallbackFilename,
+          types: _pickerTypesFor(fallbackFilename),
+        });
+      } catch (err) {
+        if (err?.name === 'AbortError') return; // user cancelled — nothing to fetch
+        handle = null; // an unexpected picker failure — fall through to the universal path below
+      }
+      if (handle) {
+        const resp = await _fetchDownload(url);
+        if (!resp) return;
+        const blob = await resp.blob();
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      }
+    }
+
+    // Firefox/Safari (no native picker) or an unexpected native-picker
+    // failure: fetch first — this path has no user-gesture timing
+    // constraint, so it can afford to wait for the real response and let
+    // the fallback dialog suggest the server's own nicer Content-
+    // Disposition filename instead of the generic one.
+    const resp = await _fetchDownload(url);
+    if (!resp) return;
+    const blob = await resp.blob();
+    const filename = _filenameFromContentDisposition(resp.headers.get('Content-Disposition'), fallbackFilename);
+    setSaveDialog({ blob, suggestedName: filename });
+  }
+
+  function handleSaveDialogConfirm(chosenFilename) {
+    if (saveDialog) _anchorDownloadBlob(saveDialog.blob, chosenFilename);
+    setSaveDialog(null);
+  }
+  function handleSaveDialogCancel() {
+    setSaveDialog(null);
   }
 
   function handleDownloadFile(jobId) {
@@ -1017,6 +1094,12 @@ export default function AppShell() {
         onSaveAiChunkOverlapPages={handleSaveAiChunkOverlapPages}
         aiIndexStatus={aiIndexStatus}
         onTestAiConnection={handleTestAiConnection}
+      />
+      <SaveFileDialog
+        open={!!saveDialog}
+        suggestedName={saveDialog?.suggestedName}
+        onCancel={handleSaveDialogCancel}
+        onConfirm={handleSaveDialogConfirm}
       />
       {!isStudio && <IdleBanner visible={idleBanner.visible} expired={idleBanner.expired} message={idleBanner.message} onKeepAlive={handleKeepAlive} />}
       {!isStudio && <ControlBar visible={hasActiveJobs} onPauseCurrent={() => activeJobId && handlePause(activeJobId)} onStopAll={handleStopAll} />}
