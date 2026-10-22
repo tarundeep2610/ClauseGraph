@@ -4394,129 +4394,129 @@
     },
     {
       "page": 65,
-      "key": "point:a",
+      "key": "annexure:iii",
       "occurrence_index": 0,
-      "label": "(A) Regarding Conflicting Interest:-",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking"
+      "label": null,
+      "scope_key": "section:7"
     },
     {
       "page": 65,
-      "key": "subdoc:annex-iii-performa-for-undertaking",
+      "key": "point:a",
       "occurrence_index": 0,
-      "label": "Annex-III: Performa for Undertaking",
-      "scope_key": "section:7"
+      "label": "(A) Regarding Conflicting Interest:-",
+      "scope_key": "section:7/annexure:iii"
     },
     {
       "page": 65,
       "key": "subdoc:b-regarding-black-listing-debarring-of",
       "occurrence_index": 0,
       "label": "(B) \u201cRegarding Black listing/Debarring of the firm.\u201d",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking"
+      "scope_key": "section:7/annexure:iii"
     },
     {
       "page": 65,
       "key": "subdoc:c-regarding-information-details-given",
       "occurrence_index": 0,
       "label": "(C) \u201cRegarding information/details given\u201d",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking"
+      "scope_key": "section:7/annexure:iii"
     },
     {
       "page": 66,
       "key": "annexure:iv",
       "occurrence_index": 0,
       "label": null,
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:item-ii-cost-for-operations-and"
+      "scope_key": "section:7/annexure:iii/subdoc:item-ii-cost-for-operations-and"
     },
     {
       "page": 66,
       "key": "subdoc:item-ii-cost-for-operations-and",
       "occurrence_index": 0,
       "label": "Item II - Cost for Operations and Maintenance for five (5) Y",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking"
+      "scope_key": "section:7/annexure:iii"
     },
     {
       "page": 68,
       "key": "numheading:1",
       "occurrence_index": 0,
       "label": "1. Successful bidder (L1) will be declared on the basis of grand total amount.",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
+      "scope_key": "section:7/annexure:iii/subdoc:note-2"
     },
     {
       "page": 68,
       "key": "numheading:10",
       "occurrence_index": 0,
       "label": "10. It is to certify that the relevant portion of Input Tax Credit",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
+      "scope_key": "section:7/annexure:iii/subdoc:note-2"
     },
     {
       "page": 68,
       "key": "numheading:11",
       "occurrence_index": 0,
       "label": "11. If user wants to enter any decimal value than please enter as per given exam",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
+      "scope_key": "section:7/annexure:iii/subdoc:note-2"
     },
     {
       "page": 68,
       "key": "numheading:2",
       "occurrence_index": 0,
       "label": "2. Grand total amount should be same in both words & figures.",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
+      "scope_key": "section:7/annexure:iii/subdoc:note-2"
     },
     {
       "page": 68,
       "key": "numheading:3",
       "occurrence_index": 0,
       "label": "3. The total amount quoted against Line Item 1 & Item 3 (Oracle ERP Version Upgr",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
+      "scope_key": "section:7/annexure:iii/subdoc:note-2"
     },
     {
       "page": 68,
       "key": "numheading:4",
       "occurrence_index": 0,
       "label": "4. It may be noted that Payment for services to be performed under this Contract",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
+      "scope_key": "section:7/annexure:iii/subdoc:note-2"
     },
     {
       "page": 68,
       "key": "numheading:5",
       "occurrence_index": 0,
       "label": "5. GST as applicable shall be paid extra.",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
+      "scope_key": "section:7/annexure:iii/subdoc:note-2"
     },
     {
       "page": 68,
       "key": "numheading:6",
       "occurrence_index": 0,
       "label": "6. The financial evaluation shall be done as per procedure prescribed in Section",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
+      "scope_key": "section:7/annexure:iii/subdoc:note-2"
     },
     {
       "page": 68,
       "key": "numheading:7",
       "occurrence_index": 0,
       "label": "7. Only blank fields are mandatory to be filled.",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
+      "scope_key": "section:7/annexure:iii/subdoc:note-2"
     },
     {
       "page": 68,
       "key": "numheading:8",
       "occurrence_index": 0,
       "label": "8. In case of discrepancy in the price quoted by the Bidder",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
+      "scope_key": "section:7/annexure:iii/subdoc:note-2"
     },
     {
       "page": 68,
       "key": "numheading:9",
       "occurrence_index": 0,
       "label": "9. The UNIT of measurement lump sum (LS) for quoting rate of the item specified",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking/subdoc:note-2"
+      "scope_key": "section:7/annexure:iii/subdoc:note-2"
     },
     {
       "page": 68,
       "key": "subdoc:note-2",
       "occurrence_index": 0,
       "label": "Note (2)",
-      "scope_key": "section:7/subdoc:annex-iii-performa-for-undertaking"
+      "scope_key": "section:7/annexure:iii"
     },
     {
       "page": 68,
@@ -4527,16 +4527,30 @@
     },
     {
       "page": 69,
-      "key": "subdoc:annex-v-performa-for-conflict-of",
+      "key": "annexure:v",
       "occurrence_index": 0,
-      "label": "Annex-V: Performa for Conflict of Interest",
+      "label": null,
       "scope_key": "section:7"
     },
     {
       "page": 70,
-      "key": "subdoc:annex-vi-performa-for-blacklisting",
+      "key": "annexure:vi",
       "occurrence_index": 0,
-      "label": "Annex-VI: Performa for Blacklisting",
+      "label": null,
+      "scope_key": "section:7"
+    },
+    {
+      "page": 71,
+      "key": "annexure:vii",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "section:7"
+    },
+    {
+      "page": 72,
+      "key": "annexure:viii",
+      "occurrence_index": 0,
+      "label": null,
       "scope_key": "section:7"
     },
     {
@@ -4544,14 +4558,14 @@
       "key": "subdoc:annex-viii-a-performa-for-bank",
       "occurrence_index": 0,
       "label": "Annex VIII (a): Performa for Bank Guarantee (For Contract Pe",
-      "scope_key": "section:7"
+      "scope_key": "section:7/annexure:viii"
     },
     {
       "page": 72,
       "key": "subdoc:bank-guarantee",
       "occurrence_index": 0,
       "label": "Bank Guarantee",
-      "scope_key": "section:7/subdoc:annex-viii-a-performa-for-bank"
+      "scope_key": "section:7/annexure:viii/subdoc:annex-viii-a-performa-for-bank"
     },
     {
       "page": 72,
@@ -10652,8 +10666,8 @@
       "occurrence_index": 0,
       "key": "annexure:iii",
       "raw_text": "Annexure III",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 65,
@@ -10980,8 +10994,8 @@
       "occurrence_index": 0,
       "key": "annexure:v",
       "raw_text": "Annexure V",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 69,
@@ -11004,8 +11018,8 @@
       "occurrence_index": 0,
       "key": "annexure:vi",
       "raw_text": "Annexure VI",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 70,
@@ -11028,8 +11042,8 @@
       "occurrence_index": 0,
       "key": "annexure:vii",
       "raw_text": "Annexure VII",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 71,
@@ -11060,8 +11074,8 @@
       "occurrence_index": 0,
       "key": "annexure:viii",
       "raw_text": "Annexure VIII",
-      "resolution": "suppressed",
-      "suppressed_reason": "unresolved"
+      "resolution": "exact",
+      "suppressed_reason": null
     },
     {
       "page": 72,
