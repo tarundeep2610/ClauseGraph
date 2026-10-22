@@ -73,6 +73,56 @@ a. Bushings and connectors.
     assert ri.detect_contract_clauses_for_page(page_text, scope_pleading, []) == []
 
 
+def test_detect_contract_clauses_recovers_bare_integer_clause_under_schedule_parent():
+    # Real text from a 135-page tender doc's "Note:" block under "Annexure IV:
+    # Format for Price Schedule" — a verb-bearing bare single-integer clause
+    # that the blanket listing-container suppression used to drop entirely.
+    page_text = """
+5. GST as applicable shall be paid extra. Statutory variations in applicable taxes, if applicable during the contractual period shall be paid extra against documentary evidence.
+"""
+    scope = {
+        "stack": [
+            {"family": "section", "key": "section:7", "label": "Section VII: Annexures"},
+            {"family": "annexure", "key": "annexure:iv", "label": "Annexure IV: Format for Price Schedule"},
+        ]
+    }
+    results = ri.detect_contract_clauses_for_page(page_text, scope, [])
+    keys = [r["key"] for r in results]
+    assert "numheading:5" in keys
+
+
+def test_detect_contract_clauses_still_suppresses_verb_free_bare_integer_row_under_schedule_parent():
+    # Regression guard: a genuine data-table row (no finite verb/modal) under
+    # the same schedule-labeled parent must still be suppressed as noise.
+    page_text = """
+3. Oracle ERP License Module 10 Nos
+"""
+    scope = {
+        "stack": [
+            {"family": "section", "key": "section:7", "label": "Section VII: Annexures"},
+            {"family": "annexure", "key": "annexure:iv", "label": "Annexure IV: Format for Price Schedule"},
+        ]
+    }
+    assert ri.detect_contract_clauses_for_page(page_text, scope, []) == []
+
+
+def test_detect_contract_clauses_known_limitation_verb_free_instruction_stays_suppressed():
+    # Known, accepted limitation: this instruction has no word from
+    # _CLAUSE_VERB_RE ("wants"/"enter" aren't recognized modals/verbs), so it
+    # is shape-indistinguishable from table noise and stays suppressed even
+    # after the bare-integer-clause fix. Documented here, not silently gapped.
+    page_text = """
+11. If user wants to enter any decimal value than please enter as per given example i.e. "0.4" instead of ".4"
+"""
+    scope = {
+        "stack": [
+            {"family": "section", "key": "section:7", "label": "Section VII: Annexures"},
+            {"family": "annexure", "key": "annexure:iv", "label": "Annexure IV: Format for Price Schedule"},
+        ]
+    }
+    assert ri.detect_contract_clauses_for_page(page_text, scope, []) == []
+
+
 def test_document_noise_or_running_header_filter():
     # Page 1 keeps document title
     assert not _is_document_noise_or_running_header("Tender Specification No. Discom/EZ/Pur/TS No. 1759", page_num=1)

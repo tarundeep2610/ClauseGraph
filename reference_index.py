@@ -3640,8 +3640,6 @@ def detect_contract_clauses_for_page(
     clauses of commercial contracts and tenders.
     """
     nested_stack = (scope or {}).get("stack") or []
-    if _immediate_parent_is_listing_container(nested_stack):
-        return []
     if _ground_scope_active(nested_stack) or _pleading_scope_active(nested_stack):
         return []
     if any(_STANDALONE_LEGAL_DOCS_RE.search(s.get("label") or "") for s in nested_stack):
@@ -3666,11 +3664,20 @@ def detect_contract_clauses_for_page(
     results: List[Dict[str, Any]] = []
     blocks = parse_page_blocks(page_text)
 
-    # 1. Multi-segment decimal clauses (^\d+(\.\d+)+)
+    # 1. Multi-segment decimal clauses (^\d+(\.\d+)+) and bare single-integer
+    # clauses (^\d+\.?\s). A multi-segment decimal ("24.2.1") is already a
+    # strong enough structural signal on its own; a bare single integer
+    # ("1.", "5.") is NOT — that shape is indistinguishable from an ordinary
+    # price-schedule/data-table row number, so it additionally requires a
+    # genuine finite verb/modal (_looks_like_tabular_data_shape == False,
+    # the same content-shape signal the D6/D7 listing-container gate below
+    # uses) before being trusted as a real clause.
     for block_text in blocks:
         for line in (block_text or "").split("\n"):
             text = line.strip()
             if not text:
+                continue
+            if _immediate_parent_is_listing_container(nested_stack, text):
                 continue
             fp = text[:30]
             if fp in already_claimed_fps:
@@ -3680,7 +3687,10 @@ def detect_contract_clauses_for_page(
             if not m:
                 continue
             number = m.group("number")
-            if "." not in number or _is_date_shaped_number(number):
+            if _is_date_shaped_number(number):
+                continue
+            is_multiseg = "." in number
+            if not is_multiseg and _looks_like_tabular_data_shape(text):
                 continue
             if _is_backward_reference(text, m.end()):
                 continue
@@ -3723,6 +3733,8 @@ def detect_contract_clauses_for_page(
         for line in (block_text or "").split("\n"):
             text = line.strip()
             if not text:
+                continue
+            if _immediate_parent_is_listing_container(nested_stack, text):
                 continue
             fp = text[:30]
             if fp in already_claimed_fps:
