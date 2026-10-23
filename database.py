@@ -41,6 +41,16 @@ _OCR_JOBS_NEW_COLUMNS = [
     # (which stays 0 until an explicit build), to decide whether to surface
     # citation badges and enable the Outline tree for a document.
     ("index_built_at", "TIMESTAMP"),
+    # ─── Actionable-items extraction (ai_action_items.py) — a separate pass
+    # and a separate version counter from reference_index_version above: it
+    # rebuilds independently (strictly on-demand, its own button), and
+    # folding it onto the reference-index counter would force every
+    # existing reference-index consumer (the Outline tree, scope-ranges
+    # cache, PageReferenceBadges) to react to an action-item-only rebuild
+    # for no reason.
+    ("action_item_index_version", "INTEGER DEFAULT 0"),
+    ("action_item_report", "TEXT DEFAULT '{}'"),  # JSON: per-chunk status/progress/audit — see ai_action_items.py
+    ("action_items_built_at", "TIMESTAMP"),  # Set ONLY by POST .../reindex-action-items, same contract as index_built_at
 ]
 
 
@@ -216,6 +226,15 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # column already exists
 
+    # Migrate existing databases that predate the action_item_touched_version
+    # column — same "stamp unconditionally, even at zero" reasoning as
+    # reference_index_touched_version above, for the separate action-items pass.
+    try:
+        cursor.execute("ALTER TABLE ocr_pages ADD COLUMN action_item_touched_version INTEGER DEFAULT 0")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ocr_reference_targets (
             job_id TEXT NOT NULL,
@@ -261,6 +280,35 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ref_mentions_version ON ocr_reference_mentions(job_id, page, written_at_version)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ref_mentions_job_page ON ocr_reference_mentions(job_id, page)")
+
+    # ─── Actionable items (ai_action_items.py) — brand new table, no
+    # migration needed. Deliberately separate from ocr_reference_targets:
+    # action items are a flat per-page list (no key/scope_chain/hierarchy
+    # concept at all), versioned by their own action_item_index_version
+    # counter above, never reference_index_version.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ocr_action_items (
+            job_id TEXT NOT NULL,
+            page INTEGER NOT NULL,
+            occurrence_index INTEGER NOT NULL,
+            item_type TEXT NOT NULL,
+            item_text TEXT NOT NULL,
+            date_text TEXT,
+            date_iso TEXT,
+            anchor_event TEXT,
+            cadence TEXT,
+            end_page INTEGER,
+            anchor_id TEXT,
+            evidence_quote TEXT DEFAULT '',
+            responsible_party TEXT,
+            confidence TEXT DEFAULT 'medium',
+            detection_model TEXT,
+            written_at_version INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (job_id, page, occurrence_index)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_action_items_job_page ON ocr_action_items(job_id, page)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_action_items_version ON ocr_action_items(job_id, page, written_at_version)")
 
     # Migrate existing databases that predate the structured-ancestor-chain
     # columns (scope_key/scope_label already existed as a flattened string;
@@ -781,6 +829,10 @@ def _row_to_job(row: sqlite3.Row, include_pages: bool = True) -> Dict[str, Any]:
         job['ai_index_report'] = json.loads(job.get('ai_index_report') or '{}')
     except Exception:
         job['ai_index_report'] = {}
+    try:
+        job['action_item_report'] = json.loads(job.get('action_item_report') or '{}')
+    except Exception:
+        job['action_item_report'] = {}
     if include_pages:
         pages = get_pages(job['job_id'])
         if pages:
@@ -1743,6 +1795,167 @@ def update_ai_index_report(job_id: str, **fields) -> Dict[str, Any]:
     report = get_ai_index_report(job_id)
     report.update(fields)
     set_ai_index_report(job_id, report)
+    return report
+
+
+# ─── Actionable items (ai_action_items.py) — direct structural copies of
+# their reference-index counterparts above, with no key/scope_chain concept
+# (a flat per-page list, not a hierarchy) and their own independent version
+# counter (action_item_index_version, never reference_index_version). ──────
+
+def get_action_item_index_version(job_id: str) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT action_item_index_version FROM ocr_jobs WHERE job_id = ?", (job_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row and row[0] is not None else 0
+
+
+def bump_action_item_index_version(job_id: str) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE ocr_jobs SET action_item_index_version = action_item_index_version + 1
+        WHERE job_id = ?
+    """, (job_id,))
+    cursor.execute("SELECT action_item_index_version FROM ocr_jobs WHERE job_id = ?", (job_id,))
+    version = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+    return version
+
+
+def mark_action_items_built(job_id: str) -> None:
+    """Stamps action_items_built_at — called only from the explicit
+    POST .../reindex-action-items action (see main.py), the same contract
+    as mark_index_built's own docstring."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE ocr_jobs SET action_items_built_at = ? WHERE job_id = ?",
+        (datetime.utcnow().isoformat(), job_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_action_items_for_page(job_id: str, page_num: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM ocr_action_items WHERE job_id = ? AND page = ?", (job_id, page_num))
+    conn.commit()
+    conn.close()
+
+
+def upsert_action_items_for_page(job_id: str, page_num: int, items: List[Dict[str, Any]], version: int):
+    """Delete-then-reinsert (retry-safe): a page's full item set always
+    replaces whatever was there before. Stamps action_item_touched_version
+    unconditionally, even when `items` is empty — the only durable signal
+    that this page was (re)computed at this version; a page whose item
+    count drops to zero would otherwise leave no surviving ocr_action_items
+    row and vanish from get_action_items_since (same reasoning as
+    upsert_reference_targets_for_page's own comment)."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM ocr_action_items WHERE job_id = ? AND page = ?", (job_id, page_num))
+    for item in items:
+        cursor.execute("""
+            INSERT INTO ocr_action_items (
+                job_id, page, occurrence_index, item_type, item_text, date_text, date_iso,
+                anchor_event, cadence, end_page, anchor_id, evidence_quote, responsible_party,
+                confidence, detection_model, written_at_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            job_id, page_num, item["occurrence_index"], item.get("item_type", "other"),
+            item.get("item_text", ""), item.get("date_text"), item.get("date_iso"),
+            item.get("anchor_event"), item.get("cadence"), item.get("end_page"),
+            item.get("anchor_id"), item.get("evidence_quote", ""), item.get("responsible_party"),
+            item.get("confidence") or "medium", item.get("detection_model"), version,
+        ))
+    cursor.execute(
+        "UPDATE ocr_pages SET action_item_touched_version = ? WHERE job_id = ? AND page_num = ?",
+        (version, job_id, page_num),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_action_items_since(job_id: str, since_version: int) -> Dict[int, List[Dict[str, Any]]]:
+    """Page-delta action-item fetch: returns {page_num: [item, ...]} for
+    every page with at least one row written at or after since_version + 1
+    — each page's entry is its *complete current* item list (a whole-page
+    replacement on the client), not a per-item diff. Reads from ocr_pages'
+    own touched-version stamp, not a scan over ocr_action_items survivors,
+    for the same zero-items-still-counts-as-changed reason as
+    get_reference_targets_since."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT page_num FROM ocr_pages
+        WHERE job_id = ? AND action_item_touched_version > ?
+    """, (job_id, since_version))
+    changed_pages = [r[0] for r in cursor.fetchall()]
+
+    result: Dict[int, List[Dict[str, Any]]] = {}
+    for page_num in changed_pages:
+        cursor.execute("""
+            SELECT page, occurrence_index, item_type, item_text, date_text, date_iso,
+                   anchor_event, cadence, end_page, anchor_id, evidence_quote,
+                   responsible_party, confidence, detection_model
+            FROM ocr_action_items WHERE job_id = ? AND page = ?
+            ORDER BY occurrence_index
+        """, (job_id, page_num))
+        result[page_num] = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return result
+
+
+def get_all_action_items_for_job(job_id: str) -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT page, occurrence_index, item_type, item_text, date_text, date_iso,
+               anchor_event, cadence, end_page, anchor_id, evidence_quote,
+               responsible_party, confidence, detection_model
+        FROM ocr_action_items
+        WHERE job_id = ?
+        ORDER BY page, occurrence_index
+    """, (job_id,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+
+def get_action_item_report(job_id: str) -> Dict[str, Any]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT action_item_report FROM ocr_jobs WHERE job_id = ?", (job_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row or not row[0]:
+        return {}
+    try:
+        return json.loads(row[0])
+    except Exception:
+        return {}
+
+
+def set_action_item_report(job_id: str, report: Dict[str, Any]) -> None:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE ocr_jobs SET action_item_report = ? WHERE job_id = ?",
+        (json.dumps(report), job_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_action_item_report(job_id: str, **fields) -> Dict[str, Any]:
+    report = get_action_item_report(job_id)
+    report.update(fields)
+    set_action_item_report(job_id, report)
     return report
 
 

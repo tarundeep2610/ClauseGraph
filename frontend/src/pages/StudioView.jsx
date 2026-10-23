@@ -49,6 +49,9 @@ export default function StudioView() {
         onBuildReferenceLinksOnly={() => docId && ctx.handleBuildReferenceLinksOnly(docId)}
         reindexing={ctx.reindexing}
         referenceStore={ctx.referenceStore}
+        onReindexActionItems={() => docId && ctx.handleReindexActionItems(docId)}
+        actionItemsReindexing={ctx.actionItemsReindexing}
+        actionItemStore={ctx.actionItemStore}
         scopeRanges={ctx.scopeRanges}
         onCurrentPageChange={ctx.setCurrentPdfPage}
         structureContent={ctx.structureContent}

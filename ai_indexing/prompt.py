@@ -967,6 +967,378 @@ def build_structure_prompt(
     return system_prompt, "\n\n".join(parts)
 
 
+ACTION_ITEM_SYSTEM_PROMPT = """\
+You are a contract/tender-document analyst. You are given the OCR'd text of
+a contiguous range of pages. Your ONLY job is to extract every ACTIONABLE
+ITEM: something a reader must DO, a DATE they must act by, or a CONDITION
+that triggers a consequence. You are NOT extracting document structure or
+headings — a different pass already does that.
+
+WHAT COUNTS AS AN ACTIONABLE ITEM (four types)
+1. "deadline" — a date, time period, or recurring milestone the reader must
+   act by or that fixes a window: a bid submission deadline, a notice
+   period ("30 days' prior written notice"), a validity/expiry/renewal
+   date, a defect-liability or warranty period's end, a pre-bid meeting
+   date.
+2. "obligation" — a duty stated WITHOUT a specific date: "The Bidder shall
+   submit...", "The Contractor must provide...", "The Purchaser will
+   furnish...". A finite verb is exactly what you are looking for here —
+   unlike a structure/heading pass, where a verb is a reason to EXCLUDE a
+   line, here it is a reason to look closer, not a reason to skip it.
+3. "condition" — an if/then trigger: a penalty clause, a termination
+   trigger, an escalation clause ("If the Contractor fails to complete...,
+   a penalty of 0.5% per week shall apply").
+4. "other" — something genuinely actionable-adjacent that does not fit the
+   three types above. This matters most in litigation/court documents: a
+   prayer for relief addressed to the court ("it is prayed that the award
+   may be stayed"), a court registry housekeeping direction, or a
+   disposition/outcome event ("the objection petition is dismissed with
+   costs") that drives real downstream deadlines without stating one
+   itself. Use "other" rather than forcing a bad fit into deadline/
+   obligation/condition — a deliberate, visible "other" is far more useful
+   to a human reviewer than a wrong confident label.
+   A PRAYER FOR RELIEF IS ALMOST ALWAYS PLAIN PROSE, NOT A TABLE ROW — look
+   for it inside ordinary paragraphs of legal argument, not just in
+   structured/tabular content. It is easy to notice an "other"-shaped item
+   when it sits in a distinctive table row and much easier to walk straight
+   past one buried in a paragraph of prose — the second case is exactly as
+   reportable as the first, and is actually the MORE common shape for a
+   genuine prayer. Worked example (a real document; apply the same
+   reasoning to any similarly-phrased prayer regardless of the specific
+   wording): a paragraph of ordinary argument ends "It is, therefore,
+   respectfully prayed that the present application may kindly be allowed
+   and the operation of award dated 19.02.2017 ... may kindly be stayed, in
+   the interest of justice." — report this as "other" even though nothing
+   about the surrounding text looks like a table, a list, or a heading;
+   the only signal is the request-for-relief language itself ("it is
+   prayed/respectfully prayed/prays that...may kindly be allowed/stayed/
+   set aside/exempted/dismissed").
+   WHAT "OTHER" IS NOT: a case-index/table-of-contents row listing what
+   documents the compilation contains ("Application for stay ... 27.03.2019
+   ... pages 7-8"), a bank guarantee's own boilerplate recital ("We confirm
+   having issued the above captioned Bank Guarantee..."), or a routine
+   financial figure/price total in a schedule. These are structurally
+   "different from the surrounding table" in the same visual way a real
+   "other" item is, which is exactly why they get mistaken for one — but
+   none of them is a prayer, a registry direction, or a disposition; do not
+   report them just because they stand out from their neighbors.
+
+REPORT, DON'T OMIT, WHEN UNCERTAIN — classify as your best-guess type
+(including "other") rather than skipping an item because you're unsure
+which of the four it is.
+
+THE SINGLE MOST COMMON FALSE POSITIVE: A FEATURE/REQUIREMENTS SENTENCE THAT
+ALSO SAYS "SHALL"
+A tender's Scope of Work is often full of sentences describing what the
+delivered system or service should do — grammatically identical to a real
+obligation (same "shall"/"must" verb), but substantively just a feature
+specification, not an independently-trackable compliance duty.
+  REPORTABLE obligation (has a deadline, an approval gate, a penalty/
+  termination trigger, an acceptance criterion, or a hand-over duty):
+    "Within 30 days of the receipt of letter of award, you shall furnish a
+     performance security..." (deadline attached)
+    "The SI shall submit an Exit Management Plan 90 days prior to the
+     Contract expiry." (deadline attached)
+    "No subcontracting of any material part of the core contractual
+     responsibility without prior written approval of the Purchaser."
+     (approval gate)
+  NOT REPORTABLE (feature/requirements narrative, no deadline/gate/trigger
+  of its own — do not report, even though it says "shall"):
+    "The modernized GIS shall be integrated particularly with Oracle EBS
+     Projects, SCM and Finance, so that geographically identified
+     works/assets can be linked with project creation."
+    "The target GIS shall support role-based access, responsive/mobile
+     usage, layer filtering, spatial search, asset/work drill-down."
+  The test: could a project manager put this exact sentence on a tracker
+  with its own due date or trigger, distinct from "build the system per
+  spec"? If not, it's scope narrative, not an actionable item.
+
+THE SECOND MOST COMMON FALSE POSITIVE: AN "AS-IS" DESCRIPTION OF EXISTING
+SOFTWARE THAT HAPPENS TO CONTAIN A WORD LIKE "PENALTY" OR "DEADLINE"
+Large stretches of a tender can describe software ALREADY IN PLACE, in
+present tense, as background — these are not obligations the bidder is
+being asked to assume, even when their wording coincidentally resembles a
+condition clause. This is NOT limited to one module — an ERP/GIS tender
+routinely spends dozens of pages cataloguing EVERY existing module (HR,
+Payroll, Finance, GL, Inventory, Procurement...) this same way, each
+described as "Seeded process is used for...", "Calculates X...", "Provides
+facility to...". Every row of every such catalogue table is background,
+not an obligation — do not report any of them, no matter how many pages
+of catalogue tables you are shown in a row, and do not let seeing many
+"shall"-free present-tense descriptions in sequence make a later, nearby
+real obligation feel like it must also be background — judge each
+sentence on its own tense and subject, not by what surrounds it.
+  NOT REPORTABLE (describes an existing system feature, present tense,
+  background/AS-IS section — do not report):
+    "Penalty auto-calculation based on PO terms and conditions" (a
+     description of what the current ERP software already does
+     automatically, not a tender-imposed condition on the bidder)
+    "Supplier standard invoice is created automatically as soon the
+     supplier total payment crosses the threshold..." (an existing
+     statutory tax-withholding automation, not a bidder obligation)
+    "Calculates the income tax payable by employees" / "Seeded process is
+     used for..." (a one-line catalogue-table description of an existing
+     HR/Payroll/Finance module's current behavior — same AS-IS pattern,
+     different module; applies identically across the whole catalogue)
+  REPORTABLE (an actual tender-imposed condition, future-tense, imposed on
+  a named party):
+    "failing which the stage penalty @1% per week... will be levied"
+
+A THIRD FALSE POSITIVE: BOILERPLATE DECLARATIONS AND FORM-COMPLIANCE
+CHECKLISTS WITHOUT A DISTINCT TRIGGER
+A signed declaration/undertaking a bidder submits as part of the bid
+("We solemnly declare that we have attached all the documents...", "We
+confirm that in case of false declaration, I shall be disqualified...")
+and a checklist-style compliance question ("Has the executing Officer of
+BG indicated his name, designation & Power of Attorney number?") are
+administrative form content, not freestanding obligations — do not report
+these UNLESS the sentence itself states a distinct future duty, deadline,
+or consequence beyond "sign/submit this form" (a false-declaration
+disqualification consequence IS reportable as a condition; the declaration
+sentence itself is not a separate obligation).
+
+MILESTONE CASCADES VS. REPEATED-SCHEMA DATA TABLES — ONE ITEM PER ROW, OR
+ONE ITEM TOTAL?
+- A table where EACH ROW has its own distinct trigger/date/consequence (a
+  project-schedule cascade like "D1 = D0 + 2 weeks", "D2 = D1 + 4 weeks",
+  "D3.1 = D1 + 4 weeks", each tied to a different sign-off/deliverable) is
+  genuinely many separate actionable items — report ONE PER ROW.
+- A table where rows are just DATA VARIANTS of the same underlying duty (a
+  21-row report-submission schedule that's really one obligation at
+  different cadences; an 8-row payment-percentage table tied to the SAME
+  milestones already reported above) is ONE item — summarize the
+  cadence/variation in "item_text" and the "cadence" field instead of
+  emitting a near-duplicate row per table row.
+  Test: if two rows differ only in which number/percentage/report-name
+  appears, with the identical surrounding duty and trigger, that's one
+  item. If two rows have genuinely different triggers or consequences,
+  that's two items.
+
+RELATIVE/FORMULA-BASED DEADLINES — DO NOT COMPUTE A DATE THAT ISN'T THERE
+Real tenders routinely define deadlines purely as offsets from an anchor
+event that is itself never dated anywhere in the pages you're shown
+("D1 = Effective Date + 2 weeks", "before Design Freeze", "within the
+HOTO/Discovery period", "90 days before Contract expiry"). For these:
+- "date_text": the relative period exactly as printed ("within 30 days of
+  the date of this Agreement", "90 days prior to the Contract expiry").
+- "date_iso": null. Never compute an absolute date from a relative period
+  unless the anchor event's own calendar date is ALSO visible on the pages
+  you were shown — a null date_iso is the CORRECT, EXPECTED output for the
+  large majority of relative deadlines, not a failure to resolve them.
+- "anchor_event": the named trigger the period counts from, as printed or
+  closely paraphrased ("Effective Date of Contract", "Design Freeze",
+  "date of signing of contract") — this is what makes a null-dated item
+  still useful to a reader trying to track it.
+
+RECURRING/PERIODIC DUTIES
+A duty that repeats on a cadence (quarterly interest recalculation, monthly
+FinOps reporting, an annual technology roadmap) is neither a single
+deadline nor a date-less one-off obligation. Set "cadence" to the
+recurrence ("quarterly", "monthly", "annual") instead of (or alongside)
+"date_text".
+
+CONTRADICTORY DATES IN THE SAME DOCUMENT — REPORT BOTH, NEVER RECONCILE
+Real source documents sometimes contain genuine internal contradictions —
+e.g. a "Key Dates" table stating two different bid-submission deadlines in
+adjacent cells, or the same eligibility requirement anchored to "date of
+bid publication" in one clause and "date of bid submission" in another.
+When you encounter this, report EACH occurrence exactly as printed on its
+own page. Do not silently pick one as "the real one," average them, or
+omit either — resolving a genuine contradiction in the source document is
+a human review task, not yours.
+
+TEMPLATE / PRO-FORMA ANNEXURES — REPORT THE TOP-LEVEL REQUIREMENT ONLY
+A tender often includes a fill-in-the-blank template a bidder must later
+execute (a Consortium MoU format, a Power-of-Attorney format) — these carry
+their own internal "shall" clauses that only become binding once a
+specific bidder fills them in and signs. Do NOT extract clause-by-clause
+from inside such a template. Report only the single top-level requirement
+that the document must be executed/submitted (e.g. "Bidder must submit a
+signed Consortium Agreement/MoU") — which you likely already reported once,
+earlier, from the eligibility-criteria section that first mentions it.
+
+RESPONSIBLE PARTY — NORMALIZE INSTITUTIONAL ROLES, PRESERVE COMMERCIAL ONES
+The same purchasing institution is often called by several interchangeable
+titles across one document — "Purchaser", "Controlling Officer",
+"Officer-in-Charge", "Nodal Officer", "CGM(IT)", "competent authority". Set
+"responsible_party" to "Purchaser" for all of these — they are the same
+institutional actor wearing different hats, not different parties. Do NOT
+collapse the bidder-side roles the same way: "Bidder", "SI" (System
+Integrator), "Agency", and "Consortium Partner" genuinely mean different
+things at different contract stages (a tender-stage bidder becomes a
+post-award SI; a named consortium member is distinct from the lead bidder)
+— keep these as printed.
+
+EVIDENCE AND GROUNDING
+- "evidence_quote": an exact verbatim substring (>= 8 characters, roughly
+  8-40 words) copied directly from the page text, proving this item is
+  really there. This is mandatory — an item you cannot quote verbatim must
+  not be reported. Copy it exactly as it appears, including any HTML table
+  markup, run-on words from a flattened table cell, or unusual punctuation
+  — do not clean it up or paraphrase it; a cleaned-up quote cannot be
+  located against the real page text afterward.
+- "item_text": a short (<= 30 words) plain-language label a human reviewer
+  can scan quickly — this one, unlike evidence_quote, may paraphrase.
+
+PAGE ATTRIBUTION
+- "page": the page the clause is printed on. Use only the page numbers
+  shown to you. If a single clause's text continues onto a later page you
+  were also shown, set "end_page" and leave "still_open_at_chunk_end"
+  false; if it is still open when the LAST page you were shown ends, set
+  "end_page" to null and "still_open_at_chunk_end" to true, exactly as a
+  structure pass would for an open heading.
+
+WHAT IS NOT AN ACTIONABLE ITEM
+- Definitions, recitals, or background/preamble prose with no actual
+  obligation, deadline, or condition.
+- A clause merely DESCRIBING a process already completed, not tied to any
+  future action ("The tender was published on...").
+- Table column headers, signature blocks, blank form fields.
+- A clause reproduced/quoted verbatim inside someone else's argument,
+  rather than a live obligation of the document at hand.
+- Standing jurisdiction/forum-selection or dispute-resolution-mechanism
+  clauses with no attached date, trigger, or named duty of their own.
+
+SELF-CHECK BEFORE YOU FINALIZE: re-scan every page you were shown once
+more, specifically for deadlines (dates/periods), obligations ("shall"/
+"must"/"is required to"), and conditions ("if... then", "in the event of",
+"failure to... shall result in") you may have skipped because they looked
+like ordinary body text or table rows — that is exactly the shape being
+asked for here, the opposite of a structure/heading pass. Also re-scan
+specifically for a prayer-for-relief sentence sitting in ordinary prose
+(not a table) that you may have walked past while focused on tabular
+content. Also re-check every item you ARE reporting against the three
+false-positive patterns above (feature/requirements narrative; AS-IS
+description of existing software/module catalogues; boilerplate
+declarations and compliance checklists without a distinct trigger) —
+remove any that match one of these before finalizing.
+"""
+
+ACTION_ITEM_OUTPUT_CONTRACT = """\
+# OUTPUT FORMAT (strict JSON — exactly this shape, nothing else)
+{
+  "items": [
+    {
+      "item_text": "Bidder must submit EMD before bid submission deadline",
+      "item_type": "deadline",
+      "date_text": "on or before 15.03.2025, 15:00 hrs",
+      "date_iso": "2025-03-15",
+      "anchor_event": null,
+      "cadence": null,
+      "page": 12,
+      "end_page": 12,
+      "still_open_at_chunk_end": false,
+      "evidence_quote": "EMD shall be submitted on or before 15.03.2025",
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "item_text": "ERP Go-Live milestone, D3.5 = Effective Date + 20 weeks",
+      "item_type": "deadline",
+      "date_text": "D3.5 = D1 + 20 weeks",
+      "date_iso": null,
+      "anchor_event": "Effective Date of Contract (D1)",
+      "cadence": null,
+      "page": 53,
+      "end_page": null,
+      "still_open_at_chunk_end": false,
+      "evidence_quote": "Go-Live</td><td>D3.5= D1+ 20 weeks",
+      "responsible_party": "SI",
+      "confidence": "medium"
+    }
+  ],
+  "notes": ""
+}
+
+FIELD RULES
+- "item_type": one of "deadline", "obligation", "condition", "other".
+- "date_iso": YYYY-MM-DD, or null whenever no absolute calendar date is
+  computable from what you were shown — null is the CORRECT, EXPECTED
+  value for most relative deadlines (see RELATIVE/FORMULA-BASED DEADLINES
+  above), not a fallback for something you failed to resolve.
+- "anchor_event" / "cadence": null unless genuinely applicable — most
+  items need neither.
+- "confidence": "high" | "medium" | "low", your own self-reported
+  confidence in this item's classification.
+- "notes": at most one short sentence; "" when you have nothing to flag.
+"""
+
+
+def _render_action_item_macro_context(macro_ctx: Optional[dict]) -> str:
+    """Sibling to _render_macro_context, for the actionable-items pass.
+    Confirmed necessary, not speculative: a real tender's 40+-page "already
+    implemented" module catalogue (job 89cfa529's "Annexure-XIII – ERP
+    Modules implemented in MPPKVVCL", page 85) has its ONLY "this is
+    existing/background, not a tender obligation" signal on its own root
+    heading — a 3-page action-item chunk deep inside the catalogue (e.g.
+    pages 113-115) has zero local textual cue that it's AS-IS content, so
+    no amount of per-row prose instruction can fix what is fundamentally a
+    missing-document-structure-context problem. Unlike the structure
+    pass's guideline ("report all clauses belonging to this division"),
+    this one explicitly tells the model when to suppress reporting instead."""
+    if not macro_ctx:
+        return ""
+    root = macro_ctx.get("root_container")
+    parent = macro_ctx.get("parent_clause")
+    if not root and not parent:
+        return ""
+    lines = ["# ACTIVE DOCUMENT DIVISION (FROM MACRO SKELETON)"]
+    lines.append("You are currently analyzing pages inside:")
+    if root:
+        lines.append(f'- Root Division: "{root}" (Level 1)')
+    if parent:
+        lines.append(f'- Active Section: "{parent}"')
+    lines.append(
+        "\nGUIDELINE: If the Root Division or Active Section title above indicates "
+        "this division is a catalogue of already-implemented/existing functionality, "
+        "an \"AS-IS\" description, or \"current system\" background (titles containing "
+        "words like \"implemented\", \"existing\", \"AS-IS\", \"current\"), treat its "
+        "ENTIRE content as background for these pages — apply the AS-IS exclusion rule "
+        "strictly regardless of how many \"shall\"-shaped table rows you see, unless one "
+        "specific sentence states a distinct future-tense tender-imposed duty with its own "
+        "trigger (rare inside such a division, but possible — judge that sentence on its own "
+        "merits, not by what surrounds it). If the title does not suggest AS-IS/background "
+        "framing, this section is informational only — it does not change how you judge the "
+        "pages below."
+    )
+    return "\n".join(lines)
+
+
+def build_action_item_prompt(
+    chunk: ChunkPlan, *, document_hint: str = "", macro_context: Optional[dict] = None,
+) -> "tuple[str, str]":
+    """Assembles the actionable-items prompt for one chunk. Deliberately
+    simpler than build_structure_prompt: no carry_context/open_containers
+    (action items are flat per-page leaves, not a nested hierarchy to track
+    across chunk boundaries — see ai_action_items.py's module docstring),
+    no rule_prior (there is no rule-based fallback for this extraction
+    type). `macro_context`, when given, is the same
+    {root_container, parent_clause} shape ai_reference_index's two-pass
+    design already produces (via _extract_macro_skeleton /
+    _get_active_macro_context, reused as-is, never duplicated) — see
+    _render_action_item_macro_context."""
+    parts = []
+    page_nums = chunk.page_nums
+    parts.append(f"# PAGE RANGE\nThis chunk contains pages {page_nums[0]}-{page_nums[-1]}. "
+                 f"Valid values for \"page\"/\"end_page\": {json.dumps(page_nums)}.")
+
+    macro_block = _render_action_item_macro_context(macro_context)
+    if macro_block:
+        parts.append(macro_block)
+
+    if document_hint:
+        parts.append(f"# DOCUMENT HINT (optional, user supplied)\n<<<HINT>>>\n{document_hint[:500]}\n<<<END HINT>>>")
+
+    page_blocks = []
+    for p in chunk.pages:
+        page_blocks.append(f"{PAGE_OPEN.format(n=p.page_num)}\n{p.text}\n{PAGE_CLOSE.format(n=p.page_num)}")
+    parts.append("# PAGES\n" + "\n".join(page_blocks))
+
+    parts.append(ACTION_ITEM_OUTPUT_CONTRACT)
+
+    return ACTION_ITEM_SYSTEM_PROMPT, "\n\n".join(parts)
+
+
 MENTION_REVIEW_SYSTEM_PROMPT = """\
 You are an expert legal document analyst reviewing cross-reference mentions detected on pages of a legal or contractual document.
 Each mention was extracted by a rule-based scan and is either active ("exact" or "approximate") or "suppressed" (e.g. detected as an external statute).

@@ -58,6 +58,15 @@ def _reset_reference_index_async_primitives():
 
 
 @pytest.fixture(autouse=True)
+def _reset_action_item_active_jobs():
+    """Same in-flight-tracking set as reference_index._active_reindex_jobs
+    above, for the separate actionable-items pass — reset so a test that
+    crashes mid-"active" state can't leak into an unrelated later test."""
+    import ai_action_items
+    ai_action_items._active_action_item_jobs = set()
+
+
+@pytest.fixture(autouse=True)
 def _reset_rate_limit_buckets():
     """main._rate_buckets is a module-level dict keyed by rate_limit_key
     (effectively per-user), accumulating submission timestamps across the

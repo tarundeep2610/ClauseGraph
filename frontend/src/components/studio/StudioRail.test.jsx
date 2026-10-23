@@ -88,4 +88,53 @@ describe('StudioRail component', () => {
     fireEvent.keyDown(window, { key: '2', ctrlKey: true });
     expect(onToggleReview).toHaveBeenCalledTimes(1);
   });
+
+  it('renders the Actions button only when onToggleActionItems is given, and calls it unconditionally on click (no disabled/indexBuilt-style gating, unlike Outline)', () => {
+    const onToggleActionItems = vi.fn();
+    const { rerender } = render(
+      <StudioRail
+        structureOpen={false}
+        onToggleStructure={vi.fn()}
+        reviewOpen={false}
+        onToggleReview={vi.fn()}
+        reviewCount={0}
+      />
+    );
+    expect(screen.queryByTestId('action-items-sidebar-toggle-btn')).not.toBeInTheDocument();
+
+    rerender(
+      <StudioRail
+        structureOpen={false}
+        onToggleStructure={vi.fn()}
+        reviewOpen={false}
+        onToggleReview={vi.fn()}
+        reviewCount={0}
+        actionItemsOpen={false}
+        onToggleActionItems={onToggleActionItems}
+        actionItemsCount={3}
+      />
+    );
+    const actionsBtn = screen.getByTestId('action-items-sidebar-toggle-btn');
+    expect(actionsBtn).not.toHaveClass('disabled');
+    expect(screen.getByTestId('studio-rail-action-items-badge')).toHaveTextContent('3');
+
+    fireEvent.click(actionsBtn);
+    expect(onToggleActionItems).toHaveBeenCalledTimes(1);
+  });
+
+  it('responds to global Ctrl+3 when onToggleActionItems is provided', () => {
+    const onToggleActionItems = vi.fn();
+    render(
+      <StudioRail
+        structureOpen={false}
+        onToggleStructure={vi.fn()}
+        reviewOpen={false}
+        onToggleReview={vi.fn()}
+        reviewCount={0}
+        onToggleActionItems={onToggleActionItems}
+      />
+    );
+    fireEvent.keyDown(window, { key: '3', ctrlKey: true });
+    expect(onToggleActionItems).toHaveBeenCalledTimes(1);
+  });
 });

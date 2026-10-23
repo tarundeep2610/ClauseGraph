@@ -185,6 +185,10 @@ if AI_INDEX_CHUNK_PAGES < 1:
     raise RuntimeError("AI_INDEX_CHUNK_PAGES must be >= 1.")
 
 AI_INDEX_MAX_HEADINGS_PER_CHUNK = int(os.environ.get("AI_INDEX_MAX_HEADINGS_PER_CHUNK", "200"))
+# Sibling cap for the actionable-items pass (ai_action_items.py) — a separate
+# constant, not a reuse of the heading cap above, since a dense contract page
+# can legitimately report many more discrete obligations than headings.
+AI_ACTION_ITEM_MAX_PER_CHUNK = int(os.environ.get("AI_ACTION_ITEM_MAX_PER_CHUNK", "300"))
 AI_INDEX_CONSECUTIVE_FAILURE_LIMIT = int(os.environ.get("AI_INDEX_CONSECUTIVE_FAILURE_LIMIT", "3"))
 
 AI_INDEX_REQUEST_TIMEOUT_SECONDS = float(os.environ.get("AI_INDEX_REQUEST_TIMEOUT_SECONDS", "180"))

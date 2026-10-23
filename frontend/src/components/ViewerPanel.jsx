@@ -12,6 +12,8 @@ import PageReferenceBadges from './PageReferenceBadges';
 import WysiwygEditor from './editor/WysiwygEditor';
 import ExportDropdown from './studio/ExportDropdown';
 import StructureTreePanel from './studio/StructureTreePanel';
+import ActionableItemsPanel from './studio/ActionableItemsPanel';
+import { getAllActionItems, getActionItemTypeCounts } from '../utils/actionItemStore';
 import ReviewQueuePanel from './review/ReviewQueuePanel';
 import StudioAppBar from './studio/StudioAppBar';
 import StudioRail from './studio/StudioRail';
@@ -80,6 +82,9 @@ export default function ViewerPanel({
   reindexing,
   referenceStore,
   scopeRanges,
+  onReindexActionItems,
+  actionItemsReindexing,
+  actionItemStore,
   onCurrentPageChange,
   structureContent,
   onRequestStructureContent,
@@ -117,6 +122,13 @@ export default function ViewerPanel({
   // Guided Review Queue drawer (Sprint 6) — same "persistent, collapsed by
   // default" treatment as the Structure sidebar above, toggled independently.
   const [reviewSidebarOpen, setReviewSidebarOpen] = useState(initialReviewOpen);
+  // Actionable Items drawer — unlike structureSidebarOpen above, this toggle
+  // is UNCONDITIONAL: the extraction trigger lives inside this panel's own
+  // header, so gating the drawer open on "already built" (the way Outline's
+  // handleToggleStructure does) would make that trigger unreachable. See
+  // ActionableItemsPanel.jsx's own comment.
+  const [actionItemsSidebarOpen, setActionItemsSidebarOpen] = useState(false);
+  const [actionItemSortMode, setActionItemSortMode] = useState('page');
   // Indexing (structure + reference links) is fully opt-in now — see
   // StudioRail's disabled Outline button below — so clicking it with no
   // index built shows this instead of silently opening an empty drawer.
@@ -137,6 +149,18 @@ export default function ViewerPanel({
     }
     setStructureSidebarOpen((v) => !v);
   }
+  const actionItemsBuilt = (jobDetails?.action_item_index_version ?? 0) > 0;
+  function handleToggleActionItems() {
+    setActionItemsSidebarOpen((v) => !v);
+  }
+  const allActionItems = useMemo(
+    () => (actionItemStore ? getAllActionItems(actionItemStore, actionItemSortMode) : []),
+    [actionItemStore, actionItemStore?.version, actionItemSortMode],
+  );
+  const actionItemTypeCounts = useMemo(
+    () => (actionItemStore ? getActionItemTypeCounts(actionItemStore) : undefined),
+    [actionItemStore, actionItemStore?.version],
+  );
   // Nothing built yet: build both directly, "Reference Links Only" has no
   // value with nothing to link against. Something already built: let the
   // user choose what to rebuild (RebuildIndexModal) rather than silently
@@ -545,6 +569,14 @@ export default function ViewerPanel({
                 <i className="fa-solid fa-triangle-exclamation" /> Review ({reviewPages.length})
               </button>
             )}
+            <button
+              className={`btn btn-sm btn-secondary${actionItemsSidebarOpen ? ' active' : ''}`}
+              onClick={handleToggleActionItems}
+              title={actionItemsSidebarOpen ? 'Hide actionable items' : 'Show actionable items'}
+              data-testid="action-items-sidebar-toggle-btn"
+            >
+              <i className="fa-solid fa-list-check" /> Actions{actionItemTypeCounts?.all ? ` (${actionItemTypeCounts.all})` : ''}
+            </button>
             <div className="view-toggles">
               <button className={`view-toggle-btn ${viewMode === 'split' ? 'active' : ''}`} onClick={() => { setViewMode('split'); setPinnedPdfPage(null); }}>
                 <i className="fa-solid fa-columns" /> Split
@@ -628,6 +660,9 @@ export default function ViewerPanel({
             reviewOpen={reviewSidebarOpen}
             onToggleReview={() => setReviewSidebarOpen((v) => !v)}
             reviewCount={reviewPages?.length || 0}
+            actionItemsOpen={actionItemsSidebarOpen}
+            onToggleActionItems={handleToggleActionItems}
+            actionItemsCount={actionItemTypeCounts?.all || 0}
           />
           <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
           <div className="dual-viewport studio-viewport" style={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex' }}>
@@ -648,6 +683,23 @@ export default function ViewerPanel({
               onAddItem={onAddStructureItem ? openAddChildModal : undefined}
               parentOverrides={parentOverrides}
               sortOverrides={sortOverrides}
+            />
+            <ActionableItemsPanel
+              open={actionItemsSidebarOpen}
+              onClose={() => setActionItemsSidebarOpen(false)}
+              onRebuild={
+                jobDetails?.status !== 'processing' && jobDetails?.status !== 'escalating'
+                  ? onReindexActionItems
+                  : undefined
+              }
+              rebuilding={actionItemsReindexing}
+              built={actionItemsBuilt}
+              items={allActionItems}
+              typeCounts={actionItemTypeCounts}
+              sortMode={actionItemSortMode}
+              onSortModeChange={setActionItemSortMode}
+              activePage={currentPdfPage}
+              onSelect={handleStructureJumpToPage}
             />
             {reviewSidebarOpen && (
               <ReviewQueuePanel
@@ -835,6 +887,23 @@ export default function ViewerPanel({
             onAddItem={onAddStructureItem ? openAddChildModal : undefined}
             parentOverrides={parentOverrides}
             sortOverrides={sortOverrides}
+          />
+          <ActionableItemsPanel
+            open={actionItemsSidebarOpen}
+            onClose={() => setActionItemsSidebarOpen(false)}
+            onRebuild={
+              jobDetails?.status !== 'processing' && jobDetails?.status !== 'escalating'
+                ? onReindexActionItems
+                : undefined
+            }
+            rebuilding={actionItemsReindexing}
+            built={actionItemsBuilt}
+            items={allActionItems}
+            typeCounts={actionItemTypeCounts}
+            sortMode={actionItemSortMode}
+            onSortModeChange={setActionItemSortMode}
+            activePage={currentPdfPage}
+            onSelect={handleStructureJumpToPage}
           />
           {reviewSidebarOpen && (
             <ReviewQueuePanel

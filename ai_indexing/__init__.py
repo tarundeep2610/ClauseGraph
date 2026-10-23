@@ -43,12 +43,19 @@ from ai_indexing.schema import (
     AIDocrefReview,
     AIPriorRejection,
     AIStructureChunk,
+    AIActionItem,
+    AIActionItemChunk,
     NormalizationReport,
     VALID_MENTION_ACTIONS,
     VALID_REJECTION_REASONS,
+    VALID_ACTION_ITEM_TYPES,
     normalize_chunk,
+    normalize_action_item_chunk,
 )
-from ai_indexing.parsing import parse_mention_response, parse_structure_response, parse_docref_review_response
+from ai_indexing.parsing import (
+    parse_mention_response, parse_structure_response, parse_docref_review_response,
+    parse_action_item_response,
+)
 from ai_indexing.prompt import (
     CarryContext,
     ChunkPlan,
@@ -56,11 +63,17 @@ from ai_indexing.prompt import (
     build_mention_review_prompt,
     build_docref_review_prompt,
     build_structure_prompt,
+    build_action_item_prompt,
+    ACTION_ITEM_SYSTEM_PROMPT,
+    ACTION_ITEM_OUTPUT_CONTRACT,
     plan_chunks,
     plan_adaptive_chunks,
     classify_page_density,
 )
-from ai_indexing.client import ChunkOutcome, ChunkStructureResult, StructureIndexer
+from ai_indexing.client import (
+    ChunkOutcome, ChunkStructureResult, StructureIndexer,
+    ChunkActionItemResult, ActionItemIndexer,
+)
 from ai_indexing.credentials import ResolvedAIConfig, resolve_active_config, describe_active_config
 from ai_indexing.recording import (
     RecordSession,
@@ -83,6 +96,10 @@ __all__ = [
     "parse_structure_response",
     "PageInput", "ChunkPlan", "CarryContext", "plan_chunks", "build_structure_prompt",
     "ChunkOutcome", "ChunkStructureResult", "StructureIndexer",
+    "AIActionItem", "AIActionItemChunk", "VALID_ACTION_ITEM_TYPES", "normalize_action_item_chunk",
+    "parse_action_item_response", "build_action_item_prompt",
+    "ACTION_ITEM_SYSTEM_PROMPT", "ACTION_ITEM_OUTPUT_CONTRACT",
+    "ChunkActionItemResult", "ActionItemIndexer",
     "ResolvedAIConfig", "resolve_active_config", "describe_active_config",
     "RecordSession", "ReplaySession", "ReplayFidelityError", "record_scope", "replay_scope",
 ]

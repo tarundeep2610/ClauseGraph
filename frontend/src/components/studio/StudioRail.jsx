@@ -7,8 +7,11 @@ export default function StudioRail({
   reviewOpen,
   onToggleReview,
   reviewCount = 0,
+  actionItemsOpen,
+  onToggleActionItems,
+  actionItemsCount = 0,
 }) {
-  // Keyboard shortcuts: Ctrl+1 (Outline) and Ctrl+2 (Review)
+  // Keyboard shortcuts: Ctrl+1 (Outline), Ctrl+2 (Review), Ctrl+3 (Actions)
   useEffect(() => {
     function handleKeyDown(e) {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
@@ -18,12 +21,15 @@ export default function StudioRail({
         } else if (e.key === '2') {
           e.preventDefault();
           onToggleReview();
+        } else if (e.key === '3' && onToggleActionItems) {
+          e.preventDefault();
+          onToggleActionItems();
         }
       }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onToggleStructure, onToggleReview]);
+  }, [onToggleStructure, onToggleReview, onToggleActionItems]);
 
   return (
     <aside className="task-rail studio-rail" data-testid="studio-rail">
@@ -70,6 +76,30 @@ export default function StudioRail({
         </button>
         <span className="rail-btn-label">Review</span>
       </div>
+
+      {onToggleActionItems && (
+        <div
+          className="rail-btn-wrap"
+          title={`Actionable Items${actionItemsCount > 0 ? ` (${actionItemsCount})` : ''} (Ctrl+3)`}
+          onClick={onToggleActionItems}
+          data-testid="studio-rail-action-items-wrap"
+        >
+          <button
+            type="button"
+            className={`rail-icon-btn${actionItemsOpen ? ' active' : ''}`}
+            data-testid="action-items-sidebar-toggle-btn"
+            aria-label="Toggle actionable items"
+          >
+            <i className="fa-solid fa-list-check" />
+            {actionItemsCount > 0 && (
+              <span className="rail-badge-alert" data-testid="studio-rail-action-items-badge">
+                {actionItemsCount}
+              </span>
+            )}
+          </button>
+          <span className="rail-btn-label">Actions</span>
+        </div>
+      )}
     </aside>
   );
 }
