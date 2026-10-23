@@ -526,6 +526,58 @@ def test_grounding_low_confidence_event_does_not_anchor_as_ancestor():
     assert candidates[0]["scope_chain"] == [{"family": "annexure", "key": "annexure:a-1", "label": "Annexure A-1"}]
 
 
+def test_low_confidence_confirmed_root_candidate_still_anchors_as_ancestor():
+    # Real bug this closes: unlike "3.4 QUALITY PLANS" above (an ambiguous
+    # generic numheading with no independent evidence it's a genuine
+    # boundary), "Annexure IV" is a CONFIRMED root-candidate by family
+    # alone (is_subdoc_root_candidate) — a 135-page tender fixture had
+    # exactly this heading hit `ai_unlocated` (pure grounding noise, the
+    # text genuinely exists on the page) and never get pushed, so its own
+    # rightful children (and the next several real Annexures) all stayed
+    # wrongly nested under the stale PREVIOUS Annexure's own descendant.
+    seed = _seeded_scope([{"family": "section", "key": "section:7", "label": "Section VII: Annexures"}])
+    events = [
+        _event("Annexure IV: Format for Price Schedule", depth=1, heading_confidence_reasons=["ai_unlocated"]),
+        _event("Item-I : Cost for Oracle ERP Version Upgrade", depth=2),
+    ]
+    candidates, new_scope = ri.apply_heading_events_to_scope(events, seed, page_num=66, has_next_page=True)
+
+    assert candidates[0]["key"] == "annexure:iv"
+    assert [s["key"] for s in new_scope["stack"]][:2] == ["section:7", "annexure:iv"]
+    # The child genuinely nests under the newly-pushed Annexure IV, not
+    # under whatever was open before it.
+    assert candidates[1]["scope_key"] == "section:7/annexure:iv"
+
+
+def test_low_confidence_affidavit_still_anchors_as_ancestor():
+    # Same mechanism, the 100-page fixture's own confirmed instance: an
+    # Affidavit (a standalone legal document, independently confirmed via
+    # is_subdoc_root_candidate's _STANDALONE_LEGAL_DOCS_RE) must still
+    # displace an unrelated open root even when fuzzy-grounded.
+    seed = _seeded_scope([{"family": "subdoc", "key": "subdoc:grounds", "label": "GROUNDS OF APPEAL"}])
+    events = [_event("AFFIDAVIT", depth=0, heading_confidence_reasons=["ai_fuzzy_grounded"])]
+    candidates, new_scope = ri.apply_heading_events_to_scope(events, seed, page_num=38, has_next_page=True)
+
+    assert [s["key"] for s in new_scope["stack"]] == [candidates[0]["key"]]
+    assert candidates[0]["key"] != "subdoc:grounds"
+
+
+def test_unconditional_block_reasons_still_block_even_for_a_confirmed_root_candidate():
+    # Regression guard: the exemption is specific to the two POSITIONAL
+    # reasons — "possible_reproduced_text" (a clause quoted verbatim mid-
+    # argument) and "table_row_sourced" (grounded to a table cell) must
+    # still block unconditionally, even for a family that would otherwise
+    # qualify as a confirmed root candidate by shape alone.
+    seed = _seeded_scope([{"family": "section", "key": "section:7", "label": "Section VII: Annexures"}])
+    events = [_event(
+        "Annexure IV: Format for Price Schedule", depth=1,
+        heading_confidence_reasons=["ai_unlocated", "possible_reproduced_text"],
+    )]
+    candidates, new_scope = ri.apply_heading_events_to_scope(events, seed, page_num=66, has_next_page=True)
+
+    assert [s["key"] for s in new_scope["stack"]] == ["section:7"]
+
+
 def test_ai_stack_shape_matches_rule_based_shape_for_compute_scope_ranges():
     """The key cross-chunk-boundary property: a container opened via the AI
     path and one opened via the rule path must diff identically under

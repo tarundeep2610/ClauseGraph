@@ -821,19 +821,37 @@ def normalize_key(keyword: str, prefix: Optional[str], number_raw: str, suffix: 
     return f"{family}:{prefix_part}{number}{suffix_part}"
 
 
-# Hyphen-separator variant of CORE_RE, scoped to exactly the three
-# prefix-eligible families ("Annexure-XI:" instead of "Annexure XI:") —
-# confirmed real bug: CORE_RE's keyword separator hard-requires literal
-# whitespace, never a hyphen, so this spelling previously failed
-# annexure-family parsing entirely and fell through to an unrelated
-# generic fallback bucket. Deliberately NOT a change to CORE_RE itself
-# (that would also affect "Section-N:" detection for every other keyword
-# — a separate, already-tracked issue), and deliberately NOT extended to
-# clause/section/article/para/page/ground. Same group names as CORE_RE so
+# Hyphen-separator variant of CORE_RE, scoped to the four prefix/numbered
+# families confirmed to actually appear in this hyphenated spelling
+# ("Annexure-XI:" instead of "Annexure XI:") — confirmed real bug: CORE_RE's
+# keyword separator hard-requires literal whitespace, never a hyphen, so
+# this spelling previously failed family parsing entirely and fell through
+# to an unrelated generic fallback bucket. "section" was confirmed via a
+# 135-page tender fixture: "Section-I:".."Section-VI:" (hyphen) mint as a
+# generic subdoc fallback while "Section VII:" (space) correctly mints as
+# `section:7` — the same root cause as the annexure case, just for a
+# different keyword. MENTION_RE already tolerates the hyphen for citation
+# detection, so citations to "Section-I" were resolving to an expected
+# `section:1` key that no target ever minted. Deliberately NOT a change to
+# CORE_RE itself (that would affect every keyword's whitespace handling at
+# once), and deliberately NOT yet extended to clause/para/page/ground
+# (unconfirmed whether their hyphenated forms carry the same meaning — a
+# separate, still-open question). Same group names as CORE_RE so
 # `CORE_RE.match(t) or _SUBDOC_HYPHEN_RE.match(t)` is a drop-in everywhere.
+#
+# `prefix` requires a LITERAL trailing hyphen (`[A-Z]-`, not `[A-Z]-?`) —
+# confirmed real false-positive this closes: a 7-page contract's real OCR
+# text has "SECTION-GCC" (an acronym, General Conditions of Contract, with
+# no number at all) immediately followed by "A. INTRODUCTION". With the
+# prefix hyphen optional, "G" silently absorbed as a bare prefix letter and
+# "CC" parsed as a roman numeral (100+100), wrongly minting a real
+# `section:*` container that then swallowed "A. INTRODUCTION" as its child.
+# Every confirmed real prefix case (`"Annexure A-1"`/`"AmneXureA-1"`) always
+# has the hyphen between the prefix letter and the number, so this is a
+# pure precision tightening, not a loss of coverage.
 _SUBDOC_HYPHEN_RE = re.compile(
-    r"^\s*(?P<keyword>annexure|schedule|appendix)\b\.?-\s*(?:no\.?\s*)?"
-    r"(?P<prefix>[A-Z]-?)?(?P<number>[ivxlcdm]+|\d+(?:\.\d+)*)\b",
+    r"^\s*(?P<keyword>annexure|schedule|appendix|section)\b\.?-\s*(?:no\.?\s*)?"
+    r"(?P<prefix>[A-Z]-)?(?P<number>[ivxlcdm]+(?:\.\d+)*|\d+(?:\.\d+)*)\b",
     re.IGNORECASE,
 )
 
@@ -3941,8 +3959,38 @@ def validate_scope_shape(scope: Dict[str, Any]) -> None:
 # a stack anchor (see apply_heading_events_to_scope's skip_stack_mutation
 # gate, mirroring the rule engine's own "a flagged match does neither pop
 # nor push" precedent at build_targets_for_page).
-_GROUNDING_PUSH_BLOCKING_REASONS = {
-    "ai_unlocated", "ai_fuzzy_grounded", "possible_reproduced_text",
+#
+# Split into two tiers, not one flat set — confirmed real bug the split
+# closes: "ai_unlocated"/"ai_fuzzy_grounded" only mean the GROUNDING step
+# couldn't pin down exactly WHERE on the page the heading's text sits, not
+# that the heading itself is suspect. A genuine, confirmed-real heading
+# ("Annexure IV: Format for Price Schedule", "Annexure IX: Guidelines for
+# E-Procurement System") can easily need fuzzy/unlocated grounding purely
+# from markdown/OCR formatting noise — blocking it from ever becoming an
+# ancestor left it permanently un-pushed, so every subsequent heading
+# (including its own rightful children) kept accruing under whichever
+# PREVIOUS container was last genuinely open, cascading for dozens of
+# pages until a later sibling happened to ground cleanly again. Confirmed
+# on two real documents: a 135-page tender spec (Annexure IV/IX, each
+# swallowing everything up to the next cleanly-grounded Annexure) and a
+# 100-page arbitration appeal (an Affidavit nested under the unrelated
+# Grounds of Appeal, an Annexure nested under a Judgment that had already
+# concluded). `_POSITIONAL_ONLY_PUSH_BLOCKING_REASONS` are exempted
+# whenever `is_subdoc_root_candidate` independently confirms — from the
+# heading's own TEXT SHAPE, never its grounding confidence — that it's a
+# genuine document-boundary keyword/family (annexure/schedule/appendix,
+# EXHIBIT/ATTACHMENT/etc., a standalone legal instrument, or a sibling of
+# the open root sharing its own numbered keyword): that's independent,
+# stronger evidence than positional-grounding confidence can ever provide.
+_POSITIONAL_ONLY_PUSH_BLOCKING_REASONS = {"ai_unlocated", "ai_fuzzy_grounded"}
+_GROUNDING_PUSH_BLOCKING_REASONS = _POSITIONAL_ONLY_PUSH_BLOCKING_REASONS | {
+    # A clause/sub-clause quoted VERBATIM mid-argument (a pleading citing
+    # a contract term "which reads as under: ...") is real text but not a
+    # genuine boundary of THIS document's own outline — unconditional
+    # regardless of family, since the family heuristic has no way to tell
+    # "this is a real structural heading" from "this is a faithful quote
+    # of one" (both look identical in text shape).
+    "possible_reproduced_text",
     # A table row/entry must only ever be a leaf, never a parent — added
     # here (rather than relying solely on the D6/D7 content-shape
     # heuristic above, which can be imperfect) so this invariant is
@@ -4185,7 +4233,16 @@ def apply_heading_events_to_scope(
         family_def = FAMILIES.get(family)
         is_true_leaf = family_def is not None and family_def.get("rank") is None
         reasons = ev.get("heading_confidence_reasons") or []
-        push_blocking = any(r in _GROUNDING_PUSH_BLOCKING_REASONS for r in reasons)
+        unconditional_block = any(
+            r in _GROUNDING_PUSH_BLOCKING_REASONS and r not in _POSITIONAL_ONLY_PUSH_BLOCKING_REASONS
+            for r in reasons
+        )
+        positional_only_block = any(r in _POSITIONAL_ONLY_PUSH_BLOCKING_REASONS for r in reasons)
+        if positional_only_block and not unconditional_block:
+            root_label = nested_stack[0].get("label") if nested_stack else None
+            if is_subdoc_root_candidate(stripped_text, family, root_label):
+                positional_only_block = False
+        push_blocking = unconditional_block or positional_only_block
         skip_stack_mutation = is_true_leaf or push_blocking
         if skip_stack_mutation:
             depth = len(nested_stack)
