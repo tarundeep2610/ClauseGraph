@@ -238,7 +238,7 @@
       "page": 12,
       "key": "subdoc:verification-2",
       "occurrence_index": 0,
-      "label": "Verification (2)",
+      "label": "Verification",
       "scope_key": "subdoc:respectfully-showeth-2/subdoc:i-the-above-named-deponent-do"
     },
     {
@@ -701,21 +701,21 @@
       "key": "ground:1",
       "occurrence_index": 0,
       "label": null,
-      "scope_key": "subdoc:grounds-of-appeal/subdoc:i-the-above-named-deponent-do-2"
+      "scope_key": "subdoc:affidavit-of-ishwar-chand-balan"
     },
     {
       "page": 38,
       "key": "ground:2",
       "occurrence_index": 0,
       "label": null,
-      "scope_key": "subdoc:grounds-of-appeal/subdoc:i-the-above-named-deponent-do-2"
+      "scope_key": "subdoc:affidavit-of-ishwar-chand-balan"
     },
     {
       "page": 38,
       "key": "ground:3",
       "occurrence_index": 0,
       "label": null,
-      "scope_key": "subdoc:grounds-of-appeal/subdoc:i-the-above-named-deponent-do-2"
+      "scope_key": "subdoc:affidavit-of-ishwar-chand-balan"
     },
     {
       "page": 38,
@@ -726,17 +726,24 @@
     },
     {
       "page": 38,
+      "key": "subdoc:affidavit-of-ishwar-chand-balan",
+      "occurrence_index": 0,
+      "label": "AFFIDAVIT OF ISHWAR CHAND BALAN",
+      "scope_key": ""
+    },
+    {
+      "page": 38,
       "key": "subdoc:i-the-above-named-deponent-do-2",
       "occurrence_index": 0,
       "label": "I, the above named deponent do hereby solemnly affirm and st (2)",
-      "scope_key": "subdoc:grounds-of-appeal"
+      "scope_key": "subdoc:affidavit-of-ishwar-chand-balan"
     },
     {
       "page": 38,
       "key": "subdoc:verification-3",
       "occurrence_index": 0,
-      "label": "Verification (3)",
-      "scope_key": "subdoc:grounds-of-appeal/subdoc:i-the-above-named-deponent-do-2"
+      "label": "Verification",
+      "scope_key": "subdoc:affidavit-of-ishwar-chand-balan"
     },
     {
       "page": 39,
@@ -782,16 +789,16 @@
     },
     {
       "page": 41,
-      "key": "subdoc:petitioner-s-version",
+      "key": "subdoc:facts",
       "occurrence_index": 0,
-      "label": "Petitioner's version",
+      "label": "FACTS",
       "scope_key": "subdoc:judgment"
     },
     {
       "page": 41,
-      "key": "subdoc:facts",
+      "key": "subdoc:petitioner-s-version",
       "occurrence_index": 0,
-      "label": "FACTS",
+      "label": "Petitioner's version",
       "scope_key": "subdoc:judgment"
     },
     {
@@ -1527,14 +1534,14 @@
       "key": "annexure:a-1",
       "occurrence_index": 0,
       "label": null,
-      "scope_key": "subdoc:judgment"
+      "scope_key": ""
     },
     {
       "page": 61,
       "key": "subdoc:contract-agreement-between",
       "occurrence_index": 0,
       "label": "CONTRACT AGREEMENT BETWEEN",
-      "scope_key": "subdoc:judgment/annexure:a-1"
+      "scope_key": "annexure:a-1"
     },
     {
       "page": 62,
@@ -1547,8 +1554,8 @@
       "page": 62,
       "key": "subdoc:index-2",
       "occurrence_index": 0,
-      "label": "INDEX (2)",
-      "scope_key": "subdoc:judgment/annexure:a-1"
+      "label": "INDEX",
+      "scope_key": "annexure:a-1"
     },
     {
       "page": 63,
@@ -1562,7 +1569,7 @@
       "key": "numheading:1.1",
       "occurrence_index": 0,
       "label": "1.1 Award of contract",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement/subdoc:ngw-therefore-this-deed-witnesseth-as"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/subdoc:ngw-therefore-this-deed-witnesseth-as"
     },
     {
       "page": 63,
@@ -1576,21 +1583,21 @@
       "key": "point:1",
       "occurrence_index": 0,
       "label": "1. Article",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement/subdoc:ngw-therefore-this-deed-witnesseth-as"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/subdoc:ngw-therefore-this-deed-witnesseth-as"
     },
     {
       "page": 63,
       "key": "subdoc:contract-agreement",
       "occurrence_index": 0,
       "label": "CONTRACT AGREEMENT",
-      "scope_key": "subdoc:judgment/annexure:a-1"
+      "scope_key": "annexure:a-1"
     },
     {
       "page": 63,
       "key": "subdoc:ngw-therefore-this-deed-witnesseth-as",
       "occurrence_index": 0,
       "label": "NGW: THEREFORE THIS DEED WITNESSETH AS UNDER",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement"
     },
     {
       "page": 63,
@@ -1632,14 +1639,14 @@
       "key": "numheading:2.0",
       "occurrence_index": 0,
       "label": "2.0 CONTRACT DOCUMENTS",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement"
     },
     {
       "page": 64,
       "key": "numheading:3.0",
       "occurrence_index": 0,
       "label": "3.0 CONDITIONS AND COVENANTS",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement"
     },
     {
       "page": 64,
@@ -1653,42 +1660,42 @@
       "key": "point:i",
       "occurrence_index": 0,
       "label": "i) HVPNL bidding document No. REC-064 consisting of Notice Inviting Tender",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement/numheading:2.0"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:2.0"
     },
     {
       "page": 64,
       "key": "point:ii",
       "occurrence_index": 0,
       "label": "ii) HVPN Technical Specification No. REC-064.",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement/numheading:2.0"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:2.0"
     },
     {
       "page": 64,
       "key": "point:iii",
       "occurrence_index": 0,
       "label": "iii) M/s Areva T&D India Ltd. proposal No. E1070151 dated 27.11.2007",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement/numheading:2.0"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:2.0"
     },
     {
       "page": 64,
       "key": "point:iv",
       "occurrence_index": 0,
       "label": "iv) HVPN letter No. Ch-35/REC-064/Xen(Projects) dated 11.12.2007",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement/numheading:2.0"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:2.0"
     },
     {
       "page": 64,
       "key": "point:v",
       "occurrence_index": 0,
       "label": "v) Agreed Minutes of the meeting held on 27.12.2007 between HVPN",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement/numheading:2.0"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:2.0"
     },
     {
       "page": 64,
       "key": "point:vi",
       "occurrence_index": 0,
       "label": "vi) HVPN's letter of award No. Ch-91/REC-064/Xen(Projects) dated 08.04.2008",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement/numheading:2.0"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:2.0"
     },
     {
       "page": 64,
@@ -1737,14 +1744,14 @@
       "key": "numheading:3.3",
       "occurrence_index": 0,
       "label": "3.3 TIME SCHEDULE",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement/numheading:3.0"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:3.0"
     },
     {
       "page": 65,
       "key": "numheading:3.4",
       "occurrence_index": 0,
       "label": "3.4 QUALITY PLANS",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement/numheading:3.0"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:3.0"
     },
     {
       "page": 65,
@@ -1758,14 +1765,14 @@
       "key": "numheading:4.0",
       "occurrence_index": 0,
       "label": "4.0 SETTLEMENT OF DISPUTES",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement"
     },
     {
       "page": 66,
       "key": "numheading:4.1",
       "occurrence_index": 0,
       "label": "4.1 NOTICE OF DEFAULT",
-      "scope_key": "subdoc:judgment/annexure:a-1/subdoc:contract-agreement/numheading:4.0"
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:4.0"
     },
     {
       "page": 66,
@@ -1825,9 +1832,9 @@
     },
     {
       "page": 71,
-      "key": "subdoc:work-schedule",
+      "key": "subdoc:price-schedule",
       "occurrence_index": 0,
-      "label": "Work Schedule",
+      "label": "Price Schedule",
       "scope_key": ""
     },
     {
@@ -1839,9 +1846,9 @@
     },
     {
       "page": 71,
-      "key": "subdoc:price-schedule",
+      "key": "subdoc:work-schedule",
       "occurrence_index": 0,
-      "label": "Price Schedule",
+      "label": "Work Schedule",
       "scope_key": ""
     },
     {
@@ -1965,9 +1972,9 @@
     },
     {
       "page": 86,
-      "key": "subdoc:taxes-duties",
+      "key": "subdoc:payment-terms",
       "occurrence_index": 0,
-      "label": "Taxes & Duties",
+      "label": "Payment Terms: -",
       "scope_key": "subdoc:price-schedule"
     },
     {
@@ -1979,9 +1986,9 @@
     },
     {
       "page": 86,
-      "key": "subdoc:payment-terms",
+      "key": "subdoc:taxes-duties",
       "occurrence_index": 0,
-      "label": "Payment Terms: -",
+      "label": "Taxes & Duties",
       "scope_key": "subdoc:price-schedule"
     },
     {
@@ -2042,17 +2049,10 @@
     },
     {
       "page": 88,
-      "key": "subdoc:liquidated-damages-for-losses-of-66",
+      "key": "subdoc:contract-agreement-2",
       "occurrence_index": 0,
-      "label": "Liquidated Damages for losses of 66 kV Capacitor Banks: -",
-      "scope_key": "subdoc:price-schedule"
-    },
-    {
-      "page": 88,
-      "key": "subdoc:insurance",
-      "occurrence_index": 0,
-      "label": "Insurance",
-      "scope_key": "subdoc:price-schedule"
+      "label": "Contract Agreement",
+      "scope_key": ""
     },
     {
       "page": 88,
@@ -2060,20 +2060,6 @@
       "occurrence_index": 0,
       "label": "Contractor's Liability",
       "scope_key": "subdoc:price-schedule"
-    },
-    {
-      "page": 88,
-      "key": "subdoc:performance-security",
-      "occurrence_index": 0,
-      "label": "Performance security",
-      "scope_key": "subdoc:price-schedule"
-    },
-    {
-      "page": 88,
-      "key": "subdoc:contract-agreement-2",
-      "occurrence_index": 0,
-      "label": "Contract Agreement",
-      "scope_key": ""
     },
     {
       "page": 88,
@@ -2098,10 +2084,17 @@
     },
     {
       "page": 88,
-      "key": "subdoc:special-tools-and-tackles",
+      "key": "subdoc:insurance",
       "occurrence_index": 0,
-      "label": "Special tools and tackles",
-      "scope_key": "subdoc:contract-agreement-2"
+      "label": "Insurance",
+      "scope_key": "subdoc:price-schedule"
+    },
+    {
+      "page": 88,
+      "key": "subdoc:liquidated-damages-for-losses-of-66",
+      "occurrence_index": 0,
+      "label": "Liquidated Damages for losses of 66 kV Capacitor Banks: -",
+      "scope_key": "subdoc:price-schedule"
     },
     {
       "page": 88,
@@ -2111,10 +2104,17 @@
       "scope_key": "subdoc:contract-agreement-2"
     },
     {
-      "page": 89,
-      "key": "subdoc:quanitiy-variations",
+      "page": 88,
+      "key": "subdoc:performance-security",
       "occurrence_index": 0,
-      "label": "Quanitiy Variations",
+      "label": "Performance security",
+      "scope_key": "subdoc:price-schedule"
+    },
+    {
+      "page": 88,
+      "key": "subdoc:special-tools-and-tackles",
+      "occurrence_index": 0,
+      "label": "Special tools and tackles",
       "scope_key": "subdoc:contract-agreement-2"
     },
     {
@@ -2122,6 +2122,13 @@
       "key": "subdoc:makes-of-equipment",
       "occurrence_index": 0,
       "label": "Makes of equipment",
+      "scope_key": "subdoc:contract-agreement-2"
+    },
+    {
+      "page": 89,
+      "key": "subdoc:quanitiy-variations",
+      "occurrence_index": 0,
+      "label": "Quanitiy Variations",
       "scope_key": "subdoc:contract-agreement-2"
     },
     {
@@ -2140,16 +2147,16 @@
     },
     {
       "page": 90,
-      "key": "subdoc:type-test-certificates",
+      "key": "subdoc:technical",
       "occurrence_index": 0,
-      "label": "Type test Certificates",
+      "label": "Technical",
       "scope_key": "subdoc:contract-agreement-2"
     },
     {
       "page": 90,
-      "key": "subdoc:technical",
+      "key": "subdoc:type-test-certificates",
       "occurrence_index": 0,
-      "label": "Technical",
+      "label": "Type test Certificates",
       "scope_key": "subdoc:contract-agreement-2"
     },
     {
@@ -2182,17 +2189,17 @@
     },
     {
       "page": 94,
-      "key": "subdoc:specification-no-rec-064",
-      "occurrence_index": 0,
-      "label": "Specification No.: REC-064",
-      "scope_key": ""
-    },
-    {
-      "page": 94,
       "key": "subdoc:schedule-1a",
       "occurrence_index": 0,
       "label": "SCHEDULE-1A",
       "scope_key": "subdoc:specification-no-rec-064"
+    },
+    {
+      "page": 94,
+      "key": "subdoc:specification-no-rec-064",
+      "occurrence_index": 0,
+      "label": "Specification No.: REC-064",
+      "scope_key": ""
     },
     {
       "page": 95,

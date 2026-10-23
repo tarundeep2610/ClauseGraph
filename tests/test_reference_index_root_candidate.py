@@ -75,7 +75,15 @@ def test_apply_heading_events_lets_section_ii_become_a_new_root_sibling_not_a_ch
     )
     stack = new_scope["stack"]
     assert len(stack) == 1
-    assert stack[0]["label"] == "Section-II"
+    # "Section-II" now correctly mints into the numbered `section` family
+    # (the Tier-1 hyphen fix in _SUBDOC_HYPHEN_RE) rather than falling
+    # through to a generic subdoc bucket that preserved the literal text —
+    # it normalizes to "Section 2" exactly like the space-spelled "Section
+    # VII" already does (both via _format_label_from_key), so the sibling
+    # check this test actually cares about (len == 1, not nested) still
+    # holds under the new, correct key-minting behavior.
+    assert stack[0]["key"] == "section:2"
+    assert stack[0]["label"] == "Section 2"
 
 
 def test_apply_heading_events_still_clamps_the_original_section_10_1_case():
@@ -105,7 +113,16 @@ def test_apply_heading_events_still_nests_a_genuine_decimal_child_of_the_root():
     stack = new_scope["stack"]
     assert len(stack) == 2
     assert stack[0]["label"] == "Section-I"
-    assert "Section-I.1" in stack[1]["label"]
+    # Real collision this fix had to close: _SUBDOC_HYPHEN_RE's number group
+    # originally couldn't represent "roman numeral + decimal extension"
+    # ("I.1"), so widening it to recognize "section" alone would have
+    # truncated "Section-I.1" down to bare "I" and minted the identical
+    # `section:1` key as a plain "Section-I" root — silently colliding two
+    # different headings onto one key. Fixed by extending the roman branch
+    # of _SUBDOC_HYPHEN_RE's number group to `(?:\.\d+)*` like the decimal
+    # branch already had.
+    assert stack[1]["key"] != "section:1"
+    assert "I.1" in stack[1]["label"]
 
 
 # ─── Chunk-level end-to-end: _ground_and_resolve_chunk with real tender-doc shapes ───

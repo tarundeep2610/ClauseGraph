@@ -26,6 +26,7 @@ from reference_index import (
     _fuzzy_family_match,
     build_targets_for_page,
     detect_subdoc_trigger,
+    is_subdoc_root_candidate,
     mint_key_for_heading,
     normalize_key,
     reconcile_prefix_and_number,
@@ -122,6 +123,45 @@ def test_annexure_with_and_without_suffix_do_not_collide():
 def test_detect_subdoc_trigger_defers_for_hyphenated_annexure_same_as_space():
     assert detect_subdoc_trigger("Annexure-XI:", []) is None
     assert detect_subdoc_trigger("Annexure XI:", []) is None
+
+
+def test_section_space_and_hyphen_spellings_mint_the_identical_key():
+    # Real regression: a 135-page tender fixture spells Section I-VI with a
+    # hyphen ("Section-I:") but Section VII with a space ("Section VII:") —
+    # only the space form minted as the numbered `section:N` family; the
+    # hyphen form fell through to a generic subdoc fallback, breaking every
+    # in-document citation that expected a `section:N` target to exist.
+    space_candidates, _ = build_targets_for_page("Section VII: General Terms\n", seed_scope=None, has_next_page=False)
+    hyphen_candidates, _ = build_targets_for_page("Section-I: Essential Tender Information\n", seed_scope=None, has_next_page=False)
+    assert space_candidates[0]["key"] == "section:7"
+    assert hyphen_candidates[0]["key"] == "section:1"
+
+
+def test_mint_key_for_heading_section_space_and_hyphen_spellings_match():
+    space = mint_key_for_heading("Section VII: General Terms", boundary_ordinal=0, label_occurrence_counts={})
+    hyphen = mint_key_for_heading("Section-I: Essential Tender Information", boundary_ordinal=0, label_occurrence_counts={})
+    assert space[0] == "section"
+    assert space[1] == "section:7"
+    assert hyphen[0] == "section"
+    assert hyphen[1] == "section:1"
+
+
+def test_section_hyphen_acronym_is_not_mistaken_for_a_roman_numeral():
+    # Real OCR regression: "SECTION-GCC" (General Conditions of Contract,
+    # an acronym with no number) immediately precedes "A. INTRODUCTION" on
+    # a real 7-page contract excerpt. Before requiring a literal hyphen
+    # after any prefix letter, "G" silently absorbed as a bare prefix and
+    # "CC" parsed as a roman numeral (100+100), wrongly minting a
+    # `section:*` container that swallowed "A. INTRODUCTION" as its child.
+    candidates, _ = build_targets_for_page("SECTION-GCC\n\nGENERAL CONDITIONS OF CONTRACT\n\nA. INTRODUCTION\n", seed_scope=None, has_next_page=False)
+    assert not any(c["key"].startswith("section:") for c in candidates)
+
+
+def test_section_hyphen_sub_clause_not_wrongly_clamped_as_new_root():
+    # A genuinely nested child sharing the root's own number ("Section-I.1")
+    # must not be mistaken for a new top-level Section root now that the
+    # hyphen form is recognized.
+    assert is_subdoc_root_candidate("Section-I.1: Sub-clause", family=None, root_label="Section-I: Essential Tender Information") is False
 
 
 def test_schedule_variant_non_regression_after_hyphen_annexure_fix():
