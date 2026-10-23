@@ -26,6 +26,7 @@ import task_queue
 import reference_index
 import structure_overrides
 import ai_indexing
+import ai_action_items
 import gpu_ocr_client
 import chunking
 import confidence
@@ -749,6 +750,7 @@ def get_ocr_job(
     if job["status"] == "escalating" and not accept_partial:
         job["_escalation_pending"] = True
     job["reference_index_reindexing"] = reference_index.is_reindex_active(job_id)
+    job["action_item_reindexing"] = ai_action_items.is_reindex_active(job_id)
     return job
 
 @app.post("/api/jobs/{job_id}/reindex-references")
@@ -922,6 +924,70 @@ def get_job_references(
         "reference_index_version": database.get_reference_index_version(job_id),
         "changed_pages": changed_pages,
         "changed_mentions": changed_mentions,
+    }
+
+
+@app.post("/api/jobs/{job_id}/reindex-action-items")
+async def reindex_job_action_items(job_id: str, principal: Principal = Depends(_require_job_access)):
+    """Triggers the actionable-items extraction pass for a job — strictly
+    on-demand (same design as .../reindex-references), never run
+    automatically on OCR completion. A separate pass/table/version from
+    reindex-references: rebuilding one never touches the other."""
+    _check_rate_limit(principal.rate_limit_key)
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] in ("processing", "escalating"):
+        raise HTTPException(
+            status_code=409,
+            detail="Wait for the current OCR run to finish before extracting action items.",
+        )
+    if ai_action_items.is_reindex_active(job_id):
+        raise HTTPException(status_code=409, detail="An action-item extraction is already running for this job.")
+    # The two passes both call the same LLM provider; this codebase's own
+    # investigation log documents real throughput limits (slow local
+    # Ollama, rate-limited RokkaAI), so serializing them avoids doubling
+    # concurrent load for no benefit — nothing needs both rebuilt in the
+    # same instant.
+    if reference_index.is_reindex_active(job_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Wait for the current reference-index rebuild to finish before extracting action items.",
+        )
+    try:
+        ai_indexing.resolve_active_config()
+    except ai_indexing.AIConfigError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    current_settings = _load_settings()
+    chunk_pages_override = current_settings.get("ai_index_chunk_pages")
+    overlap_pages_override = current_settings.get("ai_index_chunk_overlap_pages")
+
+    database.mark_action_items_built(job_id)
+    asyncio.create_task(ai_action_items.reindex_action_items_for_job(
+        job_id, chunk_pages_override=chunk_pages_override,
+        overlap_pages_override=overlap_pages_override,
+    ))
+    return {"message": f"Action-item extraction started for job {job_id}.", "status": "running"}
+
+
+@app.get("/api/jobs/{job_id}/action-items")
+def get_job_action_items(
+    job_id: str,
+    since_version: int = Query(0, ge=0),
+    principal: Principal = Depends(_require_job_access),
+):
+    """Page-delta action-item fetch: returns only pages whose item list
+    changed since since_version, each page's COMPLETE current item list (a
+    whole-page replacement, not a per-item diff) — identical contract to
+    GET .../references."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    changed_pages = database.get_action_items_since(job_id, since_version)
+    return {
+        "action_item_index_version": database.get_action_item_index_version(job_id),
+        "changed_pages": changed_pages,
     }
 
 

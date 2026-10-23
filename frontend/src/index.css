@@ -1488,6 +1488,80 @@ input[type="range"]::-webkit-slider-thumb {
   border: 1px solid var(--panel);
 }
 
+/* ─── Actionable Items drawer (ActionableItemsPanel/ActionItemsList) ───────
+   Reuses .structure-sidebar/.view-box-header/.view-box-content for the
+   drawer shell itself (same class names StructureTreePanel already uses) —
+   everything below is this panel's own list/empty-state content. */
+
+.action-items-empty-state {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: 36px 20px; color: var(--muted); gap: 6px;
+}
+.action-items-empty-icon { font-size: 1.6rem; color: var(--muted); margin-bottom: 4px; }
+.action-items-empty-title { font-size: 0.9rem; font-weight: 600; color: var(--text); margin: 0; }
+.action-items-empty-description { font-size: 0.78rem; margin: 0; max-width: 220px; line-height: 1.4; }
+
+.action-items-list { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+
+.action-items-toolbar {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 12px; border-bottom: 1px solid var(--border); flex: 0 0 auto;
+}
+.action-items-filter-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.action-items-pill {
+  font-size: 0.7rem; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--border); background: transparent; color: var(--muted);
+  cursor: pointer; line-height: 1.4;
+}
+.action-items-pill:hover { color: var(--text); border-color: var(--border-strong); }
+.action-items-pill.active { background: var(--primary-subtle); border-color: var(--fg-primary-soft); color: var(--fg-primary-soft); }
+.action-items-sort-toggle { display: flex; gap: 6px; }
+
+.action-items-rows { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; min-height: 0; }
+
+.action-item-row { border-bottom: 1px solid var(--border); padding: 2px 0; }
+.action-item-row.active { background: var(--primary-subtle); }
+
+.action-item-row-main {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%;
+  background: transparent; border: none; text-align: left; cursor: pointer;
+  padding: 10px 12px; color: inherit;
+}
+.action-item-row-main:hover { background: rgba(var(--primary-rgb), 0.06); }
+
+.action-item-type-icon {
+  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; margin-top: 1px;
+}
+.action-item-type-deadline { background: rgba(var(--accent-rgb), 0.15); color: var(--fg-accent-soft); }
+.action-item-type-obligation { background: rgba(var(--primary-rgb), 0.15); color: var(--fg-primary-soft); }
+.action-item-type-condition { background: rgba(var(--warning-rgb), 0.15); color: var(--fg-warning-soft); }
+.action-item-type-other { background: rgba(255, 255, 255, 0.08); color: var(--muted); }
+
+.action-item-row-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.action-item-text { font-size: 0.82rem; color: var(--text); line-height: 1.35; }
+.action-item-meta { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.action-item-pill {
+  font-size: 0.68rem; padding: 1px 7px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06); color: var(--muted); border: 1px solid var(--border);
+  line-height: 1.5; white-space: nowrap;
+}
+.action-item-pill-date { color: var(--fg-accent-soft); border-color: rgba(var(--accent-rgb), 0.3); }
+.action-item-pill-page { color: var(--fg-primary-soft); border-color: rgba(var(--primary-rgb), 0.3); }
+
+.action-item-evidence { padding: 0 12px 8px 42px; }
+.action-item-evidence-toggle {
+  background: none; border: none; cursor: pointer; color: var(--muted);
+  font-size: 0.7rem; padding: 2px 0; display: flex; align-items: center; gap: 5px;
+}
+.action-item-evidence-toggle:hover { color: var(--text); }
+.action-item-evidence-quote {
+  margin: 4px 0 0; padding: 6px 10px; border-left: 2px solid var(--border-strong);
+  font-size: 0.75rem; color: var(--muted); font-style: italic; line-height: 1.4;
+}
+
 /* ─── Studio Workspaces & Split Resizer ────────────────────────────────── */
 
 .studio-workspaces {

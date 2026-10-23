@@ -9,6 +9,7 @@ import SaveFileDialog from '../components/SaveFileDialog';
 import IdleBanner from '../components/IdleBanner';
 import ControlBar from '../components/ControlBar';
 import { createReferenceStore, mergeDelta } from '../utils/referenceStore';
+import { createActionItemStore, mergeActionItemDelta } from '../utils/actionItemStore';
 
 // AppShell is the parent layout route (see App.jsx): it owns every piece of
 // state the old monolithic Dashboard.jsx used to own directly (job list +
@@ -85,6 +86,11 @@ export default function AppShell() {
   const referenceStoreRef = useRef(createReferenceStore());
   const [referenceStoreTick, setReferenceStoreTick] = useState(0);
 
+  // Actionable items: same ref-held, delta-merged accumulator pattern as
+  // referenceStoreRef above, much simpler store shape (see actionItemStore.js).
+  const actionItemStoreRef = useRef(createActionItemStore());
+  const [actionItemStoreTick, setActionItemStoreTick] = useState(0);
+
   // Part B: container page-spans, fetched once per job load and re-fetched
   // whenever reference_index_version moves (the endpoint itself is cached
   // server-side by that same version, so this is cheap to re-issue).
@@ -145,6 +151,9 @@ export default function AppShell() {
   // regardless of how fast the rebuild actually was.
   const [reindexState, setReindexState] = useState(null); // { jobId, startVersion, startedAt }
   const REINDEX_MAX_WAIT_MS = 2 * 60 * 1000;
+  // Same "track locally, don't rely solely on the live in-flight flag"
+  // pattern as reindexState above, for the separate actionable-items pass.
+  const [actionItemReindexState, setActionItemReindexState] = useState(null); // { jobId, startVersion, startedAt }
 
   useEffect(() => {
     const { customPrompt, pageRange, ...formToPersist } = form;
@@ -305,6 +314,9 @@ export default function AppShell() {
     // stale previous job's candidates.
     referenceStoreRef.current = createReferenceStore();
     setReferenceStoreTick(0);
+    actionItemStoreRef.current = createActionItemStore();
+    setActionItemStoreTick(0);
+    setActionItemReindexState(null);
     setScopeRanges([]);
     setStructureHierarchy({ parents: [], order: [] });
     setReindexState(null);
@@ -355,6 +367,24 @@ export default function AppShell() {
     })();
     return () => { cancelled = true; };
   }, [activeJobId, jobDetails?.reference_index_version]);
+
+  useEffect(() => {
+    // Same cheap-re-fetch-on-version-change pattern as the references delta
+    // above, against the separate action_item_index_version counter.
+    if (!activeJobId) return;
+    const serverVersion = jobDetails?.action_item_index_version || 0;
+    if (serverVersion <= actionItemStoreRef.current.version) return;
+    let cancelled = false;
+    (async () => {
+      const sinceVersion = actionItemStoreRef.current.version;
+      const resp = await apiFetch(`/api/jobs/${activeJobId}/action-items?since_version=${sinceVersion}`);
+      if (!resp.ok || cancelled) return;
+      const delta = await resp.json();
+      mergeActionItemDelta(actionItemStoreRef.current, delta);
+      if (!cancelled) setActionItemStoreTick((v) => v + 1);
+    })();
+    return () => { cancelled = true; };
+  }, [activeJobId, jobDetails?.action_item_index_version]);
 
   useEffect(() => {
     // Same cheap-re-fetch-on-version-change pattern as the references delta
@@ -411,6 +441,16 @@ export default function AppShell() {
       setReindexState(null);
     }
   }, [reindexState, activeJobId, jobDetails?.reference_index_version]);
+
+  useEffect(() => {
+    if (!actionItemReindexState || actionItemReindexState.jobId !== activeJobId) return;
+    const currentVersion = jobDetails?.action_item_index_version || 0;
+    if (currentVersion > actionItemReindexState.startVersion) {
+      setActionItemReindexState(null);
+    } else if (Date.now() - actionItemReindexState.startedAt > REINDEX_MAX_WAIT_MS) {
+      setActionItemReindexState(null);
+    }
+  }, [actionItemReindexState, activeJobId, jobDetails?.action_item_index_version]);
 
   async function fetchJobDetails(jobId, aroundPage) {
     const seq = ++fetchSeqRef.current;
@@ -698,6 +738,21 @@ export default function AppShell() {
     // observed as true. Cleared once reference_index_version has moved past
     // this snapshot (see the effect watching reindexState above).
     setReindexState({ jobId, startVersion, startedAt: Date.now() });
+    fetchJobDetails(jobId, currentPdfPageRef.current);
+  }
+
+  // Triggers the separate actionable-items extraction pass — same locally-
+  // tracked in-flight pattern as handleReindexReferences above.
+  async function handleReindexActionItems(jobId) {
+    if (!jobId) return;
+    const startVersion = jobDetails?.action_item_index_version || 0;
+    const resp = await apiFetch(`/api/jobs/${jobId}/reindex-action-items`, { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert(`Action-item extraction failed: ${err.detail || resp.statusText}`);
+      return;
+    }
+    setActionItemReindexState({ jobId, startVersion, startedAt: Date.now() });
     fetchJobDetails(jobId, currentPdfPageRef.current);
   }
 
@@ -1064,6 +1119,7 @@ export default function AppShell() {
   const pdfStatusLabel = file ? `${file.name} (local preview)` : (jobDetails ? `${jobDetails.filename} (${jobDetails.total_pages}p)` : 'No document selected');
   const hasSelection = !!(file || activeJobId);
   const reindexing = !!(reindexState && reindexState.jobId === activeJobId) || !!jobDetails?.reference_index_reindexing;
+  const actionItemsReindexing = !!(actionItemReindexState && actionItemReindexState.jobId === activeJobId) || !!jobDetails?.action_item_reindexing;
 
   const location = useLocation();
   const isStudio = location.pathname.startsWith('/studio');
@@ -1131,6 +1187,8 @@ export default function AppShell() {
           handleSavePageText, handleExportDocument,
           handleRetryPage, retryingPage, handleRetryPages,
           handleReindexReferences, handleBuildReferenceLinksOnly, reindexing,
+          handleReindexActionItems, actionItemsReindexing,
+          actionItemStore: actionItemStoreRef.current,
           reviewPages, handleConfirmCorrectPage,
           referenceStore: referenceStoreRef.current,
           scopeRanges,

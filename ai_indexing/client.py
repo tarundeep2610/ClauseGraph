@@ -23,8 +23,8 @@ from ai_indexing.errors import (
     classify,
     is_fallbackable,
 )
-from ai_indexing.parsing import parse_structure_response
-from ai_indexing.prompt import CarryContext, ChunkPlan, build_structure_prompt
+from ai_indexing.parsing import parse_structure_response, parse_action_item_response
+from ai_indexing.prompt import CarryContext, ChunkPlan, build_structure_prompt, build_action_item_prompt
 from ai_indexing.providers import get_provider
 from ai_indexing.recording import get_active_record_session, get_active_replay_session
 
@@ -213,6 +213,173 @@ class StructureIndexer:
                 error=str(last_error) if last_error else "unknown",
             )
         return ChunkStructureResult(
+            outcome=ChunkOutcome.FAILED, page_nums=page_nums,
+            provider=self.resolved.provider_config.provider,
+            model=self.resolved.provider_config.model, attempts=attempts,
+            error_kind=classify(last_error) if last_error else "unknown",
+            error_message=str(last_error) if last_error else "",
+            raw_excerpt=getattr(last_error, "raw_excerpt", "") if last_error else "",
+        )
+
+    async def aclose(self) -> None:
+        pass  # providers are process-wide cached instances; closed via ai_indexing.aclose_all()
+
+
+@dataclass
+class ChunkActionItemResult:
+    outcome: ChunkOutcome
+    page_nums: List[int]
+    items: List[Any] = field(default_factory=list)  # List[ai_indexing.schema.AIActionItem]
+    provider: str = ""
+    model: str = ""
+    duration_ms: int = 0
+    attempts: int = 0
+    error_kind: Optional[str] = None
+    error_message: str = ""
+    normalization: Optional[Dict[str, Any]] = None
+    raw_excerpt: str = ""
+    provider_job_id: Optional[str] = None
+
+
+class ActionItemIndexer:
+    """Sibling to StructureIndexer, same retry/circuit-breaker/record-replay
+    plumbing, swapped prompt-builder and parser — kept as its own class
+    rather than generalizing StructureIndexer over a pluggable prompt/parser
+    pair, since StructureIndexer doesn't attempt that generality for its own
+    two prompt variants (plain vs. rule-prior-review) either; one extra
+    class is simpler than threading a strategy object through every call
+    site for a pairing used in exactly two places."""
+
+    def __init__(self, resolved: ResolvedAIConfig,
+                 failure_limit: int = None):
+        self.resolved = resolved
+        self.failure_limit = failure_limit or config.AI_INDEX_CONSECUTIVE_FAILURE_LIMIT
+        self._consecutive_failures = 0
+
+    async def extract_action_items_for_chunk(
+        self,
+        chunk: ChunkPlan,
+        *,
+        document_hint: str = "",
+        cancel_check=None,
+        macro_context: Optional[dict] = None,
+    ) -> ChunkActionItemResult:
+        page_nums = chunk.page_nums
+
+        replay_session = get_active_replay_session()
+        if replay_session is not None:
+            recorded = replay_session.get_chunk(page_nums)
+            ai_chunk, norm_report = parse_action_item_response(recorded["raw_text"], page_nums)
+            outcome = ChunkOutcome.OK if ai_chunk.items else ChunkOutcome.EMPTY
+            return ChunkActionItemResult(
+                outcome=outcome, page_nums=page_nums, items=list(ai_chunk.items),
+                provider=replay_session.fingerprint.get("provider", "replay"),
+                model=replay_session.fingerprint.get("model", "replay"),
+                duration_ms=recorded.get("duration_ms", 0),
+                attempts=recorded.get("attempt", 1),
+                normalization=norm_report.to_dict(),
+            )
+
+        if self._consecutive_failures >= self.failure_limit:
+            raise AIIndexingDisabledError(
+                f"{self._consecutive_failures} consecutive AI chunk failures "
+                f"(limit {self.failure_limit}) — disabling action-item extraction for the rest of this job."
+            )
+
+        provider = await get_provider(self.resolved.provider_config)
+        system_prompt, user_prompt = build_action_item_prompt(
+            chunk, document_hint=document_hint, macro_context=macro_context,
+        )
+
+        attempts = 0
+        last_error: Optional[Exception] = None
+        for attempt in (1, 2):  # one full re-call on invalid output, matching StructureIndexer's pattern
+            attempts = attempt
+            try:
+                completion = await provider.complete(
+                    system_prompt=system_prompt, user_prompt=user_prompt, cancel_check=cancel_check,
+                )
+            except AICancelledError:
+                return ChunkActionItemResult(
+                    outcome=ChunkOutcome.CANCELLED, page_nums=page_nums,
+                    provider=self.resolved.provider_config.provider,
+                    model=self.resolved.provider_config.model, attempts=attempts,
+                )
+            except AIConfigError:
+                raise  # terminal — propagate to the caller
+            except AIRateLimitError as e:
+                last_error = e
+                if getattr(e, "is_daily_quota", False):
+                    self._consecutive_failures = self.failure_limit
+                    break
+                wait_s = max(5.0, min(float(e.retry_after or 30.0) + 2.0, 75.0))
+                sleep_deadline = time.monotonic() + wait_s
+                cancelled = False
+                while time.monotonic() < sleep_deadline:
+                    if cancel_check and cancel_check():
+                        cancelled = True
+                        break
+                    await asyncio.sleep(min(1.0, max(0.1, sleep_deadline - time.monotonic())))
+                if cancelled:
+                    return ChunkActionItemResult(
+                        outcome=ChunkOutcome.CANCELLED, page_nums=page_nums,
+                        provider=self.resolved.provider_config.provider,
+                        model=self.resolved.provider_config.model, attempts=attempts,
+                    )
+                try:
+                    completion = await provider.complete(
+                        system_prompt=system_prompt, user_prompt=user_prompt, cancel_check=cancel_check,
+                    )
+                except Exception as retry_err:
+                    last_error = retry_err
+                    break
+            except AIIndexError as e:
+                last_error = e
+                if not is_fallbackable(e):
+                    raise
+                break
+            else:
+                try:
+                    ai_chunk, norm_report = parse_action_item_response(completion.text, page_nums)
+                except AIInvalidOutputError as e:
+                    last_error = e
+                    if attempt == 1:
+                        user_prompt = (
+                            user_prompt
+                            + f"\n\n# CORRECTION\nYour previous response was not valid JSON matching "
+                              f"the required schema (error: {e}). Return ONLY the JSON object described "
+                              f"above, no other text."
+                        )
+                        continue
+                    break
+                else:
+                    self._consecutive_failures = 0
+                    outcome = ChunkOutcome.OK if ai_chunk.items else ChunkOutcome.EMPTY
+                    record_session = get_active_record_session()
+                    if record_session is not None:
+                        record_session.record_chunk(
+                            page_nums=page_nums,
+                            raw_text=completion.text,
+                            duration_ms=completion.duration_ms,
+                            attempt=attempts,
+                            system_prompt=system_prompt,
+                        )
+                    return ChunkActionItemResult(
+                        outcome=outcome, page_nums=page_nums, items=list(ai_chunk.items),
+                        provider=completion.provider, model=completion.model,
+                        duration_ms=completion.duration_ms, attempts=attempts,
+                        normalization=norm_report.to_dict(),
+                        provider_job_id=completion.provider_job_id,
+                    )
+
+        self._consecutive_failures += 1
+        record_session = get_active_record_session()
+        if record_session is not None:
+            record_session.record_failure(
+                page_nums=page_nums,
+                error=str(last_error) if last_error else "unknown",
+            )
+        return ChunkActionItemResult(
             outcome=ChunkOutcome.FAILED, page_nums=page_nums,
             provider=self.resolved.provider_config.provider,
             model=self.resolved.provider_config.model, attempts=attempts,

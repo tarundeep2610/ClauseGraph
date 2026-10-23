@@ -16,7 +16,10 @@ import re
 from typing import Any, Dict, List, Tuple
 
 from ai_indexing.errors import AIInvalidOutputError
-from ai_indexing.schema import AIHeading, AIMentionReview, AIDocrefVerdict, AIPriorRejection, AIStructureChunk, NormalizationReport, normalize_chunk
+from ai_indexing.schema import (
+    AIHeading, AIMentionReview, AIDocrefVerdict, AIPriorRejection, AIStructureChunk,
+    AIActionItem, AIActionItemChunk, NormalizationReport, normalize_chunk, normalize_action_item_chunk,
+)
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 _LEADING_CHATTER_RE = re.compile(r"^[^{\[]*(?=[{\[])", re.DOTALL)
@@ -189,6 +192,41 @@ def parse_structure_response(
     )
     cleaned, report = normalize_chunk(chunk, expected_pages, order_by_line_hint=order_by_line_hint)
     report.dropped_invalid = dropped_invalid + dropped_rejections
+    return cleaned, report
+
+
+def _validate_action_items_individually(items_list: List[Any]) -> "Tuple[List[AIActionItem], int]":
+    """One-at-a-time validation, same reasoning as
+    _validate_headings_individually: a single malformed item must not
+    invalidate every other good item from the same chunk."""
+    valid: List[AIActionItem] = []
+    dropped = 0
+    for item in items_list:
+        try:
+            valid.append(AIActionItem(**item) if isinstance(item, dict) else AIActionItem())
+        except Exception:
+            dropped += 1
+    return valid, dropped
+
+
+def parse_action_item_response(
+    raw: str, expected_pages: List[int],
+) -> Tuple[AIActionItemChunk, NormalizationReport]:
+    fenced = strip_code_fences(raw)
+    extracted = extract_json_object(fenced)
+    repaired = repair_truncated_json(extracted)
+    envelope = parse_json_object(repaired)
+    items_list = _envelope_to_list(envelope)
+    if not isinstance(items_list, list):
+        raise AIInvalidOutputError(
+            f"'items' is a {type(items_list).__name__}, not a list.", raw_excerpt=raw,
+        )
+
+    valid_items, dropped_invalid = _validate_action_items_individually(items_list)
+
+    chunk = AIActionItemChunk(items=valid_items, notes=str(envelope.get("notes", ""))[:500])
+    cleaned, report = normalize_action_item_chunk(chunk, expected_pages)
+    report.dropped_invalid = dropped_invalid
     return cleaned, report
 
 

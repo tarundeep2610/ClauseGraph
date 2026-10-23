@@ -404,6 +404,192 @@ def normalize_chunk(
     ), report
 
 
+# ─── Actionable-items extraction (ai_action_items.py) — a separate pass from
+# the structure/heading detection above: flat per-page items, not a
+# hierarchy, so none of normalize_chunk's heading-shape noise filters apply
+# here (a full sentence with a finite verb is exactly what's wanted, not a
+# false-positive signal). See ai_action_items.py's module docstring for the
+# grounding/anti-hallucination discipline this schema feeds into. ──────────
+
+VALID_ACTION_ITEM_TYPES = {"deadline", "obligation", "condition", "other"}
+
+_DATE_ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+class AIActionItem(BaseModel):
+    item_text: str = Field(default="")
+    item_type: str = Field(default="other")
+    date_text: Optional[str] = None
+    date_iso: Optional[str] = None
+    # The named trigger a relative deadline counts from (e.g. "Effective
+    # Date of Contract", "Design Freeze") when no absolute date is
+    # computable — see ai_indexing/prompt.py's ACTION_ITEM_SYSTEM_PROMPT.
+    # Confirmed necessary, not speculative: real tenders define entire
+    # milestone cascades purely as offsets from an anchor that's never
+    # itself dated anywhere in the document.
+    anchor_event: Optional[str] = None
+    # "weekly"/"monthly"/"quarterly"/"annual"/etc. for a recurring duty that
+    # is neither a single deadline nor a date-less one-off obligation.
+    cadence: Optional[str] = None
+    page: int = 0
+    end_page: Optional[int] = None
+    still_open_at_chunk_end: bool = False
+    evidence_quote: Optional[str] = None
+    responsible_party: Optional[str] = None
+    confidence: Optional[str] = None
+
+    model_config = {"extra": "ignore"}
+
+    @field_validator("item_type", mode="before")
+    @classmethod
+    def _coerce_item_type(cls, v):
+        # Unlike AIHeading's validators (which coerce toward a plausible
+        # default), an item_type the model didn't intend as deadline/
+        # obligation/condition must land on "other" — a deliberate,
+        # visible classification — never silently relabeled as
+        # "obligation", which would misrepresent something that may not be
+        # a real obligation at all (confirmed real case: litigation relief/
+        # disposition items that don't fit any of the three contract-shaped
+        # types).
+        t = str(v).strip().lower() if v else "other"
+        return t if t in VALID_ACTION_ITEM_TYPES else "other"
+
+    @field_validator("item_text", mode="before")
+    @classmethod
+    def _truncate_item_text(cls, v):
+        # Truncated, never rejected — same all-or-nothing-failure reasoning
+        # as AIHeading._sanitize: one over-length item must not invalidate
+        # every other good item in the same chunk.
+        return str(v).strip()[:300] if v else ""
+
+    @field_validator("date_text", mode="before")
+    @classmethod
+    def _truncate_date_text(cls, v):
+        if v is None or v == "":
+            return None
+        return str(v).strip()[:120]
+
+    @field_validator("date_iso", mode="before")
+    @classmethod
+    def _validate_date_iso(cls, v):
+        # A malformed/non-calendar date_iso must never fail the item —
+        # fall back to None and keep date_text as the only date signal,
+        # same "coerce, don't raise" discipline as every other field here.
+        if v is None or v == "":
+            return None
+        s = str(v).strip()
+        return s if _DATE_ISO_RE.match(s) else None
+
+    @field_validator("anchor_event", mode="before")
+    @classmethod
+    def _truncate_anchor_event(cls, v):
+        if v is None or v == "":
+            return None
+        return str(v).strip()[:160]
+
+    @field_validator("cadence", mode="before")
+    @classmethod
+    def _truncate_cadence(cls, v):
+        if v is None or v == "":
+            return None
+        return str(v).strip()[:40]
+
+    @field_validator("evidence_quote", mode="before")
+    @classmethod
+    def _truncate_evidence_quote(cls, v):
+        if v is None or v == "":
+            return None
+        return str(v).strip()[:300]
+
+    @field_validator("responsible_party", mode="before")
+    @classmethod
+    def _truncate_responsible_party(cls, v):
+        if v is None or v == "":
+            return None
+        return str(v).strip()[:80]
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _coerce_confidence(cls, v):
+        c = str(v).strip().lower() if v else "medium"
+        return c if c in ("high", "medium", "low") else "medium"
+
+    @field_validator("page", mode="before")
+    @classmethod
+    def _coerce_page(cls, v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 0
+
+    @field_validator("end_page", mode="before")
+    @classmethod
+    def _coerce_end_page(cls, v):
+        if v is None or v == "":
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+
+class AIActionItemChunk(BaseModel):
+    items: List[AIActionItem] = Field(default_factory=list)
+    notes: str = Field(default="", max_length=500)
+
+    model_config = {"extra": "ignore"}
+
+
+def _action_item_dedupe_key(item: AIActionItem) -> tuple:
+    return (item.page, item.item_type, item.item_text.casefold().strip())
+
+
+def normalize_action_item_chunk(
+    chunk: AIActionItemChunk, expected_pages: List[int],
+) -> "tuple[AIActionItemChunk, NormalizationReport]":
+    """Lenient, order-preserving cleanup for one chunk's own response —
+    drops (never crashes on) items that are off-page, blank, or an
+    exact-duplicate reported twice in the SAME response. Cross-chunk
+    duplicate suppression (the same real item re-reported because
+    overlap_pages re-sends tail pages to the next chunk) is a separate
+    concern, handled by ai_action_items.py's own dedupe over the whole
+    job — this function only ever sees one chunk at a time, so it cannot
+    and does not attempt that. Every drop is counted in the returned
+    report, never silently swallowed."""
+    report = NormalizationReport()
+    expected = set(expected_pages)
+    seen: set = set()
+    kept: List[AIActionItem] = []
+
+    for item in chunk.items:
+        if item.page not in expected:
+            report.dropped_offpage += 1
+            continue
+        if not item.item_text.strip():
+            report.dropped_empty += 1
+            continue
+        if not item.evidence_quote or not item.evidence_quote.strip():
+            # No verbatim quote at all means grounding has nothing to work
+            # with later — drop here rather than let an ungroundable item
+            # waste a grounding attempt downstream.
+            report.dropped_empty += 1
+            continue
+        dk = _action_item_dedupe_key(item)
+        if dk in seen:
+            report.dropped_duplicate += 1
+            continue
+        seen.add(dk)
+        kept.append(item)
+
+    kept.sort(key=lambda item: item.page)
+
+    if len(kept) > config.AI_ACTION_ITEM_MAX_PER_CHUNK:
+        report.dropped_overflow = len(kept) - config.AI_ACTION_ITEM_MAX_PER_CHUNK
+        kept = kept[: config.AI_ACTION_ITEM_MAX_PER_CHUNK]
+
+    return AIActionItemChunk(items=kept, notes=chunk.notes), report
+
+
 VALID_MENTION_ACTIONS = {"confirm", "reject", "unsuppress"}
 
 
