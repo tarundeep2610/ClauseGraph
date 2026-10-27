@@ -426,6 +426,8 @@ class OllamaNativeProvider(BaseProvider):
                     + ("retrying once..." if attempt < self.MAX_ATTEMPTS else "giving up, falling back for this chunk."),
                     flush=True,
                 )
+                if attempt < self.MAX_ATTEMPTS:
+                    await asyncio.sleep(2.0 * attempt)
         # complete()'s own retry wrapper above would otherwise retry a
         # raised AITimeoutError/AIRemoteError up to
         # config.AI_INDEX_MAX_TRANSPORT_RETRIES more times, stacking another

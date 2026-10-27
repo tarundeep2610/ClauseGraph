@@ -65,6 +65,30 @@ def test_t2_adaptive_chunker_narrative_invariant():
     assert chunks[0].page_nums == list(range(1, 18))
 
 
+def test_ground_roman_numeral_marker_classifies_as_moderate_not_narrative():
+    """Real regression repro: a 100-page arbitration appeal's "Grounds of
+    Appeal" section has only 1-2 roman-numeral ground markers per page
+    ("(VII) That the Ld. Arbitral Tribunal...") — too few to trip
+    _CLAUSE_MARKER_RE's own count thresholds, but each one is a full
+    multi-sentence legal paragraph. Left classified NARRATIVE, such pages
+    pooled into one oversized chunk once AI_INDEX_CHUNK_PAGES was raised for
+    narrative content, overwhelming a single AI call's output budget and
+    losing ~20 ground:N targets. A single marker must be enough to bump the
+    page to MODERATE (the tighter 5-page chunk cap), regardless of count."""
+    ground_page_text = (
+        "on the part of the appellant in supply of the final GELO to respondent no.1. "
+        "While allowing such extension in favour of respondent no.1 the Ld. Arbitral "
+        "Tribunal grossly overlooked the material facts on the record.\n\n"
+        "(VII) That the Ld. Arbitral Tribunal, while holding appellant responsible for "
+        "delay of 108 days in supplying GELO, did not take into account the nature and "
+        "importance of revisions made to GELO."
+    )
+    assert classify_page_density(ground_page_text) == "MODERATE"
+
+    narrative_text = "This is ordinary legal narrative without any table cells.\nThe learned counsel for the petitioner argued at length."
+    assert classify_page_density(narrative_text) == "NARRATIVE"
+
+
 def test_t2_boundary_hysteresis_transition_flush():
     """Refinement 1: Transition between NARRATIVE and DENSE_TABLE flushes chunk boundary."""
     narrative_text = "Legal narrative background..."
@@ -275,5 +299,48 @@ def test_macro_skeleton_rejects_table_cells():
     # Only the genuine non-table heading survives; table cell is rejected!
     assert len(skeleton) == 1
     assert skeleton[0]["heading_text"] == "SECTION VII: ANNEXURES"
+
+
+def test_macro_context_price_schedule_suppression():
+    """Verify _render_macro_context includes BOQ/price-schedule suppression and substantive term carve-out."""
+    # Case 1: Dense listing division
+    boq_ctx = {
+        "root_container": "ANNEXURE C-I: PRICE SCHEDULE FOR SUPPLY OF SUB-STATION EQUIPMENT",
+        "parent_clause": None,
+    }
+    rendered_boq = _render_macro_context(boq_ctx)
+    assert "PRICE SCHEDULE / BOQ SUPPRESSION" in rendered_boq
+    assert "4.10 Isolation valves" in rendered_boq
+    assert "420 KV SF-6 Circuit Breaker" in rendered_boq
+    # Positive shape carve-out for substantive contractual terms:
+    assert "CARVE-OUT (SUBSTANTIVE TERMS)" in rendered_boq
+    assert "Payment Terms" in rendered_boq
+    assert "Stage Penalty" in rendered_boq
+    assert "Taxes & Duties" in rendered_boq
+    assert "Active division context is a default guideline" in rendered_boq
+
+    # Case 2: Standard narrative division retains standard guidance
+    standard_ctx = {
+        "root_container": "SECTION II: INSTRUCTIONS TO BIDDERS",
+        "parent_clause": "6. Scope of Bid",
+    }
+    rendered_standard = _render_macro_context(standard_ctx)
+    assert 'Root Division: "SECTION II: INSTRUCTIONS TO BIDDERS"' in rendered_standard
+    assert 'Active Section: "6. Scope of Bid"' in rendered_standard
+    assert "Report all clauses and sub-clauses belonging to this division." in rendered_standard
+    assert "Active division context is a default guideline" in rendered_standard
+
+    # Case 3: Empty / None macro context
+    assert _render_macro_context(None) == ""
+    assert _render_macro_context({}) == ""
+
+
+def test_action_item_macro_context_untouched():
+    """Verify _render_action_item_macro_context remains untouched and functions correctly."""
+    from ai_indexing.prompt import _render_action_item_macro_context
+    ctx = {"root_container": "Annexure-XIII – ERP Modules implemented in MPPKVVCL"}
+    rendered = _render_action_item_macro_context(ctx)
+    assert "catalogue of already-implemented/existing functionality" in rendered
+    assert "AS-IS exclusion rule" in rendered
 
 

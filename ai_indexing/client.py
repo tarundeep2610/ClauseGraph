@@ -52,6 +52,7 @@ class ChunkStructureResult:
     normalization: Optional[Dict[str, Any]] = None
     raw_excerpt: str = ""
     provider_job_id: Optional[str] = None
+    truncated: bool = False
 
 
 class StructureIndexer:
@@ -167,12 +168,34 @@ class StructureIndexer:
                     raise
                 break  # a provider-transport failure isn't worth re-calling the model for
             else:
+                is_truncated = str(getattr(completion, "finish_reason", "") or "").lower() in ("length", "max_tokens")
                 try:
                     ai_chunk, norm_report = parse_structure_response(
                         completion.text, page_nums, order_by_line_hint=order_by_line_hint,
                     )
                 except AIInvalidOutputError as e:
                     last_error = e
+                    if is_truncated:
+                        # Output was capped by token limit. A correction prompt cannot fix
+                        # an output budget overflow and would just hit the token cap again.
+                        # Do not retry, and do not increment circuit-breaker failures since
+                        # the caller will adaptively split and retry smaller slices.
+                        record_session = get_active_record_session()
+                        if record_session is not None:
+                            record_session.record_failure(
+                                page_nums=page_nums,
+                                error=f"truncated output ({e})",
+                            )
+                        return ChunkStructureResult(
+                            outcome=ChunkOutcome.FAILED, page_nums=page_nums,
+                            provider=completion.provider, model=completion.model,
+                            duration_ms=completion.duration_ms, attempts=attempts,
+                            error_kind=classify(last_error),
+                            error_message=str(last_error),
+                            raw_excerpt=getattr(last_error, "raw_excerpt", "") if last_error else "",
+                            provider_job_id=completion.provider_job_id,
+                            truncated=True,
+                        )
                     if attempt == 1:
                         user_prompt = (
                             user_prompt
@@ -203,6 +226,7 @@ class StructureIndexer:
                         duration_ms=completion.duration_ms, attempts=attempts,
                         normalization=norm_report.to_dict(),
                         provider_job_id=completion.provider_job_id,
+                        truncated=is_truncated,
                     )
 
         self._consecutive_failures += 1
@@ -219,6 +243,7 @@ class StructureIndexer:
             error_kind=classify(last_error) if last_error else "unknown",
             error_message=str(last_error) if last_error else "",
             raw_excerpt=getattr(last_error, "raw_excerpt", "") if last_error else "",
+            truncated=False,
         )
 
     async def aclose(self) -> None:

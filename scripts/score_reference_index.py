@@ -60,184 +60,21 @@ def load_gold_fixture(fixture_path: str) -> Dict[str, Any]:
         return json.load(f)
 
 
-def _normalize_key_for_scoring(key: str) -> str:
-    if key and key.startswith("point:") and re.match(r"^point:\d+(\.|$)", key):
-        return "numheading:" + key[len("point:"):]
-    return key or ""
-
-
-def _ident(t: Dict[str, Any]) -> Tuple[Any, str, int]:
-    return (t.get("page"), _normalize_key_for_scoring(t.get("key") or ""), t.get("occurrence_index") or 0)
-
-
-
-def _family(key: str) -> str:
-    return key.split(":", 1)[0] if key and ":" in key else (key or "")
-
-
-_WS_RE = re.compile(r"\s+")
-RULE_FAMILIES = {"page", "term", "docref"}
-
-
-def _norm_label(label: Any) -> str:
-    return _WS_RE.sub(" ", str(label or "")).strip().lower()[:40]
-
-
-def _count_family_drift(gold_targets: List[Dict[str, Any]], act_targets: List[Dict[str, Any]], matched_ids: set) -> int:
-    unmatched_gold = [t for t in gold_targets if _ident(t) not in matched_ids]
-    unmatched_act = [t for t in act_targets if _ident(t) not in matched_ids]
-    used_act_idx = set()
-    drift = 0
-    for g in unmatched_gold:
-        g_label = _norm_label(g.get("label"))
-        if not g_label:
-            continue
-        for i, a in enumerate(unmatched_act):
-            if i in used_act_idx or a.get("page") != g.get("page"):
-                continue
-            if _norm_label(a.get("label")) == g_label and _family(a.get("key")) != _family(g.get("key")):
-                drift += 1
-                used_act_idx.add(i)
-                break
-    return drift
-
-
-def _score_target_slice(g_targets: List[Dict[str, Any]], a_targets: List[Dict[str, Any]]) -> Dict[str, Any]:
-    g_ids = {_ident(t) for t in g_targets}
-    a_ids = {_ident(t) for t in a_targets}
-    matched = g_ids & a_ids
-    precision = len(matched) / max(1, len(a_ids))
-    recall = len(matched) / max(1, len(g_ids))
-
-    gold_scope_map = {_ident(t): (t.get("scope_key") or "") for t in g_targets}
-    act_scope_map = {_ident(t): (t.get("scope_key") or "") for t in a_targets}
-    scope_matches = sum(1 for tid in matched if gold_scope_map.get(tid) == act_scope_map.get(tid))
-    scope_acc = scope_matches / max(1, len(matched))
-
-    family_drift = _count_family_drift(g_targets, a_targets, matched)
-    return {
-        "precision": precision,
-        "recall": recall,
-        "scope_accuracy": scope_acc,
-        "family_drift": family_drift,
-        "matched_count": len(matched),
-        "act_count": len(a_ids),
-        "gold_count": len(g_ids),
-        "matched_ids": matched,
-    }
-
-
-def _score_content_dual_match(
-    gold_targets: List[Dict[str, Any]],
-    act_targets: List[Dict[str, Any]],
-    matched_key_ids: set,
-) -> Dict[str, Any]:
-    labeled_gold = [g for g in gold_targets if _norm_label(g.get("label"))]
-    used_act_idx = set()
-    content_matched = 0
-
-    for g in labeled_gold:
-        g_label = _norm_label(g.get("label"))
-        for i, a in enumerate(act_targets):
-            if i in used_act_idx or a.get("page") != g.get("page"):
-                continue
-            if _norm_label(a.get("label")) == g_label:
-                content_matched += 1
-                used_act_idx.add(i)
-                break
-
-    labeled_key_matched = sum(1 for g in labeled_gold if _ident(g) in matched_key_ids)
-    labeled_count = len(labeled_gold)
-    key_r = labeled_key_matched / max(1, labeled_count)
-    content_r = content_matched / max(1, labeled_count)
-    drift_tax = content_r - key_r
-
-    return {
-        "labeled_gold_count": labeled_count,
-        "labeled_key_matched": labeled_key_matched,
-        "labeled_content_matched": content_matched,
-        "labeled_key_recall": key_r,
-        "labeled_content_recall": content_r,
-        "drift_tax": drift_tax,
-    }
-
-
-def _labeled_diff(
-    gold_targets: List[Dict[str, Any]],
-    act_targets: List[Dict[str, Any]],
-    matched_ids: set,
-) -> Dict[str, Any]:
-    fps = []
-    for a in act_targets:
-        if _ident(a) not in matched_ids:
-            sk = a.get("scope_key") or ""
-            fps.append({
-                "page": a.get("page"),
-                "key": a.get("key"),
-                "family": _family(a.get("key")),
-                "label": a.get("label") or "",
-                "scope_key": sk,
-                "detection_source": a.get("detection_source", "ai"),
-                "level": sk.count('/') + 1 if sk else 0,
-            })
-
-    fns = []
-    for g in gold_targets:
-        if _ident(g) not in matched_ids:
-            sk = g.get("scope_key") or ""
-            fns.append({
-                "page": g.get("page"),
-                "key": g.get("key"),
-                "family": _family(g.get("key")),
-                "label": g.get("label") or "",
-                "scope_key": sk,
-                "detection_source": "rule" if _family(g.get("key")) in RULE_FAMILIES else "ai",
-                "level": sk.count('/') + 1 if sk else 0,
-            })
-
-    grid: Dict[Tuple[int, int], Dict[str, int]] = {}
-    for g in gold_targets:
-        p = g.get("page", 0)
-        sk = g.get("scope_key") or ""
-        lvl = sk.count('/') + 1 if sk else 0
-        cell = grid.setdefault((p, lvl), {"gold": 0, "act": 0, "matched": 0, "fp": 0, "fn": 0})
-        cell["gold"] += 1
-        if _ident(g) in matched_ids:
-            cell["matched"] += 1
-        else:
-            cell["fn"] += 1
-
-    for a in act_targets:
-        p = a.get("page", 0)
-        sk = a.get("scope_key") or ""
-        lvl = sk.count('/') + 1 if sk else 0
-        cell = grid.setdefault((p, lvl), {"gold": 0, "act": 0, "matched": 0, "fp": 0, "fn": 0})
-        cell["act"] += 1
-        if _ident(a) not in matched_ids:
-            cell["fp"] += 1
-
-    grid_list = []
-    for (p, lvl), counts in sorted(grid.items()):
-        act_c = counts["act"]
-        gold_c = counts["gold"]
-        m_c = counts["matched"]
-        grid_list.append({
-            "page": p,
-            "level": lvl,
-            "gold": gold_c,
-            "actual": act_c,
-            "matched": m_c,
-            "fp": counts["fp"],
-            "fn": counts["fn"],
-            "precision": m_c / max(1, act_c),
-            "recall": m_c / max(1, gold_c),
-        })
-
-    return {
-        "false_positives": fps,
-        "false_negatives": fns,
-        "grid": grid_list,
-    }
+from evals.metrics.structure import (
+    RULE_FAMILIES,
+    calculate_family_drift as _count_family_drift,
+    extract_family as _family,
+    normalize_key_for_scoring as _normalize_key_for_scoring,
+    normalize_target_label as _norm_label,
+    score_content_dual_match as _score_content_dual_match,
+    score_target_slice as _score_target_slice,
+    target_identifier as _ident,
+)
+from evals.runners.index_runner import (
+    build_labeled_diff as _labeled_diff,
+    evaluate_job_structure as evaluate_run,
+    load_actual_targets as _load_actual_targets,
+)
 
 
 def _load_actual_targets(job_id: str) -> List[Dict[str, Any]]:
@@ -335,92 +172,6 @@ def _print_worst_chunks(job_id: str, gold: Dict[str, Any]) -> None:
         print("   ", _format_chunk_row(r))
 
 
-def evaluate_run(
-    job_id: str,
-    gold: Dict[str, Any],
-    return_diff: bool = False,
-) -> Dict[str, Any]:
-    actual_mentions = database.get_all_reference_mentions_for_job(job_id)
-
-    gold_targets = gold.get("targets", [])
-    gold_mentions = gold.get("mentions", [])
-
-    act_t_list = _load_actual_targets(job_id)
-
-    gold_rule = [t for t in gold_targets if _family(t.get("key")) in RULE_FAMILIES]
-    gold_ai = [t for t in gold_targets if _family(t.get("key")) not in RULE_FAMILIES]
-
-    act_rule = [t for t in act_t_list if t.get("detection_source") == "rule"]
-    act_ai = [t for t in act_t_list if t.get("detection_source") == "ai"]
-
-    merged_scores = _score_target_slice(gold_targets, act_t_list)
-    ai_scores = _score_target_slice(gold_ai, act_ai)
-    rule_scores = _score_target_slice(gold_rule, act_rule)
-
-    dual_match = _score_content_dual_match(gold_ai, act_ai, ai_scores["matched_ids"])
-
-    gold_m_resolving = {
-        (m["page"], m["key"])
-        for m in gold_mentions
-        if m.get("resolution") in ("exact", "approximate")
-    }
-    act_m_resolving = {
-        (m["page"], m["key"])
-        for m in actual_mentions
-        if m.get("resolution") in ("exact", "approximate")
-    }
-
-    matched_mentions = gold_m_resolving.intersection(act_m_resolving)
-    if len(act_m_resolving) == 0:
-        m_precision = 1.0 if len(gold_m_resolving) == 0 else 0.0
-    else:
-        m_precision = len(matched_mentions) / len(act_m_resolving)
-
-    if len(gold_m_resolving) == 0:
-        m_recall = 1.0
-    else:
-        m_recall = len(matched_mentions) / len(gold_m_resolving)
-
-    res: Dict[str, Any] = {
-        "target_precision": merged_scores["precision"],
-        "target_recall": merged_scores["recall"],
-        "scope_accuracy": merged_scores["scope_accuracy"],
-        "family_drift_count": merged_scores["family_drift"],
-        "mention_precision": m_precision,
-        "mention_recall": m_recall,
-        "matched_targets_count": merged_scores["matched_count"],
-        "total_actual_targets": merged_scores["act_count"],
-        "total_gold_targets": merged_scores["gold_count"],
-        "matched_mentions_count": len(matched_mentions),
-        "total_actual_mentions": len(act_m_resolving),
-        "total_gold_mentions": len(gold_m_resolving),
-
-        "ai_precision": ai_scores["precision"],
-        "ai_recall": ai_scores["recall"],
-        "ai_scope_accuracy": ai_scores["scope_accuracy"],
-        "ai_family_drift": ai_scores["family_drift"],
-        "ai_matched_count": ai_scores["matched_count"],
-        "ai_actual_targets": ai_scores["act_count"],
-        "ai_gold_targets": ai_scores["gold_count"],
-
-        "rule_precision": rule_scores["precision"],
-        "rule_recall": rule_scores["recall"],
-        "rule_scope_accuracy": rule_scores["scope_accuracy"],
-        "rule_family_drift": rule_scores["family_drift"],
-        "rule_matched_count": rule_scores["matched_count"],
-        "rule_actual_targets": rule_scores["act_count"],
-        "rule_gold_targets": rule_scores["gold_count"],
-
-        "labeled_gold_targets": dual_match["labeled_gold_count"],
-        "labeled_key_recall": dual_match["labeled_key_recall"],
-        "labeled_content_recall": dual_match["labeled_content_recall"],
-        "drift_tax": dual_match["drift_tax"],
-    }
-
-    if return_diff:
-        res["diff"] = _labeled_diff(gold_targets, act_t_list, merged_scores["matched_ids"])
-
-    return res
 
 
 async def run_trial(
@@ -507,7 +258,8 @@ async def run_trial(
         _print_worst_chunks(dup_id, gold)
         return scores
     finally:
-        database.delete_job(dup_id)
+        from evals.runners.base import cleanup_duplicate_job
+        cleanup_duplicate_job(dup_id)
 
 
 def _spread(results: List[Dict[str, float]], key: str) -> Tuple[float, float, float]:

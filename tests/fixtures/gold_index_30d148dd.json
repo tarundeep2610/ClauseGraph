@@ -1,0 +1,880 @@
+{
+  "job_id": "30d148dd-c1e4-4e38-877b-608b5584ff4e",
+  "source_job_id": "30d148dd-c1e4-4e38-877b-608b5584ff4e",
+  "total_pages": 10,
+  "targets": [
+    {
+      "page": 1,
+      "key": "subdoc:bid-document",
+      "occurrence_index": 0,
+      "label": "\u0935\u093f\u0921 \u0926\u0938\u094d\u0924\u093e\u0935\u0947\u091c / Bid Document",
+      "scope_key": ""
+    },
+    {
+      "page": 1,
+      "key": "term:cmc",
+      "occurrence_index": 0,
+      "label": "Comprehensive Maintenance Contract (CMC)",
+      "scope_key": ""
+    },
+    {
+      "page": 2,
+      "key": "subdoc:emd-detail",
+      "occurrence_index": 0,
+      "label": "\u0908\u0930\u092e\u0921\u0940 \u0935\u093f\u0935\u0930\u0923/EMD Detail",
+      "scope_key": "subdoc:bid-document"
+    },
+    {
+      "page": 2,
+      "key": "subdoc:epbg-detail",
+      "occurrence_index": 0,
+      "label": "\u0908\u092a\u0940\u092c\u0940\u091c\u0940 \u0935\u093f\u0935\u0930\u0923 /ePBG Detail",
+      "scope_key": "subdoc:bid-document"
+    },
+    {
+      "page": 3,
+      "key": "subdoc:mii-compliance",
+      "occurrence_index": 0,
+      "label": "\u090f\u092e\u0906\u0908\u0906\u0908 \u0905\u0928\u0941\u092a\u093e\u0932\u0928/MII Compliance",
+      "scope_key": "subdoc:bid-document"
+    },
+    {
+      "page": 3,
+      "key": "subdoc:mse-purchase-preference",
+      "occurrence_index": 0,
+      "label": "\u090f\u092e\u090f\u0938\u0908 \u0916\u0930\u0940\u0926 \u0935\u0930\u0940\u092f\u0924\u093e/MSE Purchase Preference",
+      "scope_key": "subdoc:bid-document"
+    },
+    {
+      "page": 3,
+      "key": "subdoc:treds-payment-details",
+      "occurrence_index": 0,
+      "label": "\u091f\u0947\u0921\u094d\u0938 \u092d\u0941\u0917\u0924\u093e\u0928 \u0938\u0902\u092c\u0902\u0927\u0940 \u0935\u093f\u0935\u0930\u0923/TReDS Payment Details",
+      "scope_key": "subdoc:bid-document"
+    },
+    {
+      "page": 3,
+      "key": "term:emd",
+      "occurrence_index": 0,
+      "label": "Earnest Money Deposit (EMD)",
+      "scope_key": ""
+    },
+    {
+      "page": 4,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. The minimum average annual financial turnover of the bidder during",
+      "scope_key": "subdoc:bid-document/subdoc:treds-payment-details"
+    },
+    {
+      "page": 4,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. Purchase preference to Micro and Small Enterprises (MSEs): Purchase",
+      "scope_key": "subdoc:bid-document/subdoc:treds-payment-details"
+    },
+    {
+      "page": 4,
+      "key": "point:3",
+      "occurrence_index": 0,
+      "label": "3. Estimated Bid Value indicated above is being declared solely for th",
+      "scope_key": "subdoc:bid-document/subdoc:treds-payment-details"
+    },
+    {
+      "page": 4,
+      "key": "point:4",
+      "occurrence_index": 0,
+      "label": "4. Past Experience of Similar Services: The bidder must have successfu",
+      "scope_key": "subdoc:bid-document/subdoc:treds-payment-details"
+    },
+    {
+      "page": 4,
+      "key": "point:5",
+      "occurrence_index": 0,
+      "label": "5. Three similar completed services costing not less than the amount e",
+      "scope_key": "subdoc:bid-document/subdoc:treds-payment-details"
+    },
+    {
+      "page": 4,
+      "key": "point:6",
+      "occurrence_index": 0,
+      "label": "6. Two similar completed services costing not less than the amount equ",
+      "scope_key": "subdoc:bid-document/subdoc:treds-payment-details"
+    },
+    {
+      "page": 4,
+      "key": "point:7",
+      "occurrence_index": 0,
+      "label": "7. One similar completed service costing not less than the amount equa",
+      "scope_key": "subdoc:bid-document/subdoc:treds-payment-details"
+    },
+    {
+      "page": 4,
+      "key": "subdoc:technical-specifications",
+      "occurrence_index": 0,
+      "label": "\u0924\u0915\u0928\u0940\u0915\u0940 \u0935\u093f\u0936\u093f\u0937\u094d\u091f\u093f\u092f\u093e\u0901 /Technical Specifications",
+      "scope_key": "subdoc:bid-document"
+    },
+    {
+      "page": 5,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. Generic",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 5,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. Generic",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 5,
+      "key": "subdoc:buyer-added-bid-speci",
+      "occurrence_index": 0,
+      "label": "\u092b\u0948\u0932\u093e \u0926\u094d\u0935\u093e\u0930\u093e \u091c\u094b\u0921\u093c\u0940 \u0917\u0908 \u092c\u093f\u0921 \u0915\u0940 \u0935\u093f\u0936\u0947\u0937 \u0936\u0930\u094d\u0924/Buyer Added Bid Speci",
+      "scope_key": "subdoc:bid-document"
+    },
+    {
+      "page": 6,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. The Bidder has to sign and upload Pre Contract Integrity Pact in th",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:10"
+    },
+    {
+      "page": 6,
+      "key": "point:10",
+      "occurrence_index": 0,
+      "label": "10. Buyer Added Bid Specific ATC",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 6,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. The bidder has to submit the Antiproffeteering Declaration in the p",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:10"
+    },
+    {
+      "page": 6,
+      "key": "point:3",
+      "occurrence_index": 0,
+      "label": "3. Generic",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 6,
+      "key": "point:3",
+      "occurrence_index": 1,
+      "label": "3. The bidder has to sign (each page) of the Bid Document Terms and co",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:10"
+    },
+    {
+      "page": 6,
+      "key": "point:4",
+      "occurrence_index": 0,
+      "label": "4. Generic",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 6,
+      "key": "point:4",
+      "occurrence_index": 1,
+      "label": "4. No counter conditions by bidder shall be accepted.",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:10"
+    },
+    {
+      "page": 6,
+      "key": "point:5",
+      "occurrence_index": 0,
+      "label": "5. Generic",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 6,
+      "key": "point:5",
+      "occurrence_index": 1,
+      "label": "5. Bidder has to upload Self Declarations for Financial Standing, Non-",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:10"
+    },
+    {
+      "page": 6,
+      "key": "point:6",
+      "occurrence_index": 0,
+      "label": "6. Generic",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 6,
+      "key": "point:6",
+      "occurrence_index": 1,
+      "label": "6. Technical and financial eligibility criteria for qualification of t",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:10"
+    },
+    {
+      "page": 6,
+      "key": "point:7",
+      "occurrence_index": 0,
+      "label": "7. The Seller shall not assign the Contract in whole or part without o",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 6,
+      "key": "point:7",
+      "occurrence_index": 1,
+      "label": "7. Wherever GST is applicable, payment will be released against e-Invo",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:10"
+    },
+    {
+      "page": 6,
+      "key": "point:8",
+      "occurrence_index": 0,
+      "label": "8. The Seller shall not sub-contract the Contract in whole or part to",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 6,
+      "key": "point:9",
+      "occurrence_index": 0,
+      "label": "9. The Seller shall, notwithstanding the consent and assignment/sub-co",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 6,
+      "key": "point:a",
+      "occurrence_index": 0,
+      "label": "(a) This is to certify that the Hardware and the Software being offered, as part",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:5"
+    },
+    {
+      "page": 6,
+      "key": "point:b",
+      "occurrence_index": 0,
+      "label": "(b) The firm will be considered to be in breach of the procurement contract, in ",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:5"
+    },
+    {
+      "page": 6,
+      "key": "point:i",
+      "occurrence_index": 0,
+      "label": "(i) Inhibit the desires and designed function of the equipment.",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:5"
+    },
+    {
+      "page": 6,
+      "key": "point:ii",
+      "occurrence_index": 0,
+      "label": "(ii) Cause physical damage to the user or equipment during the exploitation.",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:5"
+    },
+    {
+      "page": 6,
+      "key": "point:iii",
+      "occurrence_index": 0,
+      "label": "(iii) Tap information resident or transient in the equipment/network.",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:5"
+    },
+    {
+      "page": 7,
+      "key": "point:10",
+      "occurrence_index": 0,
+      "label": "10. If the vendor is registered under GST, vendor shall mention the HS",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:10"
+    },
+    {
+      "page": 7,
+      "key": "point:10",
+      "occurrence_index": 1,
+      "label": "10. Forms of EMD and PBG",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 7,
+      "key": "point:11",
+      "occurrence_index": 0,
+      "label": "11. In case, DFCCIL is unable to avail ITC, supplier/contractor at the",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 7,
+      "key": "point:11",
+      "occurrence_index": 1,
+      "label": "11. Forms of EMD and PBG",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 7,
+      "key": "point:12",
+      "occurrence_index": 0,
+      "label": "12. If the vendor is registered under GST, the GST registration number",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 7,
+      "key": "point:13",
+      "occurrence_index": 0,
+      "label": "13. If the vendor is registered under GST, vendor shall file all appli",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 7,
+      "key": "point:14",
+      "occurrence_index": 0,
+      "label": "14. Buyer Added Bid Specific ATC",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 7,
+      "key": "point:8",
+      "occurrence_index": 0,
+      "label": "8. GST as per GST Laws shall be payable as quoted and agreed.",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:10"
+    },
+    {
+      "page": 7,
+      "key": "point:9",
+      "occurrence_index": 0,
+      "label": "9. In case of purchases of goods/services from unregistered dealers un",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci/point:10"
+    },
+    {
+      "page": 7,
+      "key": "point:9",
+      "occurrence_index": 1,
+      "label": "9. Buyer Added Bid Specific Scope Of Work(SOW)",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 7,
+      "key": "term:sow",
+      "occurrence_index": 0,
+      "label": "Buyer Added Bid Specific Scope Of Work(SOW)",
+      "scope_key": ""
+    },
+    {
+      "page": 8,
+      "key": "point:12",
+      "occurrence_index": 0,
+      "label": "12. Forms of EMD and PBG",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 8,
+      "key": "point:13",
+      "occurrence_index": 0,
+      "label": "13. Forms of EMD and PBG",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 8,
+      "key": "point:14",
+      "occurrence_index": 0,
+      "label": "14. Forms of EMD and PBG",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 8,
+      "key": "point:15",
+      "occurrence_index": 0,
+      "label": "15. Forms of EMD and PBG",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 8,
+      "key": "point:16",
+      "occurrence_index": 0,
+      "label": "16. Forms of EMD and PBG",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 9,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. Publishing Custom / BOQ bids for items for which regular GeM catego",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "point:10",
+      "occurrence_index": 0,
+      "label": "10. Reference of conditions published on any external site or referenc",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "point:11",
+      "occurrence_index": 0,
+      "label": "11. Asking for any Tender fee / Bid Participation fee, as the case may",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "point:12",
+      "occurrence_index": 0,
+      "label": "12. Buyer added ATC Clauses which are in contravention of clauses defi",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "point:13",
+      "occurrence_index": 0,
+      "label": "13. Any ATC clause in contravention with GeM GTC Clause 4 (xiii) (h) w",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "point:14",
+      "occurrence_index": 0,
+      "label": "14. In a category based bid, adding additional items, through buyer ad",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "point:17",
+      "occurrence_index": 0,
+      "label": "17. Certificates",
+      "scope_key": "subdoc:bid-document/subdoc:buyer-added-bid-speci"
+    },
+    {
+      "page": 9,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. Mandating procurement of / from specific Brand / Make / Model / Man",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "point:3",
+      "occurrence_index": 0,
+      "label": "3. Inclusion of disqualification criteria related to suspension of sel",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "point:4",
+      "occurrence_index": 0,
+      "label": "4. Mandating submission of documents (other than EMD and signed Integr",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "point:5",
+      "occurrence_index": 0,
+      "label": "5. Publishing bids on GeM for procurement of works.",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "point:6",
+      "occurrence_index": 0,
+      "label": "6. Procurement of Goods by creating a Service bid on GeM & vice-versa.",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "point:7",
+      "occurrence_index": 0,
+      "label": "7. Seeking sample with bid or approval of samples during bid evaluatio",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "point:8",
+      "occurrence_index": 0,
+      "label": "8. Seeking experience from specific organization / department / instit",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "point:9",
+      "occurrence_index": 0,
+      "label": "9. Creating bid for items from incorrect categories.",
+      "scope_key": "subdoc:bid-document/subdoc:disclaimer"
+    },
+    {
+      "page": 9,
+      "key": "subdoc:disclaimer",
+      "occurrence_index": 0,
+      "label": "\u0905\u0938\u094d\u0935\u0940\u0915\u0930\u0923/Disclaimer",
+      "scope_key": "subdoc:bid-document"
+    },
+    {
+      "page": 9,
+      "key": "term:atc",
+      "occurrence_index": 0,
+      "label": "The Additional Terms and Conditions (ATC)",
+      "scope_key": ""
+    },
+    {
+      "page": 9,
+      "key": "term:pac",
+      "occurrence_index": 0,
+      "label": "Single Bid / Proprietary Article Certificate (PAC)",
+      "scope_key": ""
+    }
+  ],
+  "mentions": [
+    {
+      "page": 1,
+      "occurrence_index": 0,
+      "key": "term:cmc",
+      "raw_text": "CMC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 1,
+      "occurrence_index": 1,
+      "key": "term:cmc",
+      "raw_text": "CMC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 1,
+      "occurrence_index": 2,
+      "key": "term:atc",
+      "raw_text": "ATC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 2,
+      "occurrence_index": 0,
+      "key": "clause:12",
+      "raw_text": "clause 12",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 2,
+      "occurrence_index": 1,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 2,
+      "occurrence_index": 2,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 3,
+      "occurrence_index": 0,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 3,
+      "occurrence_index": 1,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 3,
+      "occurrence_index": 2,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 3,
+      "occurrence_index": 3,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 3,
+      "occurrence_index": 4,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 4,
+      "occurrence_index": 0,
+      "key": "term:cmc",
+      "raw_text": "CMC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 4,
+      "occurrence_index": 1,
+      "key": "term:cmc",
+      "raw_text": "CMC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 4,
+      "occurrence_index": 2,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 5,
+      "occurrence_index": 0,
+      "key": "clause:25",
+      "raw_text": "CLAUSE 25",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 5,
+      "occurrence_index": 1,
+      "key": "term:cmc",
+      "raw_text": "CMC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 6,
+      "occurrence_index": 0,
+      "key": "term:atc",
+      "raw_text": "ATC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 6,
+      "occurrence_index": 1,
+      "key": "term:atc",
+      "raw_text": "ATC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 6,
+      "occurrence_index": 2,
+      "key": "term:atc",
+      "raw_text": "ATC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 7,
+      "occurrence_index": 0,
+      "key": "term:atc",
+      "raw_text": "ATC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 7,
+      "occurrence_index": 1,
+      "key": "term:atc",
+      "raw_text": "ATC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 7,
+      "occurrence_index": 2,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 7,
+      "occurrence_index": 3,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 7,
+      "occurrence_index": 4,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 7,
+      "occurrence_index": 5,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 7,
+      "occurrence_index": 6,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 7,
+      "occurrence_index": 7,
+      "key": "term:sow",
+      "raw_text": "SOW",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 8,
+      "occurrence_index": 0,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 8,
+      "occurrence_index": 1,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 8,
+      "occurrence_index": 2,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 8,
+      "occurrence_index": 3,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 8,
+      "occurrence_index": 4,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 8,
+      "occurrence_index": 5,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 8,
+      "occurrence_index": 6,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 9,
+      "occurrence_index": 0,
+      "key": "clause:4",
+      "raw_text": "Clause 4",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 9,
+      "occurrence_index": 1,
+      "key": "term:atc",
+      "raw_text": "ATC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 9,
+      "occurrence_index": 2,
+      "key": "term:atc",
+      "raw_text": "ATC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 9,
+      "occurrence_index": 3,
+      "key": "term:atc",
+      "raw_text": "ATC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 9,
+      "occurrence_index": 4,
+      "key": "term:atc",
+      "raw_text": "ATC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 9,
+      "occurrence_index": 5,
+      "key": "term:atc",
+      "raw_text": "ATC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 9,
+      "occurrence_index": 6,
+      "key": "term:atc",
+      "raw_text": "ATC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 9,
+      "occurrence_index": 7,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 9,
+      "occurrence_index": 8,
+      "key": "term:emd",
+      "raw_text": "EMD",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 9,
+      "occurrence_index": 9,
+      "key": "term:pac",
+      "raw_text": "PAC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 10,
+      "occurrence_index": 0,
+      "key": "clause:26",
+      "raw_text": "clause 26",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    }
+  ]
+}

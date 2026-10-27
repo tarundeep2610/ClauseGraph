@@ -204,3 +204,50 @@ def test_preservation_of_legitimate_headings():
     assert len(norm_chunk.headings) == len(legitimate)
     assert report.dropped_invalid == 0
     assert report.dropped_empty == 0
+
+
+def test_distribution_list_colon_recovery_suppressed():
+    """Verify _recover_colon_sublists_in_chunk ignores correspondence distribution intros and recipient items."""
+    import ai_reference_index
+    from ai_indexing.schema import AIHeading
+
+    h = AIHeading(heading_text="DATED 20.05.2008", start_page=91, level=1)
+    page_blocks = {
+        91: [
+            "DATED 20.05.2008",
+            "Copy of the above is forwarded to the following for information and necessary action please:",
+            "1. Sr. PS to Chairman, HVPNL, Panchkula.",
+            "2. Sr. PS to Director/Projects, HVPNL, Panchkula.",
+            "10. The Superintending Engineer/MM-II, HVPNL, Panchkula.",
+        ]
+    }
+    recovered = ai_reference_index._recover_colon_sublists_in_chunk([h], page_blocks)
+    # Must NOT synthesize the distribution list as headings
+    assert len(recovered) == 1
+    assert recovered[0].heading_text == "DATED 20.05.2008"
+
+
+def test_page_1_cover_letterhead_contact_noise_suppressed():
+    """Verify _COVER_LETTERHEAD_NOISE_RE matches cover-page contact metadata."""
+    from ai_reference_index import _COVER_LETTERHEAD_NOISE_RE
+
+    assert _COVER_LETTERHEAD_NOISE_RE.search("Email: - cepurez@yahoo.in")
+    assert _COVER_LETTERHEAD_NOISE_RE.search("Phone No.: 0761-2666040, 2702473, 2702442")
+    assert _COVER_LETTERHEAD_NOISE_RE.search("Block No.8th 3rd Floor Shakti Bhawan")
+    assert _COVER_LETTERHEAD_NOISE_RE.search("THE CHIEF GENERAL MANAGER (Store & Purchase)")
+    assert _COVER_LETTERHEAD_NOISE_RE.search("M. P. Poorv Kshetra Vidyut Vitaran Co. Ltd,")
+
+    # Legitimate headings must not match
+    assert not _COVER_LETTERHEAD_NOISE_RE.search("INDEX")
+    assert not _COVER_LETTERHEAD_NOISE_RE.search("Bid Document")
+    assert not _COVER_LETTERHEAD_NOISE_RE.search("SECTION 1: GENERAL CONDITIONS")
+
+
+def test_structure_system_prompt_includes_checklist_table_exception():
+    """Verify prompt explicitly instructs extraction of bidder checklist and qualification criteria tables."""
+    from ai_indexing.prompt import STRUCTURE_SYSTEM_PROMPT
+
+    assert "bidder eligibility / checklist criteria tables" in STRUCTURE_SYSTEM_PROMPT
+    assert "CORRESPONDENCE ENDORSEMENT / DISTRIBUTION RECIPIENT LISTS" in STRUCTURE_SYSTEM_PROMPT
+    assert "TENDER COVER-PAGE LETTERHEAD AND CONTACT BLOCKS" in STRUCTURE_SYSTEM_PROMPT
+
