@@ -143,3 +143,59 @@ def test_tribunal_and_form_noise_rejection():
     kept = [h.heading_text for h in normalized.headings]
     assert kept == ["GROUNDS OF APPEAL"]
     assert report.dropped_invalid >= 5
+
+
+def test_contract_clauses_under_annexure_filters_narrative_prose():
+    scope_annex = {
+        "stack": [{"family": "annexure", "key": "annexure:a-1", "label": "ANNEXURE A-1"}],
+    }
+    sample_text = (
+        "2.0 CONTRACT DOCUMENTS\n\n"
+        "2.1 The contract shall be performed strictly as per the terms and conditions stipulated herein.\n\n"
+        "3.0 CONDITIONS AND COVENANTS\n\n"
+        "3.1 The scope of the contract is contained in HVPN's detailed award.\n\n"
+        "3.3 TIME SCHEDULE\n\n"
+        "3.4.1 The contractor is responsible for the proper execution of the quality plans.\n\n"
+    )
+    cands = reference_index.detect_contract_clauses_for_page(sample_text, scope_annex, [])
+    keys = [c["key"] for c in cands]
+    # Standalone titles are kept
+    assert "numheading:2.0" in keys
+    assert "numheading:3.0" in keys
+    assert "numheading:3.3" in keys
+    # Narrative paragraphs starting with decimals are rejected
+    assert "numheading:2.1" not in keys
+    assert "numheading:3.1" not in keys
+    assert "numheading:3.4.1" not in keys
+
+
+def test_contract_clauses_under_section_preserves_multiseg_clauses():
+    scope_section = {
+        "stack": [{"family": "section", "key": "section:6", "label": "SECTION VI - SPECIAL CONDITIONS OF CONTRACT"}],
+    }
+    sample_text = (
+        "1.1.1 The contract period shall include initial two (2) weeks of resource deployment.\n\n"
+        "1.1.2 However, in case the performance during the currency of the Contract is not satisfactory.\n\n"
+    )
+    cands = reference_index.detect_contract_clauses_for_page(sample_text, scope_section, [])
+    keys = [c["key"] for c in cands]
+    # Under section, multi-segment contract clauses must be preserved
+    assert "numheading:1.1.1" in keys
+    assert "numheading:1.1.2" in keys
+
+
+def test_distribution_list_not_minted_as_pleading_points():
+    scope_pleading = {
+        "stack": [{"family": "subdoc", "key": "subdoc:despatch", "label": "DESPATCH OF MATERIAL"}],
+    }
+    sample_text = """
+    Endst. No. 1234/HVPN
+    Copy forwarded to the following for information and necessary action:-
+    1. The Chief Engineer/MM, HVPNL, Panchkula.
+    2. The Superintending Engineer/Design, HVPNL, Panchkula.
+    3. The Executive Engineer/Projects, HVPNL, Hisar.
+    """
+    cands, _ = reference_index.detect_pleading_points_for_page(sample_text, scope_pleading, [])
+    # None of the recipients in the distribution list should be minted as pleading points
+    assert len(cands) == 0
+

@@ -33,6 +33,7 @@ COPY role_utils.py .
 COPY database.py .
 COPY reference_index.py .
 COPY ai_reference_index.py .
+COPY ai_action_items.py .
 COPY structure_overrides.py .
 COPY ai_indexing/ ./ai_indexing/
 COPY layout_format.py .

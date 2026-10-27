@@ -401,7 +401,7 @@ _GROUND_SCOPE_HEADINGS = re.compile(r"\b(GROUNDS?\s+OF\s+APPEAL|GROUNDS|PRAYER)\
 _NON_PLEADING_SUBDOC_LABELS_RE = re.compile(
     r"\b(CONTRACT\s+AGREEMENT|BANK\s+GUARANTEE|PURCHASE\s+ORDER|WORK\s+ORDER|"
     r"LETTER\s+OF\s+(?:AWARD|INTENT)|TENDER\s+(?:DOCUMENT|SPECIFICATION)|"
-    r"SECTION[\s-]+[IVXLCDM0-9]+)\b",
+    r"SECTION[\s-]+[IVXLCDM0-9]+|DESPATCH\s+OF\s+MATERIAL|TECHNICAL|ENDORSEMENT)\b",
     re.IGNORECASE,
 )
 
@@ -415,7 +415,7 @@ _NON_PLEADING_SUBDOC_LABELS_RE = re.compile(
 # that cleared the mandatory negative test against both gold fixtures (see
 # _immediate_parent_is_listing_container's call sites).
 _LISTING_CONTAINER_RE = re.compile(
-    r"\b(?:INDEX|SCHEDULE|PRICE\s+SCHEDULE|SPARES?|SPARE\s+PARTS|"
+    r"\b(?:INDEX|SCHEDULE|PRICE(?:S|\s+SCHEDULE)?|SPARES?|SPARE\s+PARTS|"
     r"LIST\s+OF\s+ANNEXURES?|BILL\s+OF\s+QUANTITIES|BOQ)\b", re.IGNORECASE)
 
 
@@ -479,7 +479,14 @@ def _immediate_parent_is_listing_container(nested_stack: List[Dict[str, Any]], r
     "shape check not applicable here."""
     if not nested_stack:
         return False
-    if not _LISTING_CONTAINER_RE.search(nested_stack[-1].get("label") or ""):
+    listing_entry = None
+    for s in reversed(nested_stack):
+        if _LISTING_CONTAINER_RE.search(s.get("label") or ""):
+            listing_entry = s
+            break
+        if s.get("family") in ("section", "article", "annexure"):
+            break
+    if listing_entry is None:
         return False
     if row_text is None:
         return True
@@ -1437,6 +1444,14 @@ _DISTRIBUTION_LIST_INTRO_RE = re.compile(
     r"\bcopy\b.{0,60}\bforwarded\b.{0,30}\bfollowing\b|\bcopy\s+to\s*:?\s*$",
     re.IGNORECASE,
 )
+_DISTRIBUTION_INTRO_RE = re.compile(
+    r"(?:endst\.?\s*(?:no\.?|memo)|copy\s+forwarded\s+(?:for|to)|distribution\s*:|copies\s+to\b|copy\s+to\b|\bcopy\b.{0,60}\bforwarded\b)",
+    re.IGNORECASE,
+)
+_DISTRIBUTION_RECIPIENT_RE = re.compile(
+    r"^\s*(?:\(?\d+[\.\)]|\(?[a-z][\.\)]|\(?[ivxlcdm]+[\.\)])\s*(?:the\s+)?(?:sr\.?\s*ps|ps\s+to|pa\s+to|chief\s+engineer|superintending\s+engineer|executive\s+engineer|supdt|secretary|director|manager|accounts\s+officer|ao\b|ca\b|fa\b|notice\s+board|guard\s+file)",
+    re.IGNORECASE,
+)
 
 
 def _looks_like_generic_heading_shape(text: str) -> bool:
@@ -1708,7 +1723,14 @@ def _ground_scope_active(nested_stack: List[Dict[str, str]]) -> bool:
         if s.get("family") == "ground":
             return True
         if s.get("family") == "subdoc":
-            return bool(_GROUND_SCOPE_HEADINGS.search(s.get("label") or ""))
+            label = s.get("label") or ""
+            if _GROUND_SCOPE_HEADINGS.search(label):
+                return True
+            # If nearest subdoc is an averment continuation (e.g. "(I) That the learned court below..."),
+            # do not treat it as an unrelated subdocument that evicts ground scope:
+            if _PLEADING_AVERMENT_RE.search(label) or re.match(r"^\s*\(?[IVXLCDMivxlcdm0-9]+\)?\s+That\b", label, re.IGNORECASE):
+                continue
+            return False
     return False
 
 
@@ -1737,9 +1759,14 @@ def _pleading_scope_active(nested_stack: List[Dict[str, str]]) -> bool:
     _ground_scope_active, inverted (exclusion list, not allow-list — see
     that constant's docstring for why)."""
     # If any container in the ancestor chain is an explicit non-pleading document
-    # (e.g. Contract Agreement, Purchase Order, Section-I through Section-XX),
+    # (e.g. Contract Agreement, Purchase Order, Section-I through Section-XX, Annexures, Schedules),
     # then child subdocs inside it are commercial clauses, never court pleadings.
-    if any(_NON_PLEADING_SUBDOC_LABELS_RE.search(s.get("label") or "") for s in nested_stack):
+    if any(
+        s.get("family") in ("annexure", "section", "article", "contract", "schedule", "appendix")
+        or s.get("key", "").startswith(("annexure:", "section:", "article:", "contract:", "schedule:", "appendix:"))
+        or _NON_PLEADING_SUBDOC_LABELS_RE.search(s.get("label") or "")
+        for s in nested_stack
+    ):
         return False
     for s in reversed(nested_stack):
         if s.get("family") == "point":
@@ -3564,12 +3591,24 @@ def detect_pleading_points_for_page(
         return [], (scope or {}).get("last_decimal_ground")
 
     # Contract/outline containers never inherit pleading points
-    if nested_stack and nested_stack[0].get("family") in ("article", "section", "clause"):
+    if nested_stack and (
+        nested_stack[0].get("family") in ("article", "section", "clause", "annexure", "contract", "schedule", "appendix")
+        or any(
+            s.get("family") in ("article", "section", "clause", "annexure", "contract", "schedule", "appendix")
+            or s.get("key", "").startswith(("annexure:", "section:", "article:", "contract:", "schedule:", "appendix:"))
+            for s in nested_stack
+        )
+    ):
         return [], (scope or {}).get("last_decimal_ground")
 
     if _ground_scope_active(nested_stack):
         family = "ground"
-    elif _pleading_scope_active(nested_stack) or _PLEADING_AVERMENT_RE.search(page_text):
+    elif _pleading_scope_active(nested_stack):
+        family = "point"
+    elif _PLEADING_AVERMENT_RE.search(page_text) and not any(
+        s.get("family") in ("article", "section", "clause", "annexure", "contract", "schedule", "appendix")
+        for s in nested_stack
+    ):
         family = "point"
     else:
         return [], (scope or {}).get("last_decimal_ground")
@@ -3588,9 +3627,15 @@ def detect_pleading_points_for_page(
     last_decimal_ground: Optional[Dict[str, str]] = (scope or {}).get("last_decimal_ground")
 
     results: List[Dict[str, Any]] = []
+    in_distribution_list = False
     for block_text in parse_page_blocks(page_text):
         text = (block_text or "").strip()
         if not text:
+            continue
+        if _DISTRIBUTION_INTRO_RE.search(text) or _DISTRIBUTION_LIST_INTRO_RE.search(text):
+            in_distribution_list = True
+            continue
+        if in_distribution_list or _DISTRIBUTION_RECIPIENT_RE.match(text):
             continue
         fingerprint = text[:30]
         if fingerprint in already_claimed_fingerprints:
@@ -3649,6 +3694,12 @@ def detect_pleading_points_for_page(
     return results, last_decimal_ground
 
 
+_CLAUSE_NARRATIVE_VERB_RE = re.compile(
+    r"\b(?:shall|agrees?|is|are|was|were|will|undertakes?|constitutes?|guarantees?|means?|placed|contained)\b",
+    re.IGNORECASE,
+)
+
+
 def detect_contract_clauses_for_page(
     page_text: str, scope: Dict[str, Any], existing_candidates: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
@@ -3669,6 +3720,11 @@ def detect_contract_clauses_for_page(
     )
     if not is_contract and not _NON_PLEADING_SUBDOC_LABELS_RE.search(page_text):
         return []
+
+    is_under_annexure = any(
+        s.get("family") == "annexure" or "annexure" in s.get("key", "")
+        for s in nested_stack
+    )
 
     already_claimed_fps = {c.get("fingerprint") for c in existing_candidates if c.get("fingerprint")}
     existing_keys = {c.get("key") for c in existing_candidates if c.get("key")}
@@ -3715,6 +3771,11 @@ def detect_contract_clauses_for_page(
             if _is_external_law(text):
                 continue
 
+            label_part = text[m.end():].strip()
+            if (is_under_annexure or not is_contract) and is_multiseg:
+                if len(label_part.split()) > 8 or len(label_part) > 60 or _CLAUSE_NARRATIVE_VERB_RE.search(label_part):
+                    continue
+
             key = f"numheading:{number}"
             if key in existing_keys:
                 continue
@@ -3724,7 +3785,6 @@ def detect_contract_clauses_for_page(
             existing_keys.add(key)
             already_claimed_fps.add(fp)
 
-            label_part = text[m.end():].strip()
             own_label = f"{number} {label_part[:80]}".strip() if label_part else number
 
             results.append({

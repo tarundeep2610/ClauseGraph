@@ -236,10 +236,10 @@ WHAT IS NOT A HEADING
   report them with their parent clause (e.g. "24.2.") as "parent_ref".
   Do NOT exclude a numbered clause in a contract/tender table merely because Column 2
   contains a verb like "shall", "must", or "is".
-   This includes essential tender information tables, schedules of requirements, and specification tables where
-   Column 1 is an item/clause number (e.g. "1.", "2.", "3.") and Column 2 is an item or specification heading
-   (e.g. "Name of works/services to be procured", "Purchaser", "Contract Period", "Earnest Money Deposit").
-   Report every such numbered row under its section heading (e.g. "1. Name of works/services to be procured", "2. Purchaser").
+   This includes essential tender information tables, schedules of requirements, specification tables, and bidder eligibility / checklist criteria tables where
+   Column 1 is an item/clause/serial number (e.g. "1.", "2.", "3.", "SN 1") and Column 2 is an item, specification, or eligibility criterion heading/text
+   (e.g. "Name of works/services to be procured", "Purchaser", "Contract Period", "Earnest Money Deposit", "The Sole Bidder/Lead Bidder and Consortium Partner...").
+   Report every such numbered row under its section or annexure heading (e.g. "1. Name of works/services to be procured", "1. The Sole Bidder/Lead Bidder", "2. The bidder should be registered in India with GST").
 - ADMINISTRATIVE STAMPS, DOCKET/FORM CODES, AND COVER-PAGE MARGINALIA. A
   cover/opening page of a court filing or official document is often
   covered in printing-registration codes, docket numbers, and stamps —
@@ -254,6 +254,12 @@ WHAT IS NOT A HEADING
   heading? When in doubt about a short fragment on a busy cover page,
   prefer excluding it — the real opening heading (see above) is usually a
   clearly separate, longer line naming the document itself.
+- TENDER COVER-PAGE LETTERHEAD AND CONTACT BLOCKS: The cover/first page often lists
+  issuing organization names ("M. P. Poorv Kshetra Vidyut Vitaran Co. Ltd"), departments,
+  officer titles ("THE CHIEF GENERAL MANAGER (Store & Purchase)"), office locations/addresses
+  ("Block No.8th 3rd Floor Shakti Bhawan", "Jabalpur 482008"), phone/fax lines ("Phone No.: ..."),
+  and contact emails ("Email: ..."). These are contact/letterhead boilerplate, NOT document headings.
+  Do NOT report them as headings.
 - A cross-reference or citation INSIDE a sentence or running text
   ("as per Clause 14.2 above", "refer to Annexure B", "see Section 5 below").
   If the line continues into prose, it is a reference, not a heading.
@@ -282,6 +288,13 @@ WHAT IS NOT A HEADING
   points at a heading printed elsewhere.
 - Table column headers ("S.No.", "Clause No.", "Description", "Particulars", "Remarks", "Compliance (Yes/No)", "Status", "Bidder's Response", "Page No.") are NOT headings — they are column labels of a table. Do NOT report them.
 - Form signature blocks and form field placeholders ("Authorized Signatory", "Name of Bidder", "Seal of Firm", "Date: ...", "Place: ...", "Signature of the Bidder") are NOT headings — they are fill-in metadata. Do NOT report them.
+- CORRESPONDENCE ENDORSEMENT / DISTRIBUTION RECIPIENT LISTS: A numbered or bulleted list of
+  recipient officials, departments, or offices following "Copy forwarded to:", "Copy to:",
+  "Endst. No.", or "Distribution:" at the conclusion of an official letter, order, or memorandum
+  (e.g. "1. Sr. PS to Chairman, HVPNL...", "2. Chief Engineer/TS...", "10. The Superintending Engineer...")
+  are dispatch/recipient distribution metadata, NOT document headings. Do NOT report them.
+- BOQ / PRICE SCHEDULE ITEM ROWS: In pricing, spares, or bill-of-quantities tables with columns like "Unit Ex-Works Price", "Qty", or "Total Price", do NOT report item numbers or equipment rows (e.g. "(4) 415V emergency LDB", "38", "39", "100") with family_hint="schedule" or as headings. They are table line items, NOT headings.
+- CONTRACT AGREEMENT RUNNING BODY PARAGRAPHS: In contract agreements and legal exhibits, do NOT report multi-sentence running body paragraphs (e.g. "3.5 Another contract for erection portion...", "3.4.1 The contractor is responsible for the proper execution...") as headings. Only report short standalone section titles (e.g. "3.3 TIME SCHEDULE", "3.4 QUALITY PLANS").
 
 FINDING THE FULL RUN OF AN ENUMERATED LIST — DON'T STOP AT THE FIRST ONE
 - Headings that enumerate a list (roman numerals in parens like "(VII) That
@@ -705,6 +718,22 @@ def plan_chunks(
 
 
 _CLAUSE_MARKER_RE = re.compile(r"^\s*\d+(?:\.\d+)+\.?", re.MULTILINE)
+# Mirrors reference_index.GROUND_ROMAN_RE's marker shape (e.g. "(VII) That
+# the Ld. Arbitral Tribunal..."), but MULTILINE-compiled for this module's
+# own page-level search/findall scan rather than GROUND_ROMAN_RE's
+# .match()-on-one-candidate-string usage elsewhere (confirmed via its 3 call
+# sites in reference_index.py). Confirmed real gap: a 100-page arbitration
+# appeal's "Grounds of Appeal" section (pages 18-30+) has only 1-2 such
+# markers per page — too few to trip _CLAUSE_MARKER_RE's own count
+# thresholds even if counted the same way — but each one is a full
+# multi-sentence legal paragraph, not a short table row. Classifying these
+# pages as NARRATIVE let them pool into one oversized chunk (once
+# AI_INDEX_CHUNK_PAGES was raised for narrative content), overwhelming a
+# single AI call's output budget and causing ~20 ground:N targets to go
+# missing entirely. Used as a presence check below, not a count, since a
+# single ground marker is independently substantial regardless of how many
+# appear on the page — unlike _CLAUSE_MARKER_RE where only bulk matters.
+_ROMAN_ENUM_MARKER_RE = re.compile(r"^\s*\(?[IVXLCDMivxlcdm]+(?:\)\.?|\.)\s+[A-Z]", re.MULTILINE)
 
 
 def classify_page_density(text: str) -> str:
@@ -715,7 +744,7 @@ def classify_page_density(text: str) -> str:
     clause_markers = len(_CLAUSE_MARKER_RE.findall(text))
     if table_rows >= 6 or clause_markers >= 8:
         return "DENSE_TABLE"
-    if table_rows >= 3 or clause_markers >= 4:
+    if table_rows >= 3 or clause_markers >= 4 or _ROMAN_ENUM_MARKER_RE.search(text):
         return "MODERATE"
     return "NARRATIVE"
 
@@ -908,6 +937,19 @@ def _render_macro_context(macro_ctx: Optional[dict]) -> str:
         lines.append(f'- Active Section: "{parent}"')
     lines.append(
         "\nGUIDELINE: Report all clauses and sub-clauses belonging to this division.\n"
+        "PRICE SCHEDULE / BOQ SUPPRESSION: If the Root Division or Active Section title above "
+        "indicates a dense itemized listing (titles containing words like \"Price Schedule\", "
+        "\"Bill of Quantities\", \"BOQ\", \"Schedule of Rates\", or an equipment/spare-parts list), "
+        "do NOT report individual line items, equipment names, quantities, or decimal-numbered rows "
+        "within such a division as separate headings or points, regardless of how closely their "
+        "numbering resembles a real clause (e.g. do NOT extract rows like \"4.10 Isolation valves\" "
+        "or \"420 KV SF-6 Circuit Breaker\").\n"
+        "CARVE-OUT (SUBSTANTIVE TERMS): Define what to suppress by positive shape — suppress rows that "
+        "represent an itemized product, equipment, part, quantity, unit, or price. Do NOT suppress "
+        "headings naming substantive contractual terms, conditions, obligations, penalties, or procedures "
+        "(e.g. \"Payment Terms\", \"Stage Penalty\", \"Taxes & Duties\", or procedural payment clauses), "
+        "even when they appear inside a Price Schedule division. If the division title does not suggest "
+        "a dense itemized listing, this suppression does not apply.\n"
         "NOTE (IMPORTANT): Active division context is a default guideline. If this page range "
         "explicitly begins a NEW major section, chapter, or annexure (e.g. 'SECTION III' or 'ANNEXURE-XI'), "
         "report it as a top-level heading ('level': 1, 'parent_ref': null) rather than nesting it under the previous division."

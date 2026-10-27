@@ -2570,4 +2570,97 @@ Analysis of the labeled diff (`diff_bb417471_twopass.json`) revealed that **140 
 | **bb417471** | 100 | Full Arbitration Appeal (Pleadings + Exhibits) | **0.774 – 0.785** | **0.915** | **1.000** | **Zero Regression (292/319 Recovered)** |
 | **Pytest Suite** | — | Target Regression & Stack Machine Tests | — | — | — | **73 / 73 Passed (100%)** |
 
+## 25. Two New Gold Fixtures — GeM Bid Documents, a Structurally New Domain (2026-10-23)
+
+### 25.1 Fixture Creation
+
+Two newly-uploaded documents were hand-authored into gold fixtures, same
+process as every prior fixture (real OCR text read directly, no guessing;
+headings replayed through the actual production seam
+`_ground_and_resolve_chunk` -> `apply_heading_events_to_scope` ->
+`_persist_page_index` -> `build_mention_index_for_job`; scripts committed
+alongside the fixture JSON for future rebuilds):
+
+| Job ID | Fixture | Pages | Document | Targets | Mentions |
+| :--- | :--- | :---: | :--- | :---: | :---: |
+| `30d148dd-c1e4-4e38-877b-608b5584ff4e` | `gold_index_30d148dd.json` | 10 | GeM bid GEM/2026/B/8032683 — Frauscher MSDAC AMC/CMC, DFCCIL | 73 | 45 |
+| `179ab46e-b105-4107-ad38-7a0160724948` | `gold_index_179ab46e.json` | 8 | GeM bid GEM/2026/B/8056905 — Up-Armouring of Defender Vehicles, MIDHANI | 40 | 29 |
+
+Build scripts: `scratch/build_gold_fixture_30d148dd.py`,
+`scratch/build_gold_fixture_179ab46e.py`.
+
+Both documents are a structurally new domain for this benchmark suite — a
+bilingual (Hindi/English) GeM government-marketplace bid cover sheet, not
+a legal pleading or a commercial tender body. Authoring them surfaced two
+confirmed, real pipeline findings, neither fixed as part of this round
+(documented for a future, separately-scoped fix):
+
+1. **Mistune's ordered-list parser renumbers a restarted sub-list by
+   position, not by its own literal written number**, whenever the
+   sub-list is contiguous with its parent list in the markdown (no
+   intervening non-list paragraph). Confirmed on `30d148dd` page 4: an
+   eligibility-criteria sub-list the rendered PDF shows as "1, 2, 3"
+   (restarting under parent item 4) is actually parsed as "5, 6, 7"
+   (continuing the parent list's own count) — gold had to be authored
+   against the real parsed numbers, not the PDF's visible ones, since
+   that's the only text any detector (rule or AI) ever actually sees.
+2. **`_dedupe_same_page_headings` (`ai_reference_index.py`) is scoped too
+   narrowly** — it drops any later same-page heading whose normalized text
+   exactly repeats an earlier one, keyed on `(start_page, text)` alone,
+   with no check of `parent_ref`/scope. Correct for its documented intent
+   (a model re-reporting the identical clause twice, e.g. a truncation-
+   variant duplicate), but a confirmed real gap for a shape neither prior
+   fixture exercised: two *different* sibling items each legitimately
+   having their own child heading with coincidentally identical text
+   (`30d148dd` page 5's two product line-items, each with their own
+   "Technical Specifications" sub-heading — only the first survives
+   today). Left un-authored in gold to match current real behavior, not
+   an oversight.
+
+A third, already-known limitation (`is_subdoc_root_candidate`'s narrow
+trigger vocabulary not recognizing a generic section title with no
+numbered/legal-document keyword as a genuine root candidate — the same
+class as §-level "Opening Sheet" in `bb417471`) also applies throughout
+both new documents: none of "EMD Detail"/"ePBG Detail"/"MII Compliance"/
+etc. independently qualify as root candidates, so gold authors a real
+document-title line ("Bid Document", page 1 of each) as the shared parent
+every section correctly nests under as a sibling.
+
+### 25.2 Live Verification Results
+
+```bash
+docker exec ocr-services-glm-ocr-api-1 python3 scripts/score_reference_index.py \
+  30d148dd-c1e4-4e38-877b-608b5584ff4e --fixture tests/fixtures/gold_index_30d148dd.json \
+  --trials 1 --adaptive-chunking --two-pass --dump-diff /app/scratch_diff_30d.json
+
+docker exec ocr-services-glm-ocr-api-1 python3 scripts/score_reference_index.py \
+  179ab46e-b105-4107-ad38-7a0160724948 --fixture tests/fixtures/gold_index_179ab46e.json \
+  --trials 1 --adaptive-chunking --two-pass --dump-diff /app/scratch_diff_179a.json
+```
+
+| Metric | `30d148dd` (10p) | `179ab46e` (8p) |
+| :--- | :---: | :---: |
+| AI-Only Target Precision | 0.697 | 0.857 |
+| AI-Only Target Recall | **0.338** | **0.167** |
+| AI-Only Scope Accuracy | 0.000 | 0.000 |
+| Merged Precision | 0.853 | 0.947 |
+| Merged Recall | 0.795 | 0.450 |
+| Merged Scope Accuracy | 0.086 | 0.222 |
+| Rule-Only Precision / Recall | 0.143 / 1.000 | 0.333 / 1.000 |
+| Mention Precision / Recall | 0.938 / 1.000 | 0.846 / 1.000 |
+
+Both fixtures score cleanly end-to-end (no crashes, no schema issues),
+confirming the fixtures themselves are structurally valid. The live
+*scores* are a genuine, useful finding in their own right: **the two-pass
+engine currently has low recall on this document type**, concentrated
+almost entirely in the bilingual table-form front matter (pages 1-3 of
+each document — Bid Details/EMD/ePBG/MII/MSE/TReDS) where the model
+frequently extracts zero headings (`30d148dd` chunks 1-3: 0 of 8 gold
+targets matched). Recall recovers sharply once content becomes English
+prose with explicit numbered clauses (`30d148dd` chunk 6, pages 6-10:
+47/54 matched, R=0.870; `179ab46e` chunk 6, pages 6-8: 11/21, R=0.524).
+Not investigated further in this round — flagged as a real, open
+direction for GeM-style document support, distinct from every prior
+fixture's own domain (commercial tenders, arbitration pleadings).
+
 

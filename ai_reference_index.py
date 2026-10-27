@@ -21,6 +21,7 @@ Core design decisions (see the approved plan for the full reasoning):
 """
 
 import asyncio
+import collections
 import difflib
 import json
 import logging
@@ -802,6 +803,15 @@ async def _resolve_parent_via_ai(
 
 _COLON_INTRO_RE = re.compile(r':\s*(?:[-–—]|->)?\s*$|[-–—]\s*>\s*$')
 _SUBLIST_MARKER_RE = re.compile(r'^\s*\(?(?P<marker>[a-zA-Z]|[ivxlcdmIVXLCDM]+)(?:\)\.?|\.)\s+(?P<text>\S.*)$')
+_DISTRIBUTION_INTRO_RE = re.compile(
+    r'(?i)\b(?:copy\s+(?:of\s+the\s+above\s+)?(?:is\s+)?forwarded\s+to|copy\s+to|distribution|endst\.?\s*no)\b'
+)
+_COVER_LETTERHEAD_NOISE_RE = re.compile(
+    r'(?i)(?:[\w\.-]+@[\w\.-]+\.\w+|\b(?:phone|tel|fax|mob|mobile)\s*(?:no\.?|number)?\s*[:\.\-]?\s*[\d\s,-]+'
+    r'|\b(?:block|plot|floor|bhawan|bhavan|complex|sector|pincode|pin\s*code)\b'
+    r'|\b(?:chief\s+general\s+manager|general\s+manager|store\s*&\s*purchase)\b'
+    r'|\b(?:poorv\s+kshetra|vidyut\s+vitaran)\b)'
+)
 
 
 def _is_noise_or_footer(text: str) -> bool:
@@ -811,6 +821,8 @@ def _is_noise_or_footer(text: str) -> bool:
     if re.search(r"\.(?:doc|docx|pdf|txt)\b", s, re.I):
         return True
     if re.match(r"^!\[.*?\]\(.*?\)$", s):
+        return True
+    if ai_indexing.schema._GENERIC_LEGAL_NOISE_RE.match(s):
         return True
     return False
 
@@ -843,7 +855,11 @@ def _recover_colon_sublists_in_chunk(
         found_idx = loc[0]
 
         stripped = h.heading_text.strip()
-        is_colon_h = bool(_COLON_INTRO_RE.search(stripped)) and not stripped.lower().startswith("note:")
+        is_colon_h = (
+            bool(_COLON_INTRO_RE.search(stripped))
+            and not stripped.lower().startswith("note:")
+            and not _DISTRIBUTION_INTRO_RE.search(stripped)
+        )
 
         # Heading itself ends with a colon, or an intro block within the next 2 blocks ends with a colon/specifies documents
         intro_idx = None
@@ -857,11 +873,13 @@ def _recover_colon_sublists_in_chunk(
                     if _is_noise_or_footer(b_raw):
                         continue
                     b_clean = _clean_block(b_raw)
+                    if _DISTRIBUTION_INTRO_RE.search(b_clean):
+                        continue
                     if _COLON_INTRO_RE.search(b_clean) or "contract documents" in b_clean.lower() or "following documents" in b_clean.lower():
                         # Only accept if immediately followed by a sublist marker
                         if chk_idx + 1 < len(h_blocks):
                             nxt_clean = _clean_block(h_blocks[chk_idx + 1])
-                            if _SUBLIST_MARKER_RE.match(nxt_clean):
+                            if _SUBLIST_MARKER_RE.match(nxt_clean) and not _is_noise_or_footer(nxt_clean):
                                 intro_idx = chk_idx
                                 break
         if intro_idx is None:
@@ -886,7 +904,7 @@ def _recover_colon_sublists_in_chunk(
                     continue
                 block_clean = _clean_block(block_raw)
                 m = _SUBLIST_MARKER_RE.match(block_clean)
-                if m:
+                if m and not _is_noise_or_footer(block_clean):
                     consecutive_run.append((p_num, block_clean, m.group("marker")))
                 else:
                     if _COLON_INTRO_RE.search(block_clean) and len(block_clean.split()) <= 20:
@@ -1350,18 +1368,26 @@ async def _ground_and_resolve_chunk(
             # Now that grounding against tables frequently succeeds, this
             # is the only reliable signal — the fp-prefix text scan is kept
             # only as a defensive fallback when block_idx is unavailable.
+            raw_block = blocks[block_idx] if (block_idx is not None and block_idx < len(blocks)) else ""
             if block_idx is not None and block_idx < len(types):
-                is_table = types[block_idx] == "table_cell"
+                is_table = (types[block_idx] == "table_cell") or ("<td>" in raw_block) or ("<tr>" in raw_block)
             else:
                 is_table = False
                 if fp and blocks:
                     for b in blocks:
                         if b.startswith(fp):
-                            if b.strip().startswith(('<table', '<tr')) or '<td>' in b:
+                            if b.strip().startswith(('<table', '<tr')) or '<td>' in b or '<tr>' in b:
                                 is_table = True
                             break
-            if minted_fam in ('subdoc', 'point') and not is_subdoc_root:
-                if is_table or not fp:
+            if is_table:
+                # If content is inside a table, only treat as a subdoc root if it explicitly
+                # starts with a major root container keyword (e.g. "ANNEXURE", "SECTION", "SCHEDULE")
+                if not re.match(r"^\s*(?:#+\s*)?(?:ANNEXURE|SCHEDULE|SECTION|APPENDIX|PART|EXHIBIT|ATTACHMENT)\b", txt, re.IGNORECASE):
+                    continue
+            elif not is_subdoc_root:
+                if not fp:
+                    continue
+                if p_num == 1 and _COVER_LETTERHEAD_NOISE_RE.search(txt):
                     continue
             kept.append(ev)
         filtered_events[p_num] = kept
@@ -1741,9 +1767,9 @@ async def _extract_macro_skeleton(
     indexer: ai_indexing.StructureIndexer,
     cancel_check=None,
     raw_text_by_page: Optional[Dict[int, str]] = None,
-    coarse_chunk_pages: int = 20,
+    coarse_chunk_pages: int = 15,
 ) -> List[Dict[str, Any]]:
-    """Pass 1: Fast macro skeleton extraction using coarse chunks (~20 pages)
+    """Pass 1: Fast macro skeleton extraction using coarse chunks (~15 pages)
     and MACRO_SYSTEM_PROMPT.
     Returns list of macro containers bounded by sibling start_page - 1.
     Refinement 2: Graceful degradation / non-fatal.
@@ -1751,16 +1777,17 @@ async def _extract_macro_skeleton(
     if not pages:
         return []
     total_pages = pages[-1].page_num if pages else 0
-    macro_chunks = ai_indexing.plan_chunks(
+    macro_chunks_queue = collections.deque(ai_indexing.plan_chunks(
         pages,
         max_pages=coarse_chunk_pages,
         max_chars=60000,
         overlap_pages=0,
-    )
+    ))
     raw_macro_headings: List[Any] = []
-    for m_chunk in macro_chunks:
+    while macro_chunks_queue:
         if cancel_check and cancel_check():
             break
+        m_chunk = macro_chunks_queue.popleft()
         annotated_m_chunk = ai_indexing.ChunkPlan(
             pages=[
                 ai_indexing.PageInput(
@@ -1785,6 +1812,36 @@ async def _extract_macro_skeleton(
                 is_macro_pass=True,
                 cancel_check=cancel_check,
             )
+            if m_res.truncated:
+                if len(m_chunk.pages) > 1:
+                    mid = len(m_chunk.pages) // 2
+                    first_half = m_chunk.pages[:mid]
+                    second_half = m_chunk.pages[mid:]
+                    logger.warning(
+                        "Pass 1 macro chunk %s truncated (finish_reason=length); splitting into %s and %s",
+                        m_chunk.page_nums,
+                        [p.page_num for p in first_half],
+                        [p.page_num for p in second_half],
+                    )
+                    c_first = ai_indexing.ChunkPlan(
+                        pages=first_half,
+                        truncated_pages=[],
+                        total_chars=sum(len(p.text or "") for p in first_half),
+                    )
+                    c_second = ai_indexing.ChunkPlan(
+                        pages=second_half,
+                        truncated_pages=[],
+                        total_chars=sum(len(p.text or "") for p in second_half),
+                    )
+                    macro_chunks_queue.appendleft(c_second)
+                    macro_chunks_queue.appendleft(c_first)
+                    continue
+                else:
+                    logger.warning(
+                        "Pass 1 single-page macro chunk %s truncated; cannot split further, accepting result as-is",
+                        m_chunk.page_nums,
+                    )
+
             if m_res.outcome == ai_indexing.ChunkOutcome.OK and m_res.headings:
                 for h in m_res.headings:
                     txt = (h.heading_text or "").strip()
@@ -2001,6 +2058,7 @@ async def reindex_job_with_ai(
     chunk_chars_max_override: Optional[int] = None,
     adaptive_chunking_override: Optional[bool] = None,
     two_pass_override: Optional[bool] = None,
+    end_page: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Full-job AI reindex, chunked, with per-chunk fallback to the
     rule-based detector. `start_page`, when given, is a targeted re-run
@@ -2112,9 +2170,11 @@ async def reindex_job_with_ai(
             resume_from = prior_report["ai_last_persisted_page"] + 1
 
     effective_start = start_page if start_page is not None else resume_from
-    if effective_start is not None:
-        pages = [p for p in all_pages if p["page_num"] >= effective_start]
-        seed_scope = database.get_end_of_page_scope(job_id, effective_start - 1) if effective_start > 1 else None
+    if effective_start is not None or end_page is not None:
+        start_p = effective_start or 1
+        end_p = end_page or 999999
+        pages = [p for p in all_pages if start_p <= p["page_num"] <= end_p]
+        seed_scope = database.get_end_of_page_scope(job_id, start_p - 1) if start_p > 1 else None
     else:
         pages = all_pages
         seed_scope = None
@@ -2147,7 +2207,7 @@ async def reindex_job_with_ai(
             overlap_pages=overlap_pages,
         )
     total_chunks = len(chunks)
-    bounded_stop = start_page is not None
+    bounded_stop = start_page is not None and end_page is None
 
     def _cancel_check():
         return task_queue.is_job_paused(job_id)
@@ -2191,16 +2251,18 @@ async def reindex_job_with_ai(
     carried_headings: Dict[int, List[Any]] = {}
     highest_processed_this_run: int = 0
     rejected_so_far: Set[Tuple[int, str]] = set()
+    chunks_queue = collections.deque(chunks)
+    chunks_processed_count = 0
 
-    for chunk_idx, chunk in enumerate(chunks):
+    while chunks_queue:
+        chunk = chunks_queue.popleft()
         if task_queue.is_job_paused(job_id):
             final_status = "paused"
             break
 
-        if chunk_idx > 0:
+        is_run_first_page = (chunk.pages[0].page_num == pages[0]["page_num"])
+        if not is_run_first_page:
             await asyncio.sleep(config.AI_INDEX_MIN_CHUNK_INTERVAL_SECONDS)
-
-        if chunk_idx > 0:
             first_page_num = chunk.pages[0].page_num
             if first_page_num > 1:
                 seed_scope = database.get_end_of_page_scope(job_id, first_page_num - 1)
@@ -2262,6 +2324,37 @@ async def reindex_job_with_ai(
         if result.outcome == ai_indexing.ChunkOutcome.CANCELLED:
             final_status = "paused"
             break
+
+        if result.truncated:
+            if len(chunk.pages) > 1:
+                mid = len(chunk.pages) // 2
+                first_half = chunk.pages[:mid]
+                second_half = chunk.pages[mid:]
+                logger.warning(
+                    "Micro chunk %s truncated (finish_reason=length); splitting into %s and %s",
+                    chunk.page_nums,
+                    [p.page_num for p in first_half],
+                    [p.page_num for p in second_half],
+                )
+                c_first = ai_indexing.ChunkPlan(
+                    pages=first_half,
+                    truncated_pages=[],
+                    total_chars=sum(len(p.text or "") for p in first_half),
+                )
+                c_second = ai_indexing.ChunkPlan(
+                    pages=second_half,
+                    truncated_pages=[],
+                    total_chars=sum(len(p.text or "") for p in second_half),
+                )
+                chunks_queue.appendleft(c_second)
+                chunks_queue.appendleft(c_first)
+                total_chunks += 1
+                continue
+            else:
+                logger.warning(
+                    "Single-page micro chunk %s truncated; cannot split further, accepting as-is",
+                    chunk.page_nums,
+                )
 
         source = "rule" if result.outcome == ai_indexing.ChunkOutcome.FAILED else "ai"
         events_by_page: Dict[int, List[Dict[str, Any]]] = {}
@@ -2386,8 +2479,8 @@ async def reindex_job_with_ai(
         stopped_early = False
         pages_processed_this_chunk = 0
 
+        overlap_count = sum(1 for p in chunk.pages if p.page_num <= highest_processed_this_run)
         if source == "rule":
-            overlap_count = config.AI_INDEX_CHUNK_OVERLAP_PAGES if chunk_idx > 0 else 0
             if overlap_count > 0 and len(chunk.pages) > overlap_count:
                 last_overlap_page_num = chunk.pages[overlap_count - 1].page_num
                 seed_scope = database.get_end_of_page_scope(job_id, last_overlap_page_num)
@@ -2445,11 +2538,17 @@ async def reindex_job_with_ai(
                     text, new_scope, cands,
                 )
                 if contract_cands:
-                    existing_keys = {c.get("key") for c in cands}
+                    existing_keys = {c.get("key") for c in cands if c.get("key")}
+                    existing_norm_keys = {
+                        k.replace("clause:", "numheading:").replace("point:", "numheading:")
+                        for k in existing_keys
+                    }
                     existing_fps = {c.get("fingerprint") for c in cands if c.get("fingerprint")}
                     to_add = [
                         cc for cc in contract_cands
-                        if cc.get("key") not in existing_keys and cc.get("fingerprint") not in existing_fps
+                        if cc.get("key") not in existing_keys
+                        and cc.get("key").replace("clause:", "numheading:").replace("point:", "numheading:") not in existing_norm_keys
+                        and cc.get("fingerprint") not in existing_fps
                     ]
                     cands = cands + to_add
             else:
@@ -2474,7 +2573,7 @@ async def reindex_job_with_ai(
                 stopped_early = True
                 break
 
-        overlap_count_ai = config.AI_INDEX_CHUNK_OVERLAP_PAGES if (chunk_idx > 0 and source == "ai") else 0
+        overlap_count_ai = overlap_count if source == "ai" else 0
         new_in_chunk = max(pages_processed_this_chunk - overlap_count_ai, 0)
         pages_done_total += new_in_chunk
         duration_seconds = time.perf_counter() - chunk_start_time
@@ -2493,8 +2592,9 @@ async def reindex_job_with_ai(
             # the one to trust whenever this reads 0 but status != "ok".
             "provider_duration_ms": result.duration_ms,
         })
+        chunks_processed_count += 1
         database.update_ai_index_report(
-            job_id, current_chunk=chunk_idx + 1, total_chunks=total_chunks,
+            job_id, current_chunk=chunks_processed_count, total_chunks=total_chunks,
             pages_done=pages_done_total, chunks=chunks_log,
             ai_last_persisted_page=last_persisted_page_num,
         )
