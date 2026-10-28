@@ -282,9 +282,8 @@ describe('StructureTree — tree built from the flat, materialized-path candidat
       <StructureTree referenceStore={store} onSelect={vi.fn()} scopeRanges={scopeRanges} activePage={430} />
     );
 
-    // "Article 2" (depth 1) and "Section 3" (depth 2) are collapsed by
-    // default — visible here with no click only because activePage's
-    // ancestor chain force-expanded them.
+    // "Article 2" (depth 1) is collapsed by default — clicking it expands it to reveal "Section 3"
+    fireEvent.click(screen.getByText('Article 2'));
     expect(screen.getByText('Section 3')).toBeInTheDocument();
 
     const sectionNode = screen.getByTestId('structure-node-root/annexure:a-2/article:2/section:3');
@@ -346,11 +345,11 @@ describe('StructureTree — tree built from the flat, materialized-path candidat
     const { rerender } = render(
       <StructureTree referenceStore={store} onSelect={vi.fn()} scopeRanges={scopeRanges} activePage={430} />
     );
-    // activePage=430 force-expanded Article 2, revealing Section 3.
+    // Clicking Article 2 expands it, revealing Section 3.
+    fireEvent.click(screen.getByText('Article 2'));
     expect(screen.getByText('Section 3')).toBeInTheDocument();
 
-    // Article 2 has a scope range, so its row click now means "jump" — only
-    // its chevron toggles expand/collapse.
+    // Clicking its chevron toggles it closed.
     fireEvent.click(screen.getByTestId('structure-toggle-root/annexure:a-2/article:2'));
     expect(screen.queryByText('Section 3')).not.toBeInTheDocument();
 
@@ -1070,5 +1069,73 @@ describe('StructureTree — Expand all / Collapse all toolbar', () => {
 
     fireEvent.click(screen.getByTestId('structure-expand-all'));
     expect(screen.getByText('Clause 4.1')).toBeInTheDocument();
+  });
+
+  it('clicking one sibling index expands only that index and does not expand another sibling index', () => {
+    const store = storeFromRows({
+      50: {
+        'point:1': [candidate({
+          key: 'point:1', anchor_id: 'p1', page: 50,
+          scope_chain: [
+            { family: 'subdoc', key: 'subdoc:judgment', label: 'JUDGMENT' },
+            { family: 'subdoc', key: 'subdoc:conclusion', label: 'Conclusion' },
+          ],
+        })],
+      },
+      60: {
+        'point:2': [candidate({
+          key: 'point:2', anchor_id: 'p2', page: 60,
+          scope_chain: [
+            { family: 'subdoc', key: 'subdoc:judgment', label: 'JUDGMENT' },
+            { family: 'subdoc', key: 'subdoc:memo-of-costs', label: 'Memo of Costs' },
+          ],
+        })],
+      },
+    });
+    const scopeRanges = [
+      { key: 'subdoc:judgment', scope_key: '', depth: 0, start_page: 40, end_page: 71 },
+      { key: 'subdoc:conclusion', scope_key: 'subdoc:judgment', depth: 1, start_page: 50, end_page: 60 },
+      { key: 'subdoc:memo-of-costs', scope_key: 'subdoc:judgment', depth: 1, start_page: 60, end_page: 61 },
+    ];
+    const onJumpContainer = vi.fn();
+    const { rerender } = render(
+      <StructureTree
+        referenceStore={store}
+        onSelect={vi.fn()}
+        onJumpContainer={onJumpContainer}
+        scopeRanges={scopeRanges}
+        activePage={50}
+      />
+    );
+
+    // JUDGMENT (depth 0) is expanded. Conclusion and Memo of Costs (depth 1) are visible.
+    expect(screen.getByText('Conclusion')).toBeInTheDocument();
+    expect(screen.getByText('Memo of Costs')).toBeInTheDocument();
+
+    // Conclusion's child is not visible yet (collapsed by default).
+    expect(screen.queryByTestId('structure-node-root/subdoc:judgment/subdoc:conclusion/point:1')).not.toBeInTheDocument();
+
+    // Clicking Memo of Costs jumps to page 60
+    fireEvent.click(screen.getByText('Memo of Costs'));
+    expect(onJumpContainer).toHaveBeenCalledWith({ startPage: 60, endPage: 61, label: 'Memo of Costs' });
+
+    // Rerender with activePage=60 (as ViewerPanel does on page change)
+    rerender(
+      <StructureTree
+        referenceStore={store}
+        onSelect={vi.fn()}
+        onJumpContainer={onJumpContainer}
+        scopeRanges={scopeRanges}
+        activePage={60}
+      />
+    );
+
+    // Conclusion's child MUST STILL NOT be visible (it did not expand)!
+    expect(screen.queryByTestId('structure-leaf-p1')).not.toBeInTheDocument();
+
+    // But clicking Conclusion directly DOES expand it
+    fireEvent.click(screen.getByText('Conclusion'));
+    expect(onJumpContainer).toHaveBeenCalledWith({ startPage: 50, endPage: 60, label: 'Conclusion' });
+    expect(screen.getByTestId('structure-leaf-p1')).toBeInTheDocument();
   });
 });

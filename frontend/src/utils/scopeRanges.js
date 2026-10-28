@@ -27,13 +27,25 @@ export function buildRangeIndex(ranges) {
 
 // The *deepest* range containing `page` (depth is the correctness-bearing
 // tie-break, not array order) — used both for proximity-ranking fallback
-// (getPageScopeKey) and for the sidebar's active-page focus.
+// (getPageScopeKey) and for the sidebar's active-page focus. On boundary
+// pages where an outgoing section ends on `page` and a new section begins
+// on `page`, the range starting on this page takes precedence over the closing range.
 export function findRangeForPage(ranges, page) {
   let best = null;
   for (const r of ranges || []) {
     if (page >= r.start_page && page <= r.end_page) {
-      if (!best || r.depth > best.depth) {
+      if (!best) {
         best = r;
+        continue;
+      }
+      const rStarts = r.start_page === page;
+      const bestStarts = best.start_page === page;
+      if (rStarts && !bestStarts) {
+        best = r;
+      } else if (rStarts === bestStarts) {
+        if (r.depth > best.depth) {
+          best = r;
+        }
       }
     }
   }

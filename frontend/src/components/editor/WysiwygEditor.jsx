@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import EditorToolbar from './EditorToolbar';
 import { buildEditorExtensions, getMarkdown, normalizeForComparison, sanitizeEmbeddedHtml } from './MarkdownBridge';
+import { SearchPluginKey } from './SearchHighlightExtension';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -25,6 +26,8 @@ export default function WysiwygEditor({
   onNodeFocused,
   onSaveStatusChange,
   zoomLevel = 1,
+  searchQuery = '',
+  searchMatchIndex = -1,
 }) {
   const [sourceMode, setSourceMode] = useState(false);
   const [sourceText, setSourceText] = useState(value || '');
@@ -92,6 +95,43 @@ export default function WysiwygEditor({
   useEffect(() => () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
   }, []);
+
+  // Synchronize external search query and active match index to TipTap's ProseMirror decorations
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    try {
+      if (!editor.view) return;
+      const pluginState = SearchPluginKey.getState(editor.state);
+      const targetQuery = searchQuery || '';
+      const targetIndex = searchMatchIndex ?? -1;
+
+      if (pluginState && (pluginState.query !== targetQuery || pluginState.activeIndex !== targetIndex)) {
+        const tr = editor.state.tr.setMeta(SearchPluginKey, {
+          query: targetQuery,
+          activeIndex: targetIndex,
+        });
+        tr.setMeta('addToHistory', false);
+        editor.view.dispatch(tr);
+
+        if (targetQuery && targetIndex >= 0) {
+          requestAnimationFrame(() => {
+            try {
+              if (editor && !editor.isDestroyed && editor.view?.dom) {
+                const activeEl = editor.view.dom.querySelector('.search-match-active');
+                if (activeEl) {
+                  activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+              }
+            } catch (e) {
+              // Ignore if unmounted during animation frame
+            }
+          });
+        }
+      }
+    } catch (err) {
+      // Editor view may not be mounted yet
+    }
+  }, [editor, searchQuery, searchMatchIndex]);
 
   useEffect(() => {
     if (!editor || !onNodeFocused) return undefined;

@@ -21,6 +21,24 @@ import StudioFloatingHud from './studio/StudioFloatingHud';
 import SplitResizer from './studio/SplitResizer';
 import DualPdfCompare from './studio/DualPdfCompare';
 import Toast from './Toast';
+import { apiFetch } from '../utils/api';
+
+function findMatchesInText(text, query) {
+  if (!text || !query) return [];
+  const q = query.toLowerCase();
+  const lower = text.toLowerCase();
+  const matches = [];
+  let index = 0;
+  while ((index = lower.indexOf(q, index)) !== -1) {
+    matches.push({
+      start: index,
+      end: index + q.length,
+      snippet: text.slice(Math.max(0, index - 20), Math.min(text.length, index + q.length + 20)),
+    });
+    index += q.length;
+  }
+  return matches;
+}
 
 // Presentational only — the thresholds themselves live entirely on the backend
 // (confidence.py); this just maps the already-computed tier string to a label/color
@@ -289,6 +307,97 @@ export default function ViewerPanel({
   // pageMap lookup below. Always the global physical page number.
   const currentPdfPage = pdfPageOverride || 1;
 
+  // Full-document pages cache for search: fetches complete pages_data once when search is opened
+  const [fullDocPages, setFullDocPages] = useState(null);
+  const fullDocJobIdRef = useRef(null);
+
+  useEffect(() => {
+    if (!searchOpen || !jobDetails?.job_id) return;
+    if (fullDocJobIdRef.current === jobDetails.job_id && fullDocPages) return;
+
+    let cancelled = false;
+    apiFetch(`/api/jobs/${jobDetails.job_id}?accept_partial=true`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.pages_data) {
+          fullDocJobIdRef.current = jobDetails.job_id;
+          setFullDocPages(data.pages_data);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchOpen, jobDetails?.job_id, fullDocPages]);
+
+  useEffect(() => {
+    setFullDocPages(null);
+    fullDocJobIdRef.current = null;
+  }, [jobDetails?.job_id]);
+
+  const searchMatchList = useMemo(() => {
+    if (!searchOpen || !searchQuery || !searchQuery.trim()) return [];
+    const pagesToSearch = fullDocPages && fullDocPages.length > 0 ? fullDocPages : pages;
+    const q = searchQuery.trim();
+    const list = [];
+
+    const sortedPages = [...pagesToSearch].sort(
+      (a, b) => (a.page || a.page_num || 0) - (b.page || b.page_num || 0)
+    );
+
+    for (const p of sortedPages) {
+      const pageNum = p.page || p.page_num;
+      const text = p.formatted_text || p.text || '';
+      const occurrences = findMatchesInText(text, q);
+      occurrences.forEach((occ, idxInPage) => {
+        list.push({
+          page: pageNum,
+          indexInPage: idxInPage,
+          offset: occ.start,
+          snippet: occ.snippet,
+        });
+      });
+    }
+    return list;
+  }, [searchOpen, searchQuery, fullDocPages, pages]);
+
+  const totalMatches = searchMatchList.length;
+
+  // Initialize or reset match index to the first match on or after current page when query or match list changes
+  useEffect(() => {
+    if (!searchMatchList.length) {
+      setSearchMatchIndex(0);
+      return;
+    }
+    const idx = searchMatchList.findIndex((m) => m.page >= currentPdfPage);
+    setSearchMatchIndex(idx >= 0 ? idx : 0);
+  }, [searchQuery, searchMatchList.length]);
+
+  function handleSearchNext() {
+    if (!searchMatchList.length) return;
+    const nextIdx = (searchMatchIndex + 1) % searchMatchList.length;
+    setSearchMatchIndex(nextIdx);
+    const target = searchMatchList[nextIdx];
+    if (target && target.page !== currentPdfPage) {
+      handlePdfPageChange(target.page);
+    }
+  }
+
+  function handleSearchPrev() {
+    if (!searchMatchList.length) return;
+    const prevIdx = (searchMatchIndex - 1 + searchMatchList.length) % searchMatchList.length;
+    setSearchMatchIndex(prevIdx);
+    const target = searchMatchList[prevIdx];
+    if (target && target.page !== currentPdfPage) {
+      handlePdfPageChange(target.page);
+    }
+  }
+
+  const activeMatch = searchMatchList[searchMatchIndex];
+  const activeMatchInCurrentPage =
+    activeMatch && activeMatch.page === currentPdfPage ? activeMatch.indexInPage : -1;
+
   let resultHtml;
   let currentPageBlock = null;
   if (!pages.length) {
@@ -536,7 +645,9 @@ export default function ViewerPanel({
           searchQuery={searchQuery}
           onSearchQueryChange={setSearchQuery}
           matchIndex={searchMatchIndex}
-          totalMatches={0}
+          totalMatches={totalMatches}
+          onSearchNext={handleSearchNext}
+          onSearchPrev={handleSearchPrev}
           bothPanesSearch={bothPanesSearch}
           onBothPanesSearchChange={setBothPanesSearch}
         />
@@ -780,6 +891,9 @@ export default function ViewerPanel({
                               showPageNav={false}
                               showZoomControls={false}
                               onZoomLevelChange={setPdfZoomLevel}
+                              searchQuery={searchOpen ? searchQuery : ''}
+                              activeMatchIndex={activeMatchInCurrentPage}
+                              bothPanesSearch={bothPanesSearch}
                             />
                           </div>
                         </>
@@ -835,6 +949,8 @@ export default function ViewerPanel({
                             onChange={(md) => onSavePageText && onSavePageText(currentPageBlock.page, md)}
                             onSaveStatusChange={setEditorSaveStatus}
                             zoomLevel={editorZoom}
+                            searchQuery={searchOpen ? searchQuery : ''}
+                            searchMatchIndex={activeMatchInCurrentPage}
                           />
                         </div>
                       </div>
@@ -1003,6 +1119,8 @@ export default function ViewerPanel({
                       value={currentPageBlock.pageText}
                       onChange={(md) => onSavePageText && onSavePageText(currentPageBlock.page, md)}
                       onSaveStatusChange={setEditorSaveStatus}
+                      searchQuery={searchOpen ? searchQuery : ''}
+                      searchMatchIndex={activeMatchInCurrentPage}
                     />
                   </div>
                 </div>

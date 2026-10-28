@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import WysiwygEditor from './WysiwygEditor';
 
 describe('WysiwygEditor — basic rendering', () => {
@@ -172,5 +172,72 @@ describe('WysiwygEditor — re-syncing when the value prop changes externally', 
     rerender(<WysiwygEditor value={'Page two text'} onChange={vi.fn()} />);
     expect(await screen.findByText('Page two text')).toBeInTheDocument();
     expect(screen.queryByText('Page one text')).not.toBeInTheDocument();
+  });
+});
+
+describe('WysiwygEditor — search highlighting', () => {
+  it('applies search-match class to matches and search-match-active to active match', async () => {
+    const { rerender } = render(
+      <WysiwygEditor
+        value={'This has SCC alpha and SCC beta in the text.'}
+        onChange={vi.fn()}
+        searchQuery="SCC"
+        searchMatchIndex={0}
+      />
+    );
+    await screen.findByTestId('wysiwyg-editor');
+
+    await waitFor(() => {
+      const matches = document.querySelectorAll('.search-match');
+      expect(matches.length).toBe(2);
+      expect(matches[0]).toHaveClass('search-match-active');
+      expect(matches[1]).not.toHaveClass('search-match-active');
+    });
+
+    // Advance to next match index
+    rerender(
+      <WysiwygEditor
+        value={'This has SCC alpha and SCC beta in the text.'}
+        onChange={vi.fn()}
+        searchQuery="SCC"
+        searchMatchIndex={1}
+      />
+    );
+
+    await waitFor(() => {
+      const matches = document.querySelectorAll('.search-match');
+      expect(matches.length).toBe(2);
+      expect(matches[0]).not.toHaveClass('search-match-active');
+      expect(matches[1]).toHaveClass('search-match-active');
+    });
+  });
+
+  it('clears highlights when searchQuery is cleared', async () => {
+    const { rerender } = render(
+      <WysiwygEditor
+        value={'Some text with target word.'}
+        onChange={vi.fn()}
+        searchQuery="target"
+        searchMatchIndex={0}
+      />
+    );
+    await screen.findByTestId('wysiwyg-editor');
+
+    await waitFor(() => {
+      expect(document.querySelectorAll('.search-match').length).toBe(1);
+    });
+
+    rerender(
+      <WysiwygEditor
+        value={'Some text with target word.'}
+        onChange={vi.fn()}
+        searchQuery=""
+        searchMatchIndex={-1}
+      />
+    );
+
+    await waitFor(() => {
+      expect(document.querySelectorAll('.search-match').length).toBe(0);
+    });
   });
 });

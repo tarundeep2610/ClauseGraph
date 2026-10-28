@@ -364,16 +364,14 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
   const moveId = nodeMoveId(node);
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: moveId });
 
-  // Forces this node open when it becomes part of the active-page's
-  // ancestor chain, or when a drag has been hovering over it long enough to
+  // Forces this node open when a drag has been hovering over it long enough to
   // auto-reveal its children (see StructureTree's handleDragOver) — but
-  // only in reaction to a genuinely new activePathIds/dragExpandIds value,
-  // never on every render, so a reader who manually collapses a node keeps
-  // it collapsed until one of those actually changes again.
+  // never automatically in the background on activePage changes, so
+  // expanding is strictly driven by the user clicking nodes.
   useEffect(() => {
-    if (activePathIds?.has(node.id) || dragExpandIds?.has(moveId)) setExpanded(true);
+    if (dragExpandIds?.has(moveId)) setExpanded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePathIds, dragExpandIds]);
+  }, [dragExpandIds]);
 
   // "Collapse all" / "Expand all" — each is a counter bumped by its own
   // toolbar button; any change (not just a first truthy value) means "do it
@@ -431,8 +429,14 @@ function TreeNode({ node, depth, onSelect, onSelectContainer, onOpenReference, o
   function handleRowClick() {
     if (primaryLeaf) {
       if (onSelect) onSelect(primaryLeaf);
+      if (expandable && !expanded) {
+        setExpanded(true);
+      }
     } else if (onJumpContainer) {
       onJumpContainer({ startPage: jumpRange.startPage, endPage: jumpRange.endPage, label: node.label });
+      if (expandable && !expanded) {
+        setExpanded(true);
+      }
     } else {
       setExpanded((e) => !e);
     }

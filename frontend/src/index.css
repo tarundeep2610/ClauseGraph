@@ -1379,6 +1379,20 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .btn-search-close:hover { color: var(--text); }
 
+/* In-Editor Search Matches */
+.search-match {
+  background-color: rgba(255, 220, 40, 0.45);
+  border-radius: 2px;
+  padding: 1px 0;
+}
+.search-match-active {
+  background-color: #ff9800 !important;
+  color: #111 !important;
+  border-radius: 2px;
+  outline: 2px solid #e65100;
+  box-shadow: 0 0 4px rgba(230, 81, 0, 0.6);
+}
+
 /* ─── Studio Rail (48px action bar) ────────────────────────────────────── */
 
 .studio-main-body {
