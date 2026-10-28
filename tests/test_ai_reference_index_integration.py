@@ -80,7 +80,7 @@ async def test_fallback_matrix_ai_then_rule_with_continuous_range(monkeypatch):
 
     monkeypatch.setattr(ai_indexing.StructureIndexer, "extract_structure_for_chunk", _fake_extract)
 
-    result = await ai_reference_index.reindex_job_with_ai(job_id)
+    result = await ai_reference_index.reindex_job_with_ai(job_id, two_pass_override=False)
     assert result["status"] == "done"
     assert call_count["n"] == 2
 
@@ -360,7 +360,7 @@ async def test_overlap_pages_override_zero_wins_over_a_nonzero_default(monkeypat
 
     monkeypatch.setattr(ai_indexing.StructureIndexer, "extract_structure_for_chunk", _fake_extract)
 
-    result = await ai_reference_index.reindex_job_with_ai(job_id, overlap_pages_override=0)
+    result = await ai_reference_index.reindex_job_with_ai(job_id, overlap_pages_override=0, two_pass_override=False)
     assert result["status"] == "done"
     # Strictly disjoint chunks (no repeated boundary pages) — if the 0
     # override were discarded in favor of the config default of 2, chunk 2
@@ -420,7 +420,7 @@ async def test_paused_run_stops_between_chunks_and_resumes_without_reprocessing(
     monkeypatch.setattr(ai_indexing.StructureIndexer, "extract_structure_for_chunk", _fake_extract)
 
     try:
-        result = await ai_reference_index.reindex_job_with_ai(job_id)
+        result = await ai_reference_index.reindex_job_with_ai(job_id, two_pass_override=False)
         assert result["status"] == "paused"
         assert processed_chunks == [1, 2, 3]  # stopped before starting chunk 4
 
@@ -431,7 +431,7 @@ async def test_paused_run_stops_between_chunks_and_resumes_without_reprocessing(
         # Resume: un-pause and re-invoke with no start_page — must pick up
         # from page 4, NOT reprocess 1-3.
         task_queue._paused_jobs.discard(job_id)
-        result2 = await ai_reference_index.reindex_job_with_ai(job_id)
+        result2 = await ai_reference_index.reindex_job_with_ai(job_id, two_pass_override=False)
         assert result2["status"] == "done"
         assert processed_chunks == [1, 2, 3, 4], "resume must not reprocess already-completed chunks"
     finally:
@@ -459,7 +459,7 @@ async def test_single_page_retry_stops_early_when_scope_reconverges(monkeypatch)
                                      provider="gemini", model="gemini-2.5-flash")
 
     monkeypatch.setattr(ai_indexing.StructureIndexer, "extract_structure_for_chunk", _fake_extract)
-    await ai_reference_index.reindex_job_with_ai(job_id)
+    await ai_reference_index.reindex_job_with_ai(job_id, two_pass_override=False)
 
     processed = []
     orig = ai_indexing.StructureIndexer.extract_structure_for_chunk
@@ -472,7 +472,7 @@ async def test_single_page_retry_stops_early_when_scope_reconverges(monkeypatch)
 
     # Retry page 2 — its text/scope outcome is unchanged, so this must stop
     # immediately rather than walking through page 3 as well.
-    result = await ai_reference_index.reindex_job_with_ai(job_id, start_page=2)
+    result = await ai_reference_index.reindex_job_with_ai(job_id, start_page=2, two_pass_override=False)
     assert processed == [2]
 
 
@@ -906,7 +906,7 @@ async def test_ai_reported_reproduced_text_continuation_line_also_suppressed(mon
                                      headings=headings, provider="gemini", model="gemini-2.5-flash")
 
     monkeypatch.setattr(ai_indexing.StructureIndexer, "extract_structure_for_chunk", _fake_extract)
-    result = await ai_reference_index.reindex_job_with_ai(job_id)
+    result = await ai_reference_index.reindex_job_with_ai(job_id, two_pass_override=False)
     assert result["status"] == "done"
 
     delta = database.get_reference_targets_since(job_id, 0)
@@ -966,7 +966,7 @@ async def test_pleading_points_via_ai_flag_skips_the_regex_augmentation_and_uses
                                      headings=headings, provider="gemini", model="gemini-2.5-flash")
 
     monkeypatch.setattr(ai_indexing.StructureIndexer, "extract_structure_for_chunk", _fake_extract)
-    result = await ai_reference_index.reindex_job_with_ai(job_id)
+    result = await ai_reference_index.reindex_job_with_ai(job_id, two_pass_override=False)
     assert result["status"] == "done"
     assert seen_prompts == [True]  # confirms the flag actually reached the prompt-building call
 
@@ -1013,7 +1013,7 @@ async def test_pleading_points_via_ai_is_the_default_when_engine_params_omits_it
                                      headings=headings, provider="gemini", model="gemini-2.5-flash")
 
     monkeypatch.setattr(ai_indexing.StructureIndexer, "extract_structure_for_chunk", _fake_extract)
-    result = await ai_reference_index.reindex_job_with_ai(job_id)
+    result = await ai_reference_index.reindex_job_with_ai(job_id, two_pass_override=False)
     assert result["status"] == "done"
     assert seen_prompts == [True]
 

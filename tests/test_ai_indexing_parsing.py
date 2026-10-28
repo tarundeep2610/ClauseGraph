@@ -132,10 +132,11 @@ def test_one_overlong_heading_does_not_discard_the_rest_of_the_chunk():
 
     Uses a single-segment numbered paragraph (pleading-point shaped, not a
     multi-segment decimal contract clause) so normalize_chunk's narrative-
-    prose filter (added later, see test_overlong_narrative_prose_paragraph_
-    is_dropped_not_truncated below) doesn't also fire here — this test is
-    specifically about the truncate-vs-discard-the-whole-array bug, not
-    about which shapes count as narrative prose."""
+    prose filter (added later, see
+    test_overlong_multisegment_decimal_clause_is_truncated_not_dropped
+    below) doesn't also fire here — this test is specifically about the
+    truncate-vs-discard-the-whole-array bug, not about which shapes count
+    as narrative prose."""
     overlong = "16. " + ("It is further argued that the delay was attributable to the respondent. " * 8)
     raw = json.dumps({"headings": [
         {"heading_text": "ANNEXURE A-1", "start_page": 1, "level": 1},
@@ -148,15 +149,44 @@ def test_one_overlong_heading_does_not_discard_the_rest_of_the_chunk():
     assert report.dropped_invalid == 0
 
 
-def test_overlong_narrative_prose_paragraph_is_dropped_not_truncated():
+def test_overlong_multisegment_decimal_clause_is_truncated_not_dropped():
     """Fix #4 ('Narrative Prose vs. Outline Paragraph Discrimination',
-    AI_INDEXING_ACCURACY_INVESTIGATION.md §11.2): a multi-segment decimal
-    clause (here "3.4.1 ...") that reads as a verb-bearing body paragraph
-    (>15 words) is dropped entirely by normalize_chunk, not truncated and
-    kept — unlike the single-segment pleading-point case above, which is
-    legitimately a heading even when long. The other two genuine headings
-    in the same response must still survive untouched."""
+    AI_INDEXING_ACCURACY_INVESTIGATION.md §11.2) originally dropped any
+    verb-bearing body paragraph >15 words outright, including multi-segment
+    decimal clauses (here "3.4.1 ..."). Commit 82bc905 deliberately changed
+    this for decimal clauses specifically: "In contract/tender tables,
+    decimal clauses often include full sentence text. Rather than dropping
+    valid clauses like 24.2.1, keep them with trimmed label" — so
+    normalize_chunk now truncates these to their first 10 words and keeps
+    them, rather than discarding them. Unnumbered narrative prose with no
+    recognized outline keyword is still dropped outright — see
+    test_unnumbered_narrative_prose_paragraph_without_outline_keyword_is_dropped
+    below. The other two genuine headings in the same response must still
+    survive untouched."""
     overlong = "3.4.1 " + ("The contractor is responsible for ensuring compliance. " * 10)
+    raw = json.dumps({"headings": [
+        {"heading_text": "ANNEXURE A-1", "start_page": 1, "level": 1},
+        {"heading_text": overlong, "start_page": 5, "level": 2},
+        {"heading_text": "4.0 SETTLEMENT OF DISPUTES", "start_page": 6, "level": 1},
+    ]})
+    chunk, _report = parse_structure_response(raw, expected_pages=[1, 5, 6])
+    assert [h.heading_text for h in chunk.headings] == [
+        "ANNEXURE A-1",
+        "3.4.1 The contractor is responsible for ensuring compliance. The contractor",
+        "4.0 SETTLEMENT OF DISPUTES",
+    ]
+
+
+def test_unnumbered_narrative_prose_paragraph_without_outline_keyword_is_dropped():
+    """Unlike the multi-segment decimal clause above, a body paragraph with
+    no leading number at all and no recognized outline keyword (annexure/
+    schedule/appendix/article/section/clause) is still narrative prose, not
+    a heading — normalize_chunk drops it entirely once it exceeds 15
+    words."""
+    overlong = (
+        "The contractor shall at all times ensure that the site remains "
+        "secure and fully compliant with every applicable regulation."
+    )
     raw = json.dumps({"headings": [
         {"heading_text": "ANNEXURE A-1", "start_page": 1, "level": 1},
         {"heading_text": overlong, "start_page": 5, "level": 2},

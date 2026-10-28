@@ -1744,8 +1744,9 @@ def _pleading_scope_active(nested_stack: List[Dict[str, str]]) -> bool:
     numbered contract container (Annexure/Article/Section), where a "2.1"
     is a real numbered clause, not a pleading point.
 
-    Walks inward-to-outward and stops at the NEAREST subdoc boundary — same
-    fix already applied to _ground_scope_active for the identical bug: the
+    Walks inward-to-outward and stops at the NEAREST subdoc (or explicit
+    commercial-container-family) boundary — never scans past it — same fix
+    already applied to _ground_scope_active for the identical bug: the
     original unconditionally checked nested_stack[0] (the document's root),
     which is "subdoc" family for nearly every document (e.g. "JUDGMENT"),
     so this returned True almost everywhere, 90+ pages deep into an
@@ -1754,25 +1755,28 @@ def _pleading_scope_active(nested_stack: List[Dict[str, str]]) -> bool:
     minted as point:1..point:22, because the TRUE root was "JUDGMENT" and
     nothing stopped inheritance at the nearer, unrelated subdoc boundaries
     in between). A nearest subdoc boundary matching
-    _NON_PLEADING_SUBDOC_LABELS_RE is a neutral/excluded container and
-    stops inheritance from anything further out, same mechanism as
-    _ground_scope_active, inverted (exclusion list, not allow-list — see
-    that constant's docstring for why)."""
-    # If any container in the ancestor chain is an explicit non-pleading document
-    # (e.g. Contract Agreement, Purchase Order, Section-I through Section-XX, Annexures, Schedules),
-    # then child subdocs inside it are commercial clauses, never court pleadings.
-    if any(
-        s.get("family") in ("annexure", "section", "article", "contract", "schedule", "appendix")
-        or s.get("key", "").startswith(("annexure:", "section:", "article:", "contract:", "schedule:", "appendix:"))
-        or _NON_PLEADING_SUBDOC_LABELS_RE.search(s.get("label") or "")
-        for s in nested_stack
-    ):
-        return False
+    _NON_PLEADING_SUBDOC_LABELS_RE, or a nearest ancestor whose own family
+    IS one of the explicit commercial-container families (Annexure/Section/
+    Article/Contract/Schedule/Appendix, pushed as a real rank family by
+    mint_key_for_heading rather than a generic "subdoc"), is a
+    neutral/excluded container and stops inheritance from anything further
+    out — same mechanism as _ground_scope_active, inverted (exclusion list,
+    not allow-list — see that constant's docstring for why). An ancestor
+    further out than the nearest boundary never matters, even if it is
+    itself an excluded commercial family — an intervening, non-excluded
+    subdoc (or a "point" leaf, i.e. we're already nested under a pleading
+    point) is what the nearest boundary actually means, and takes
+    precedence."""
     for s in reversed(nested_stack):
         if s.get("family") == "point":
             return True
         if s.get("family") == "subdoc":
             return not bool(_NON_PLEADING_SUBDOC_LABELS_RE.search(s.get("label") or ""))
+        if (
+            s.get("family") in ("annexure", "section", "article", "contract", "schedule", "appendix")
+            or s.get("key", "").startswith(("annexure:", "section:", "article:", "contract:", "schedule:", "appendix:"))
+        ):
+            return False
     return False
 
 

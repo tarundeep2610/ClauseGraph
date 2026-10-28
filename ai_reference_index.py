@@ -1381,8 +1381,21 @@ async def _ground_and_resolve_chunk(
                             break
             if is_table:
                 # If content is inside a table, only treat as a subdoc root if it explicitly
-                # starts with a major root container keyword (e.g. "ANNEXURE", "SECTION", "SCHEDULE")
-                if not re.match(r"^\s*(?:#+\s*)?(?:ANNEXURE|SCHEDULE|SECTION|APPENDIX|PART|EXHIBIT|ATTACHMENT)\b", txt, re.IGNORECASE):
+                # starts with a major root container keyword (e.g. "ANNEXURE", "SECTION", "SCHEDULE") —
+                # unless it was already forced to leaf-only status via table_row_sourced/
+                # ai_row_merged_grounded (see _GROUNDING_PUSH_BLOCKING_REASONS) AND mints as a
+                # genuinely typed/numbered heading (minted_fam != "subdoc", e.g. "numheading" for
+                # "4.0 SETTLEMENT OF DISPUTES") rather than the generic numberless/keywordless
+                # "subdoc" catch-all — a bare marker ("1", "1.1.") or an ordinary numberless phrase
+                # ("Summary Price Proposal") that merely happens to sit in a table cell both also
+                # mint as "subdoc" and were never real heading candidates, so they must still fall
+                # through to pruning here, same as before this exemption.
+                reasons_so_far = ev.get('heading_confidence_reasons') or []
+                already_vetted_leaf = (
+                    minted_fam != "subdoc"
+                    and ("table_row_sourced" in reasons_so_far or "ai_row_merged_grounded" in reasons_so_far)
+                )
+                if not already_vetted_leaf and not re.match(r"^\s*(?:#+\s*)?(?:ANNEXURE|SCHEDULE|SECTION|APPENDIX|PART|EXHIBIT|ATTACHMENT)\b", txt, re.IGNORECASE):
                     continue
             elif not is_subdoc_root:
                 if not fp:
