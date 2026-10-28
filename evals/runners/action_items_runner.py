@@ -82,6 +82,11 @@ async def run_action_items_trial(
         scores = evaluate_job_action_items(dup_id, gold_items, page_from=page_from, page_to=page_to)
         scores["trial_idx"] = trial_idx
         scores["status"] = report.get("status")
+
+        found = report.get("items_found", 0)
+        dropped = report.get("items_dropped_ungrounded", 0)
+        total = found + dropped
+        scores["grounding_rate"] = (found / total) if total > 0 else 1.0
         return scores
     finally:
         cleanup_duplicate_job(dup_id)
@@ -107,7 +112,7 @@ async def run_action_items_benchmark(
         results.append(scores)
 
     summary_spread = {}
-    for metric in ("precision", "recall", "f1"):
+    for metric in ("precision", "recall", "f1", "grounding_rate"):
         vals = [r[metric] for r in results if metric in r]
         if vals:
             summary_spread[metric] = {

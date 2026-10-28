@@ -1065,6 +1065,25 @@ WHAT COUNTS AS AN ACTIONABLE ITEM (four types)
    none of them is a prayer, a registry direction, or a disposition; do not
    report them just because they stand out from their neighbors.
 
+BILINGUAL TENDER DOCUMENTS (HINDI / ENGLISH):
+Many Indian public procurement tenders (including GeM bids) print headings and clauses bilingually: Hindi first, then English.
+- ALWAYS extract the ENGLISH text snippet for "evidence_quote" and "item_text" whenever English text is available.
+- NEVER extract the Hindi version and the English version as two separate items — report each requirement ONCE, in English.
+- If a clause or table row is printed in both Hindi and English (e.g. "(a). जेम की शर्तों के अनुसार ईएमडी छूट... / (a). EMD EXEMPTION: The bidder seeking EMD exemption..."), ALWAYS quote the English sentence ("The bidder seeking EMD exemption, must submit the valid supporting document...").
+
+LITIGATION ARGUMENTS AND HISTORICAL RECITALS IN LEGAL/ARBITRATION APPEALS ARE NOT OBLIGATIONS:
+In court petitions, appeals, and arbitration proceedings, large stretches of
+text record the parties' past arguments, factual contentions, or arbitral findings:
+  "The learned counsel for the appellant submitted/argued/contended that..."
+  "The learned Arbitrator held/observed that the claimant was entitled to..."
+  "The respondent filed reply denying the averments..."
+These are narrative recitals of past events, NOT future actionable obligations.
+DO NOT extract historical legal arguments or advocate submissions as obligations.
+ONLY extract from litigation filings:
+1. Prayers for relief ("it is prayed that the award dated ... may kindly be set aside / stayed / allowed") -> type: "other"
+2. Court operational directions or dispositions ("the objection petition is dismissed with costs", "the record be kept till expiry of limitation") -> type: "other"
+3. Substantive contract clauses in attached contract agreements/SCC (testing milestones, bank guarantee deadlines, stage penalties, liquidated damages) -> type: "deadline", "condition", or "obligation".
+
 REPORT, DON'T OMIT, WHEN UNCERTAIN — classify as your best-guess type
 (including "other") rather than skipping an item because you're unsure
 which of the four it is.
@@ -1084,6 +1103,8 @@ specification, not an independently-trackable compliance duty.
     "No subcontracting of any material part of the core contractual
      responsibility without prior written approval of the Purchaser."
      (approval gate)
+    "The contractor shall commission and test 5 units of 33kV transformers
+     within 6 months of LOA." (concrete deliverable + milestone deadline)
   NOT REPORTABLE (feature/requirements narrative, no deadline/gate/trigger
   of its own — do not report, even though it says "shall"):
     "The modernized GIS shall be integrated particularly with Oracle EBS
@@ -1091,6 +1112,11 @@ specification, not an independently-trackable compliance duty.
      works/assets can be linked with project creation."
     "The target GIS shall support role-based access, responsive/mobile
      usage, layer filtering, spatial search, asset/work drill-down."
+    "The substation contains 5 existing units of 33kV transformers installed
+     in 2018." (passive background / baseline description, not a tender obligation)
+    "Trade Receivables Discounting System (TReDS) is available as preferred
+     mode of payment." (payment facilitation mechanism, not an obligation/condition)
+    "Table 1: Summary of Bidding Parameters" (administrative table header / noise)
   The test: could a project manager put this exact sentence on a tracker
   with its own due date or trigger, distinct from "build the system per
   spec"? If not, it's scope narrative, not an actionable item.
@@ -1223,7 +1249,7 @@ obligation elsewhere in the document.
     "Earnest Money Deposit (EMD) of INR 1,00,000"
     "End User and Technical Support availability schedule"
   REPORTABLE (the same fact, stated as something the reader must do):
-    "EMD of INR 1,00,000 must be submitted online by 15.03.2025" (report
+    "Environmental deposit must be furnished within 14 days of award notice" (report
      as a "deadline", using the figure inside item_text/date_text, not as
      a standalone "obligation" item about the figure itself)
 
@@ -1467,6 +1493,8 @@ WHAT IS NOT AN ACTIONABLE ITEM
 - A clause merely DESCRIBING a process already completed, not tied to any
   future action ("The tender was published on...").
 - Table column headers, signature blocks, blank form fields.
+- Parameter table cells or configuration key-values with no action verb (e.g. "EMD Amount | 1000000", "Bid splitting not applied", "Purchase preference to MII | 20%").
+- GeM platform disclaimers about what BUYERS cannot do ("The Buyer is not allowed to add following clauses in ATC..."): do NOT report clauses from this list. These are platform rules prohibiting the Buyer from adding illegal clauses, NOT bidder duties.
 - A clause reproduced/quoted verbatim inside someone else's argument,
   rather than a live obligation of the document at hand.
 - Standing jurisdiction/forum-selection or dispute-resolution-mechanism
@@ -1498,20 +1526,21 @@ date/clause, before finalizing.
 
 ACTION_ITEM_OUTPUT_CONTRACT = """\
 # OUTPUT FORMAT (strict JSON — exactly this shape, nothing else)
+# DO NOT COPY THESE EXAMPLES INTO YOUR OUTPUT. Extract only from the provided chunk text.
 {
   "items": [
     {
-      "item_text": "Bidder must submit EMD before bid submission deadline",
+      "item_text": "Contractor must submit Environmental Management Plan within 30 days of Site Handover",
       "item_type": "deadline",
-      "date_text": "on or before 15.03.2025, 15:00 hrs",
-      "date_iso": "2025-03-15",
-      "anchor_event": null,
+      "date_text": "within 30 days of Site Handover",
+      "date_iso": null,
+      "anchor_event": "Site Handover",
       "cadence": null,
-      "page": 12,
-      "end_page": 12,
+      "page": 1,
+      "end_page": null,
       "still_open_at_chunk_end": false,
-      "evidence_quote": "EMD shall be submitted on or before 15.03.2025",
-      "responsible_party": "Bidder",
+      "evidence_quote": "The Contractor shall submit the Environmental Management Plan within 30 days of Site Handover.",
+      "responsible_party": "Contractor",
       "confidence": "high"
     },
     {
@@ -1521,7 +1550,7 @@ ACTION_ITEM_OUTPUT_CONTRACT = """\
       "date_iso": null,
       "anchor_event": "Effective Date of Contract (D1)",
       "cadence": null,
-      "page": 53,
+      "page": 5,
       "end_page": null,
       "still_open_at_chunk_end": false,
       "evidence_quote": "Go-Live</td><td>D3.5= D1+ 20 weeks",
@@ -1540,6 +1569,10 @@ FIELD RULES
   above), not a fallback for something you failed to resolve.
 - "anchor_event" / "cadence": null unless genuinely applicable — most
   items need neither.
+- "evidence_quote": CRITICAL: MUST be an exact verbatim substring copied directly
+  from the physical text of this chunk. Prefer English text when bilingual Hindi/English
+  clauses are printed. NEVER invent or paraphrase quotes, and NEVER copy examples from
+  this prompt. If a clause is not printed on the page, DO NOT report it.
 - "confidence": "high" | "medium" | "low", your own self-reported
   confidence in this item's classification.
 - "notes": at most one short sentence; "" when you have nothing to flag.
@@ -1564,25 +1597,59 @@ def _render_action_item_macro_context(macro_ctx: Optional[dict]) -> str:
     parent = macro_ctx.get("parent_clause")
     if not root and not parent:
         return ""
+    from ai_indexing.macro import classify_division_role
+    role = macro_ctx.get("division_role") or classify_division_role(root, parent)
+
     lines = ["# ACTIVE DOCUMENT DIVISION (FROM MACRO SKELETON)"]
     lines.append("You are currently analyzing pages inside:")
     if root:
         lines.append(f'- Root Division: "{root}" (Level 1)')
     if parent:
         lines.append(f'- Active Section: "{parent}"')
-    lines.append(
-        "\nGUIDELINE: If the Root Division or Active Section title above indicates "
-        "this division is a catalogue of already-implemented/existing functionality, "
-        "an \"AS-IS\" description, or \"current system\" background (titles containing "
-        "words like \"implemented\", \"existing\", \"AS-IS\", \"current\"), treat its "
-        "ENTIRE content as background for these pages — apply the AS-IS exclusion rule "
-        "strictly regardless of how many \"shall\"-shaped table rows you see, unless one "
-        "specific sentence states a distinct future-tense tender-imposed duty with its own "
-        "trigger (rare inside such a division, but possible — judge that sentence on its own "
-        "merits, not by what surrounds it). If the title does not suggest AS-IS/background "
-        "framing, this section is informational only — it does not change how you judge the "
-        "pages below."
-    )
+
+    if role == "as_is":
+        lines.append(
+            "\nGUIDELINE (AS-IS / Existing System Section): The Active Section indicates "
+            "this division is a catalogue of already-implemented/existing functionality, "
+            "an \"AS-IS\" description, or \"current system\" background. Treat its "
+            "ENTIRE content as background for these pages — apply the AS-IS exclusion rule "
+            "strictly. DO NOT extract item_type='other' or passive technical specifications. Only extract "
+            "an explicit, distinct, tender-imposed future duty or deadline if one explicitly appears."
+        )
+    elif role == "eligibility":
+        lines.append(
+            "\nGUIDELINE (Eligibility / Qualification Section): You are in an eligibility or "
+            "qualification criteria section. Pay close attention to mandatory bidder criteria "
+            "(turnover, past experience, technical certifications, financial standing) and required "
+            "supporting documents/certificates, and extract them as 'condition' or 'obligation'."
+        )
+    elif role == "sow":
+        lines.append(
+            "\nGUIDELINE (Scope of Work / Technical Specifications): You are in a Scope of Work (SOW) "
+            "or technical specifications section. Extract concrete contractor obligations, deliverables, "
+            "hand-over duties, and approval gates. Do NOT extract passive feature descriptions, existing "
+            "equipment lists, or ungated narrative specifications as obligations."
+        )
+    elif role == "scc":
+        lines.append(
+            "\nGUIDELINE (Special Conditions of Contract): You are in Special Conditions of Contract (SCC). "
+            "Pay close attention to liquidated damages, stage penalties, performance security deadlines, "
+            "payment milestones, and breach/termination triggers."
+        )
+    else:
+        lines.append(
+            "\nGUIDELINE: If the Root Division or Active Section title above indicates "
+            "this division is a catalogue of already-implemented/existing functionality, "
+            "an \"AS-IS\" description, or \"current system\" background (titles containing "
+            "words like \"implemented\", \"existing\", \"AS-IS\", \"current\"), treat its "
+            "ENTIRE content as background for these pages — apply the AS-IS exclusion rule "
+            "strictly regardless of how many \"shall\"-shaped table rows you see, unless one "
+            "specific sentence states a distinct future-tense tender-imposed duty with its own "
+            "trigger (rare inside such a division, but possible — judge that sentence on its own "
+            "merits, not by what surrounds it). If the title does not suggest AS-IS/background "
+            "framing, this section is informational only — it does not change how you judge the "
+            "pages below."
+        )
     return "\n".join(lines)
 
 
