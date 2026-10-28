@@ -262,6 +262,7 @@ class ChunkActionItemResult:
     error_kind: Optional[str] = None
     error_message: str = ""
     normalization: Optional[Dict[str, Any]] = None
+    truncated: bool = False
     raw_excerpt: str = ""
     provider_job_id: Optional[str] = None
 
@@ -364,10 +365,32 @@ class ActionItemIndexer:
                     raise
                 break
             else:
+                is_truncated = str(getattr(completion, "finish_reason", "") or "").lower() in ("length", "max_tokens")
                 try:
                     ai_chunk, norm_report = parse_action_item_response(completion.text, page_nums)
                 except AIInvalidOutputError as e:
                     last_error = e
+                    if is_truncated:
+                        # Output was capped by token limit. A correction prompt cannot fix
+                        # an output budget overflow and would just hit the token cap again.
+                        # Do not retry, and do not increment circuit-breaker failures since
+                        # the caller will adaptively split and retry smaller slices.
+                        record_session = get_active_record_session()
+                        if record_session is not None:
+                            record_session.record_failure(
+                                page_nums=page_nums,
+                                error=f"truncated output ({e})",
+                            )
+                        return ChunkActionItemResult(
+                            outcome=ChunkOutcome.FAILED, page_nums=page_nums,
+                            provider=completion.provider, model=completion.model,
+                            duration_ms=completion.duration_ms, attempts=attempts,
+                            error_kind=classify(last_error),
+                            error_message=str(last_error),
+                            raw_excerpt=getattr(last_error, "raw_excerpt", "") if last_error else "",
+                            provider_job_id=completion.provider_job_id,
+                            truncated=True,
+                        )
                     if attempt == 1:
                         user_prompt = (
                             user_prompt
@@ -395,6 +418,7 @@ class ActionItemIndexer:
                         duration_ms=completion.duration_ms, attempts=attempts,
                         normalization=norm_report.to_dict(),
                         provider_job_id=completion.provider_job_id,
+                        truncated=is_truncated,
                     )
 
         self._consecutive_failures += 1

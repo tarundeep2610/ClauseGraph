@@ -226,7 +226,13 @@ async def test_micro_pass_split_and_requeue(monkeypatch):
 
     monkeypatch.setattr(ai_indexing.StructureIndexer, "extract_structure_for_chunk", _fake_extract)
 
-    result = await ai_reference_index.reindex_job_with_ai(job_id)
+    # Pinned explicitly: this test is about the micro-chunk split/requeue
+    # mechanism in isolation (already covered for two-pass's own macro-skeleton
+    # split behavior by test_macro_skeleton_split_and_requeue above), not an
+    # assertion about AI_INDEX_TWO_PASS's default -- relying on that default
+    # implicitly would make this test's pass/fail depend on an unrelated
+    # config value that's legitimately expected to change over time.
+    result = await ai_reference_index.reindex_job_with_ai(job_id, two_pass_override=False)
     assert result["status"] == "done"
     # Originally planned 1 chunk of 4 pages; after split, total_chunks became 2
     assert result["total_chunks"] == 2

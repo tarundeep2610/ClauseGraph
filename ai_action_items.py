@@ -36,6 +36,7 @@ block states both an obligation and a deadline. See
 """
 
 import asyncio
+import collections
 import difflib
 import html
 import logging
@@ -205,11 +206,22 @@ async def reindex_action_items_for_job(
     chunk_chars_max_override: Optional[int] = None,
     adaptive_chunking_override: Optional[bool] = None,
     two_pass_override: Optional[bool] = None,
+    start_page: Optional[int] = None,
+    end_page: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Full-job actionable-item extraction — always a whole-document rebuild
     (unlike reindex_job_with_ai, there is no single-page targeted retry path
     for this pass; strictly on-demand means the common case is "run once
-    against a complete, already-OCR'd job," not a per-page live hook)."""
+    against a complete, already-OCR'd job," not a per-page live hook).
+
+    `start_page`/`end_page`, when given, restrict extraction to that page
+    range only (via `database.get_pages`'s own `page_from`/`page_to` SQL
+    filter) — used by the eval harness's slice mode for cheap iteration on
+    a large document without reprocessing every page. Unlike
+    `reindex_job_with_ai`'s equivalent, there is no seed_scope/resume
+    concept to carry across the boundary: action items are flat, per-page,
+    and independently extracted per chunk, so a slice is just a smaller
+    page set, nothing more."""
     if job_id in _active_action_item_jobs:
         return {}
     _active_action_item_jobs.add(job_id)
@@ -247,7 +259,7 @@ async def reindex_action_items_for_job(
 
         indexer = ai_indexing.ActionItemIndexer(resolved)
 
-        pages = database.get_pages(job_id)
+        pages = database.get_pages(job_id, page_from=start_page, page_to=end_page)
         if not pages:
             database.update_action_item_report(job_id, status="done", pages_done=0)
             return {"status": "done", "pages_done": 0}
@@ -312,11 +324,25 @@ async def reindex_action_items_for_job(
         items_found_total = 0
         items_dropped_ungrounded_total = 0
 
-        for chunk_idx, chunk in enumerate(chunks):
+        # Deque-based so a truncated chunk can be split in half and requeued
+        # at finer granularity — mirrors ai_reference_index.py's own micro
+        # chunk loop exactly (see its `chunks_queue`/`result.truncated`
+        # handling). `chunks_processed_count` (not a plain enumerate index)
+        # tracks completed, persisted chunks for progress reporting, since a
+        # split chunk is requeued rather than counted as done.
+        chunks_queue = collections.deque(chunks)
+        chunks_processed_count = 0
+        run_first_page_num = pages[0]["page_num"] if pages else None
+        last_chunk_page_nums: set = set()
+
+        while chunks_queue:
+            chunk = chunks_queue.popleft()
             if task_queue.is_job_paused(job_id):
                 final_status = "paused"
                 break
-            if chunk_idx > 0:
+
+            is_run_first_page = (chunk.pages[0].page_num == run_first_page_num)
+            if not is_run_first_page:
                 await asyncio.sleep(config.AI_INDEX_MIN_CHUNK_INTERVAL_SECONDS)
 
             chunk_start_time = time.perf_counter()
@@ -352,6 +378,33 @@ async def reindex_action_items_for_job(
             if result.outcome == ai_indexing.ChunkOutcome.CANCELLED:
                 final_status = "paused"
                 break
+
+            if result.truncated:
+                if len(chunk.pages) > 1:
+                    mid = len(chunk.pages) // 2
+                    first_half = chunk.pages[:mid]
+                    second_half = chunk.pages[mid:]
+                    logger.warning(
+                        "Action-item chunk %s truncated (finish_reason=length); splitting into %s and %s",
+                        chunk.page_nums, [p.page_num for p in first_half], [p.page_num for p in second_half],
+                    )
+                    c_first = ai_indexing.ChunkPlan(
+                        pages=first_half, truncated_pages=[],
+                        total_chars=sum(len(p.text or "") for p in first_half),
+                    )
+                    c_second = ai_indexing.ChunkPlan(
+                        pages=second_half, truncated_pages=[],
+                        total_chars=sum(len(p.text or "") for p in second_half),
+                    )
+                    chunks_queue.appendleft(c_second)
+                    chunks_queue.appendleft(c_first)
+                    total_chunks += 1
+                    continue
+                else:
+                    logger.warning(
+                        "Single-page action-item chunk %s truncated; cannot split further, accepting as-is",
+                        chunk.page_nums,
+                    )
 
             warning_counts: Dict[str, int] = {}
             final_items_by_page: Dict[int, List[Dict[str, Any]]] = {}
@@ -394,9 +447,18 @@ async def reindex_action_items_for_job(
 
             items_found_total += sum(len(v) for v in final_items_by_page.values())
 
-            overlap_count = overlap_pages if chunk_idx > 0 else 0
+            # Overlap is detected by actual page-set intersection with the
+            # immediately-preceding COMPLETED chunk, not a positional
+            # chunk_idx>0 check — a split sub-chunk's pages never overlap
+            # its sibling half (they're a clean partition of the original
+            # chunk), so this naturally yields 0 overlap for split
+            # fragments without special-casing them.
+            this_chunk_page_nums = {p.page_num for p in chunk.pages}
+            overlap_count = len(this_chunk_page_nums & last_chunk_page_nums) if not is_run_first_page else 0
             new_in_chunk = max(len(chunk.pages) - overlap_count, 0)
             pages_done_total += new_in_chunk
+            last_chunk_page_nums = this_chunk_page_nums
+            chunks_processed_count += 1
             duration_seconds = time.perf_counter() - chunk_start_time
             chunks_log.append({
                 "first_page": chunk.page_nums[0], "last_page": chunk.page_nums[-1],
@@ -408,7 +470,7 @@ async def reindex_action_items_for_job(
                 "provider_duration_ms": result.duration_ms,
             })
             database.update_action_item_report(
-                job_id, current_chunk=chunk_idx + 1, total_chunks=total_chunks,
+                job_id, current_chunk=chunks_processed_count, total_chunks=total_chunks,
                 pages_done=pages_done_total, chunks=chunks_log,
                 items_found=items_found_total, items_dropped_ungrounded=items_dropped_ungrounded_total,
                 ai_last_persisted_page=last_persisted_page_num,

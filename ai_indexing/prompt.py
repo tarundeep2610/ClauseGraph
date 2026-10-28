@@ -1095,6 +1095,42 @@ specification, not an independently-trackable compliance duty.
   with its own due date or trigger, distinct from "build the system per
   spec"? If not, it's scope narrative, not an actionable item.
 
+THIS SAME TEST — "DOES IT HAVE ITS OWN GATE, OR IS IT JUST A REQUIREMENT TO
+SATISFY" — APPLIES JUST AS HARD TO UNGATED SOW DELIVERABLES. This is easy to
+miss because it doesn't look like a "generic feature" — it looks specific
+and important.
+  NOTE: an eligibility/qualification criterion ("bidder must have ISO
+  9001:2015 certification", "bidder must have positive net worth") is NOT
+  automatically excluded by this rule — several real gold-standard tenders
+  DO want eligibility criteria reported as obligations, especially ones
+  that require preparing/furnishing specific supporting documentation
+  (turnover evidence, past-experience proof, registration with an external
+  body). Do not treat "it's an eligibility bar" as a blanket exclusion —
+  judge each criterion on whether a human reviewer would genuinely want it
+  tracked, not on a generic category rule.
+  SOW DELIVERABLES PHRASED AS A DUTY ("the SI must complete/perform/ensure
+  X") are NOT reportable merely because they name a concrete, specific
+  technical task — the test is still whether THIS sentence carries its own
+  due date, approval gate, or penalty, not whether the task sounds
+  important or well-defined:
+    "SI must complete HOTO with sign-off of HOTO Report by MPPKVVCL" (no
+     date/gate of its own — this is what the engagement consists of, not a
+     trackable milestone; if elsewhere a specific date IS attached to HOTO
+     completion, report THAT sentence instead, once)
+    "SI must perform full dress-rehearsal upgrade/migration cycles in
+     non-production environments"
+    "SI must validate RTO/RPO, backup, restore, switchover/failover and DR
+     runbooks"
+    "SI must log, categorize, and resolve all bugs/defects"
+  REPORTABLE contrast (same subject matter, but THIS sentence states its
+  own date, approval gate, or penalty):
+    "SI must submit Oracle License Deployment & Compliance Assessment
+     before Target Architecture finalization" (an approval gate: this
+     specific deliverable must happen before a named downstream milestone)
+  Do not let a long, specific, technical-sounding sentence read as
+  "important enough to be an obligation" — specificity and importance are
+  not the test; a gate of its own is.
+
 THE SECOND MOST COMMON FALSE POSITIVE: AN "AS-IS" DESCRIPTION OF EXISTING
 SOFTWARE THAT HAPPENS TO CONTAIN A WORD LIKE "PENALTY" OR "DEADLINE"
 Large stretches of a tender can describe software ALREADY IN PLACE, in
@@ -1126,8 +1162,8 @@ sentence on its own tense and subject, not by what surrounds it.
   a named party):
     "failing which the stage penalty @1% per week... will be levied"
 
-A THIRD FALSE POSITIVE: BOILERPLATE DECLARATIONS AND FORM-COMPLIANCE
-CHECKLISTS WITHOUT A DISTINCT TRIGGER
+A THIRD FALSE POSITIVE: BOILERPLATE DECLARATIONS, FORM-COMPLIANCE
+CHECKLISTS, AND GENERIC BID-CONDUCT RULES WITHOUT A DISTINCT TRIGGER
 A signed declaration/undertaking a bidder submits as part of the bid
 ("We solemnly declare that we have attached all the documents...", "We
 confirm that in case of false declaration, I shall be disqualified...")
@@ -1138,6 +1174,157 @@ these UNLESS the sentence itself states a distinct future duty, deadline,
 or consequence beyond "sign/submit this form" (a false-declaration
 disqualification consequence IS reportable as a condition; the declaration
 sentence itself is not a separate obligation).
+  This same exclusion covers the much larger family of GENERIC RULES ABOUT
+  HOW TO FILL IN, SIGN, OR BEHAVE DURING THE BID PROCESS — not just a named
+  form or checklist, but any sentence whose entire content is bid-etiquette
+  or paperwork mechanics with no deadline/gate/consequence of its own:
+    "Bidder must sign all pages of the bid document with official rubber
+     stamp..."
+    "Bidder must keep all proposal and bidding information strictly
+     confidential."
+    "Bidder must submit only one unconditional bid in response to the
+     tender document."
+    "Bidder must use prescribed forms or schedules to provide relevant
+     information."
+    "Bidder must quote prices strictly online in words and figures in the
+     indicated manner"
+  These are reportable ONLY if they carry their own gate — "sign the bid"
+  is never reportable on its own; "sign and submit by 15.03.2025" is a
+  deadline.
+
+A SIXTH FALSE POSITIVE: THE PURCHASER'S OWN PROCEDURAL STEPS DURING
+EVALUATION ARE NOT BIDDER OBLIGATIONS
+A tender routinely narrates what the PURCHASER (not the bidder) will do
+during bid evaluation — when it opens bids, how it notifies bidders of
+results, how it runs the technical evaluation committee. This is process
+description for the reader's awareness, not a duty imposed on anyone the
+reader must track, even when it uses "shall" and even when it affects the
+bidder's outcome.
+  NOT REPORTABLE (the Purchaser's own internal procedural narration):
+    "Purchaser shall open online bids at the specified date and time..."
+    "Purchaser shall notify Bidders of negative determination of bids..."
+    "Technical evaluation committee will assess techno-commercial bid"
+  REPORTABLE (the Purchaser's action creates a date or consequence the
+  BIDDER must now act on or track):
+    "Purchaser shall notify successful bidders within 30 days of bid
+     opening, and the bidder must furnish performance security within 15
+     days of that notice" (creates a tracked deadline for the bidder)
+  The test is the same as always: does the sentence itself fix a date,
+  gate, or consequence someone must now track — regardless of whose
+  action is being described.
+
+A SEVENTH FALSE POSITIVE: A BARE FACT OR FIGURE IS NOT AN OBLIGATION
+A standalone amount, fee, or figure lifted from a table or key-dates block
+— with no verb, no duty, nothing to DO — is not an actionable item at all,
+even when it is the kind of number that often accompanies a real
+obligation elsewhere in the document.
+  NOT REPORTABLE (a bare figure, not a duty):
+    "Non-refundable tender document fee of INR 11,800/-"
+    "Earnest Money Deposit (EMD) of INR 1,00,000"
+    "End User and Technical Support availability schedule"
+  REPORTABLE (the same fact, stated as something the reader must do):
+    "EMD of INR 1,00,000 must be submitted online by 15.03.2025" (report
+     as a "deadline", using the figure inside item_text/date_text, not as
+     a standalone "obligation" item about the figure itself)
+
+A FOURTH FALSE POSITIVE: HOW-TO-OPERATE-THE-WEBSITE MECHANICS — BUT DO NOT
+OVER-APPLY THIS TO ELIGIBILITY/COMPLIANCE REQUIREMENTS THAT ARE ALSO COMMON
+ACROSS TENDERS
+Government e-tendering portals carry a NARROW set of instructions for
+literally operating the portal's user interface — which button downloads a
+file, which certificate type to click through to sign online, where to pay
+a flat administrative portal fee, how to use the training module. This is
+software-UI housekeeping, not a distinct duty — do not report it.
+  NOT REPORTABLE (operating the portal's UI — about the WEBSITE, not about
+  the bidder's qualifications or deliverables):
+    "Tender Documents can be downloaded from main portal... free of cost."
+    "the bidder shall have to pay non-refundable tender fee."
+    "Online bidders are required to sign their bids online using class
+     III – Digital Certificates only..."
+    "Bidders intending to participate in the Tender are required to get
+     themselves trained on the e-Procurement System."
+  DO NOT OVER-APPLY THIS RULE: an eligibility criterion, a compliance
+  attestation, or a specific supporting document/certificate a bidder must
+  prepare and submit is REPORTABLE as an "obligation" even when it is
+  phrased with "upload"/"furnish"/"required to", even when it recurs
+  across many tenders of this type, and even when it is routine rather than
+  unique to this contract — commonality across tenders is NOT the test;
+  whether it's about the WEBSITE's mechanics vs. the BIDDER's substance is.
+  REPORTABLE (substantive eligibility/compliance/deliverable content, not
+  website mechanics, even though phrased similarly to the above and common
+  across many tenders of this type):
+    "sellers intending to avail payment through TReDS are required to be
+     registered with at least one TReDS exchange..." (a real registration
+     requirement gating payment eligibility)
+    "Bidders shall have to upload scanned copy of signed integrity pact..."
+     (a specific, substantive compliance document — what must be prepared
+     and submitted, not how to operate the upload button)
+    "All GeM Sellers/Service Providers shall ensure full compliance with
+     all applicable labour laws..." (a real compliance duty — being common
+     boilerplate across many tenders does not make it non-reportable)
+    "The bidder must have successfully executed/completed similar Services
+     over the last three years..." (a substantive eligibility criterion)
+    "EMD of Rs. 50,000 must be submitted online by 15.03.2025" (specific
+     amount + deadline — report as a "deadline")
+  The test is never "does this sentence recur across other tenders" — lots
+  of genuinely reportable eligibility/compliance content recurs across
+  every tender of a given type (labour-law compliance, integrity pacts,
+  past-experience criteria, EMD rules). The test is narrower: is this
+  sentence about OPERATING THE WEBSITE (which button, which certificate
+  type, where to pay a flat fee, how to use a training module) — or is it
+  about what the BIDDER must be, do, attest to, or submit? Only the former
+  is unreportable.
+
+A FIFTH FALSE POSITIVE: BID REJECTION TIED TO TIMING OR MISCONDUCT — BUT NOT
+REJECTION TIED TO A MISSING REQUIRED DOCUMENT
+Tenders universally restate standard procedural rules about WHEN a bid gets
+rejected or EMD forfeited. Two shapes look similar but are NOT the same:
+  NOT REPORTABLE (the trigger is pure TIMING or MISCONDUCT — nothing to
+  prepare, just "don't be late / don't withdraw / don't lie"):
+    "Bid(s) received... after the bid submission/opening deadline... will
+     [be summarily rejected]" (timing)
+    "The EMD may be forfeited:- If a bidder withdraws or revokes its bid
+     during the period of bid validity..." (misconduct/withdrawal)
+    "if it is found that the Bidder(s) has made false claims, submitted
+     forged documents, etc., the bid shall be liable for outright
+     rejection." (misconduct/fraud)
+  REPORTABLE (the trigger is a SPECIFIC REQUIRED DOCUMENT the bidder must
+  prepare and submit — this is a genuine to-do: "make sure you prepare and
+  upload X", even though it is phrased as a rejection condition and even
+  though the same clause shape recurs across many tenders):
+    "The Bidder has to sign and upload Pre Contract Integrity Pact...
+     Failing of which the[ bid shall be rejected]." (report as: bidder must
+     sign and upload the Integrity Pact)
+    "Bidder's offer is liable to be rejected if they don't upload any of
+     the certificates / documents sought in the Bid document..." (report
+     as: bidder must upload the required certificates/documents)
+    "Any bid proposal/offer not accompanied by the EMD shall be rejected."
+     (report as a deadline/obligation to submit the EMD with the bid, not
+     as this rejection sentence itself)
+  The test: does clearing this trigger require the bidder to PREPARE OR
+  SUBMIT something specific, or does it only require NOT doing something
+  (being late, withdrawing, lying)? The former is a real to-do; the latter
+  is a pure procedural consequence with nothing to prepare.
+
+A CONDITION BEING COMMON ACROSS MANY TENDERS DOES NOT MAKE IT UNREPORTABLE
+The same "would this appear on a different tender too" question that is
+NEVER the right test for "obligation" (see the fourth false positive above)
+is just as wrong for "condition". A substantive, contract-governing
+condition stays reportable even when it is boilerplate language repeated
+verbatim across nearly every tender of a given type:
+    "any bidder from a country which shares a land border with India will
+     be eligible to bid in this tender only if the bidder is registered
+     with the Competent Authority" — this exact clause appears in most
+     government e-tenders (a standing national-security policy
+     requirement), and is still a REPORTABLE condition: report it as a
+     condition gating bid eligibility, exactly as printed.
+    "OPTION CLAUSE: The buyer can increase or decrease the contract
+     quantity or contract duration up to 25 percent..." — a standard
+     templated clause, still a REPORTABLE condition (it genuinely affects
+     what the awarded party must be prepared to deliver).
+  The test is never "is this common" — it is always the same test as
+  everywhere else in this prompt: does the sentence itself fix a trigger
+  and a consequence someone must track.
 
 MILESTONE CASCADES VS. REPEATED-SCHEMA DATA TABLES — ONE ITEM PER ROW, OR
 ONE ITEM TOTAL?
@@ -1156,6 +1343,27 @@ ONE ITEM TOTAL?
   item. If two rows have genuinely different triggers or consequences,
   that's two items.
 
+PARALLEL PROHIBITED ACTIONS SHARING ONE GATE ARE ONE ITEM — BUT A LIST OF
+REQUIRED DOCUMENTS IS STILL ONE ITEM PER DOCUMENT
+A single sentence restricting two or more parallel actions under one shared
+gate/consequence is ONE item, not one per action:
+  "The Seller shall not assign the Contract in whole or part, nor
+   sub-contract it, without the prior written consent of the Buyer" → ONE
+   condition item (not a separate item for "assign" and another for
+   "sub-contract") — the trigger (no prior written consent) and consequence
+   are identical for both restricted actions, so splitting them manufactures
+   a duplicate of the same real-world rule.
+Do NOT over-apply this to a list of required documents or deliverables in
+one sentence — those stay separately countable per item, even though they
+read in a similarly "parallel, conjunctive" shape:
+  "Bidder must upload audited Balance Sheets, Profit & Loss Statements, and
+   GST Return certificates for the last 3 financial years" is NOT one item
+   — each named document is its own checklist deliverable with its own
+   verification gate, unlike a shared prohibition.
+The test: are these parallel items PROHIBITED ACTIONS under one shared
+gate (merge into one), or REQUIRED DOCUMENTS/DELIVERABLES each independently
+verifiable (keep separate, one per document)?
+
 RELATIVE/FORMULA-BASED DEADLINES — DO NOT COMPUTE A DATE THAT ISN'T THERE
 Real tenders routinely define deadlines purely as offsets from an anchor
 event that is itself never dated anywhere in the pages you're shown
@@ -1171,6 +1379,29 @@ HOTO/Discovery period", "90 days before Contract expiry"). For these:
   closely paraphrased ("Effective Date of Contract", "Design Freeze",
   "date of signing of contract") — this is what makes a null-dated item
   still useful to a reader trying to track it.
+
+ONE ITEM PER DISTINCT DATE — DO NOT INVENT SEVERAL DIFFERENTLY-WORDED
+OBLIGATIONS AROUND THE SAME SINGLE DEADLINE
+A single calendar date or deadline fact (e.g. one bid-submission closing
+date/time) should produce exactly ONE item, not several paraphrased
+restatements framed as separate obligations — "Bidder must submit EMD
+before the deadline", "EMD must be submitted online before the deadline",
+and "Bid submission must be completed by the deadline" are the SAME fact
+told three ways, not three items. If you find yourself about to write
+several items whose evidence_quote all point at the same date/clause, keep
+only the single most complete one and set its type to "deadline".
+
+INFORMATIONAL / ALREADY-PAST DATES ARE NOT DEADLINES
+A "Key Dates" table often also lists dates that are purely informational —
+when the tender was published, when a pre-bid query window opened —
+alongside the real actionable dates (bid submission closing, bid opening,
+validity expiry). Only report a date the reader must still ACT BY or that
+still governs a future window — not the tender's own publication/issue
+date.
+  NOT REPORTABLE: "Publishing of tender date ... 29.09.2026" (purely
+  informational — when the tender was published, not something to act by)
+  REPORTABLE: "Due date & time of opening of tender online ... 30.10.2026"
+  (the reader must submit/track action relative to this date)
 
 RECURRING/PERIODIC DUTIES
 A duty that repeats on a cadence (quarterly interest recalculation, monthly
@@ -1249,11 +1480,20 @@ like ordinary body text or table rows — that is exactly the shape being
 asked for here, the opposite of a structure/heading pass. Also re-scan
 specifically for a prayer-for-relief sentence sitting in ordinary prose
 (not a table) that you may have walked past while focused on tabular
-content. Also re-check every item you ARE reporting against the three
-false-positive patterns above (feature/requirements narrative; AS-IS
-description of existing software/module catalogues; boilerplate
-declarations and compliance checklists without a distinct trigger) —
-remove any that match one of these before finalizing.
+content. Also re-check every "obligation"/"condition" item you ARE
+reporting against the single question underlying every false-positive
+pattern above — does THIS sentence carry its own date, approval gate,
+penalty, or consequence, or is it pure scope narrative, ungated bid
+paperwork/conduct mechanics, the Purchaser's own procedural narration, a
+bare figure, an AS-IS description of existing software, or a bid-rejection
+trigger tied to pure timing/misconduct with nothing to prepare? (An
+eligibility criterion or a rejection trigger tied to a specific required
+document is NOT automatically excluded by any of these — judge it on
+whether a reviewer would genuinely want it tracked, and remember that a
+condition being common/boilerplate across many tenders never by itself
+makes it unreportable.) Remove or merge any item that fails this test, and
+merge any items that are just different phrasings of the same single
+date/clause, before finalizing.
 """
 
 ACTION_ITEM_OUTPUT_CONTRACT = """\
