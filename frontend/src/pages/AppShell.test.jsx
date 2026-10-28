@@ -740,7 +740,14 @@ describe('AppShell/StudioView — per-page and bulk Retry actions', () => {
       if (url === '/api/jobs') return { ok: true, json: async () => [job] };
       if (url.split('?')[0] === '/api/jobs/job-r') return { ok: true, json: async () => job };
       if (url === '/api/jobs/job-r/pages/1/retry' && opts?.method === 'POST') {
-        return { ok: true, json: async () => ({ page_num: 1, status: 'success', text: 'new retried text', confidence_pct: 95 }) };
+        const updated = { page_num: 1, status: 'success', text: 'new retried text', confidence_pct: 95 };
+        // A real backend persists the retry before responding, so any
+        // later GET of the job (e.g. AppShell's own real 2500ms per-job
+        // poll, fetchJobDetails) would see this same updated text too —
+        // mutate the shared `job` fixture here so this mock doesn't race
+        // that poll in real test time by handing back a frozen snapshot.
+        job.pages_data = job.pages_data.map((p) => (p.page_num === updated.page_num ? { ...p, ...updated } : p));
+        return { ok: true, json: async () => updated };
       }
       return { ok: false };
     });
