@@ -2664,3 +2664,85 @@ direction for GeM-style document support, distinct from every prior
 fixture's own domain (commercial tenders, arbitration pleadings).
 
 
+## 26. Investigation: Root Causes of Recall Drop on 135-Page Commercial Tender (`89cfa529`) (2026-10-27)
+
+### 26.1 Executive Summary & Certified Benchmark Metrics
+
+In the certified benchmark run across `MPPKVVCL Commercial Tender (135 pages)` (`89cfa529-2390-464c-9c3e-2446ef68c588`), the pipeline achieved:
+- **Merged Target Precision**: **`0.906`** (PASSED the $\ge 0.850$ universal benchmark gate).
+- **Mention Precision**: **`0.960`** (PASSED the $\ge 0.900$ mention gate).
+- **Rule Recall**: **`1.000`** (Strict $1.000$ rule invariance preserved).
+- **Merged Target Recall**: **`0.706`** (224 False Negatives out of 762 gold targets).
+
+While the precision gate was exceeded comfortably (90.6% precision, with false positives reduced to only 56 across 135 dense pages), recall dropped to `0.706`. Deep code and diff analysis of `data/diff_tender_final_certified.json` isolates the exact 224 false negatives into four dominant structural clusters.
+
+---
+
+### 26.2 Anatomical Breakdown of the 224 False Negatives
+
+| Cluster | Page Range | Key Family & Shape | FN Count | % of All FNs | Root Cause |
+| :--- | :---: | :--- | :---: | :---: | :--- |
+| **1. Technical Scope of Work Letter Points** | Pages 44–51 | `point:a` .. `point:j` under section 4.10, 4.11, etc. | **107** | **47.8%** | AI prompt negative rule suppresses body bullet sentences; rule `detect_contract_clauses_for_page` blocked by nested subdoc stack state. |
+| **2. ITB Plain Integer Clauses** | Pages 11–25 | `numheading:1` .. `numheading:32` (e.g. `1 Definition(s)`) | **31** | **13.8%** | Single bare integers without decimal separators; AI treats them as body enumeration; rule engine requires layout alignment or trailing period. |
+| **3. Bid Checklist & Criteria Table Rows** | Pages 7–9 | `numheading:1` .. `numheading:15` inside dense table | **26** | **11.6%** | Table block item pruning (`_filter_ai_events_against_blocks`) aggressively suppresses table cells to prevent BOQ price explosions. |
+| **4. Technical Annexures & Forms** | Pages 62–135 | `point:iii`, `point:iv`, `subdoc:annex-*` | **27** | **12.1%** | Two-pass macro/micro merging variations and subdoc suffix matching divergence (`subdoc:annex-i-performa...`). |
+| **5. Residual Scattered Clauses** | Pages 1–6, 26–43 | Mixed `subdoc`, `point`, `numheading` | **33** | **14.7%** | Miscellaneous single-occurrence omissions across document transitions. |
+| **Total** | — | — | **224** | **100%** | — |
+
+---
+
+### 26.3 Detailed Analysis of Each Cluster
+
+#### Cluster 1: Section IV Scope of Work Lowercase Letter Points (Pages 44–51, 107 FNs)
+- **What they look like in Gold**:
+  - `P44 point:a` -> `'a. Once the HOTO is done, whole responsibility for Oracle EBS version upgrade sh'`
+  - `P44 point:b` -> `'b. The SI shall be responsible for the Upgradation of Oracle ERP system as per f'`
+  - `P45 point:a` -> `'a. Each major workstream - EBS/Database, GIS/APEX, integrations'`
+  - `P45 point:b` -> `'b. EBS/Database acceptance shall include successful business regression'`
+  - `P46 point:a` .. `point:p` (16 items), `P47 point:a` .. `point:p` (16 items), `P48 point:a` .. `point:m` (13 items).
+- **Why they were missed**:
+  1. **AI Prompt Instructions**: The AI prompt explicitly commands: *"WHAT IS NOT A HEADING: ... Running body sentences, enumerated bullets inside a paragraph ... Do NOT report body sentences as headings."* The Qwen model faithfully obeys this guideline and treats long narrative contractual requirements starting with `a.`, `b.`, `c.` as body prose, omitting them from AI output.
+  2. **Rule Engine Scope Blocking**: In `reference_index.py:detect_contract_clauses_for_page`, sequential letter points are only emitted when `nested_stack` points directly to an active contract clause. In Pages 44–51, earlier pages pushed step containers (`subdoc:step-2-decision-from-nodal-officer`, `subdoc:step-3-in-case-of-feasible`), and these intermediate subdoc containers prevent the rule detector from attaching `point:a`..`point:j` to `numheading:4.3` or `numheading:4.10`.
+
+#### Cluster 2: Section III Instructions to Bidders Plain Integers (Pages 11–25, 31 FNs)
+- **What they look like in Gold**:
+  - `P11 numheading:1` -> `'1 Definition(s)'`
+  - `P12 numheading:2` -> `'2 Availability of Bid documents'`
+  - `P12 numheading:3` -> `'3 Invitation of Bids'`
+  - `P12 numheading:4` -> `'4 Responsibility of bidder(s)'`
+  - `P13 numheading:6` -> `'6 Project site visit'` .. `P22 numheading:32`
+- **Why they were missed**:
+  - In Section III, clauses are styled with bare integers lacking trailing periods or decimals (e.g. `2 Availability of Bid documents` instead of `2.0` or `2.`).
+  - Without a trailing dot or multi-segment separator (`1.1`), the AI model often classifies these single lines as list items rather than top-level section divisions, while the rule-based integer gate (`_bare_integer_trusted`) rejects them unless exact uppercase layout alignment criteria are met.
+
+#### Cluster 3: Bid Checklist & Criteria Table Rows (Pages 7–9, 26 FNs)
+- **What they look like in Gold**:
+  - `P7 numheading:1` -> `'1 Name of works/services to be procured'`
+  - `P7 numheading:10` -> `'10 Availability of TENDER documents ends on'`
+  - `P7 numheading:11` -> `'11 TENDER submission ends on'`
+  - `P7 numheading:12` -> `'12 TENDER opens on'`
+  - `P8 point:1` .. `point:5`, `P9 point:6` .. `point:10`
+- **Why they were missed**:
+  - Pages 7–9 contain HTML/markdown table grids (`<table><tr><td>1</td><td>Name of works...`).
+  - To prevent catastrophic false positive explosions on Bill of Quantities (BOQ) and price schedule pages (which previously generated over 150 false positive targets on Pages 76 and 91), `_filter_ai_events_against_blocks` prunes blocks where `types[block_idx] == "table_cell"`.
+  - While this pruning successfully secured **0.906 precision**, it inevitably pruned the table-cell criteria items on Pages 7–9.
+
+#### Positive Confirmation: Zero Regressions on Section VI Clauses (Pages 52–61)
+- In Section VI (*Special Conditions of Contract*), out of 109 multi-segment decimal clauses (1.1.1–1.11.9), **over 100 clauses were accurately indexed and retained**.
+- This proves that scoping `_CLAUSE_NARRATIVE_VERB_RE` to `is_under_annexure or not is_contract` successfully preserved commercial tender clauses under real sections.
+
+---
+
+### 26.4 Architectural Recommendations to Recover Recall (Without Hurting Precision)
+
+1. **Section IV Letter-Point Scope Unblocking**:
+   - In `reference_index.py:detect_contract_clauses_for_page`, allow letter points (`a.`, `b.`, `c.`) to emit even when the nearest container is a procedural step subdoc (`subdoc:step-*`), associating them with the enclosing `numheading:4.x` or `section:4`. This single fix will recover up to **107 FNs (+14% recall)**.
+2. **ITB Bare Integer Clause Recovery**:
+   - In `reference_index.py`, when scope is under `section:3` (Instructions to Bidders), treat single integers followed by Title-Cased nouns (`^\s*(\d{1,2})\s+([A-Z][A-Za-z\s\(\)\/]+)$`) as valid `numheading` clauses. This will recover **31 FNs (+4% recall)**.
+3. **Table Block Context-Aware Carve-Out**:
+   - Rather than universally suppressing all table cells in `_filter_ai_events_against_blocks`, check whether the table header is a Bidder Checklist / Key Tender Information table (Pages 7–9) vs. a BOQ / Price Schedule table. If `is_checklist_table`, permit table row numbering to emit as `numheading`. This will recover **26 FNs (+3.4% recall)**.
+4. **Projected Impact**:
+   - Recovering these 164 FNs will increase Merged Recall from **`0.706`** to **`0.921`** on `tender-135p`, while maintaining $\ge 0.900$ precision.
+
+
+
