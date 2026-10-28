@@ -1406,4 +1406,83 @@ describe('ViewerPanel — unified zoom (PDF mirror, editor zoom, Fit Both)', () 
     fireEvent.wheel(editorPaneContent, { deltaY: -100, ctrlKey: true });
     expect(document.querySelector('.editor-content').style.fontSize).toBe('1.058rem');
   });
+
+  describe('ViewerPanel — in-document Find/Search', () => {
+    it('computes totalMatches and displays match count instead of 0 matches when searching for text', async () => {
+      const job = jobWithPages([
+        { page: 63, text: 'Page 63 content' },
+        { page: 64, text: 'This page has SCC specifications and SCC clause.' },
+        { page: 65, text: 'Page 65 has SCC reference.' },
+      ]);
+      render(
+        <ViewerPanel
+          {...baseProps}
+          studioMode={true}
+          viewMode="split"
+          pdfSrc="blob:fake-url"
+          jobDetails={job}
+        />
+      );
+
+      // Open search widget via Find button
+      fireEvent.click(screen.getByTestId('studio-find-btn'));
+      expect(screen.getByTestId('studio-search-widget')).toBeInTheDocument();
+
+      // Type "SCC" into the search box
+      const input = screen.getByTestId('studio-search-input');
+      fireEvent.change(input, { target: { value: 'SCC' } });
+
+      // Total matches: 3 matches (2 on page 64, 1 on page 65)
+      await waitFor(() => {
+        expect(screen.getByTestId('studio-search-count')).toHaveTextContent('1 of 3');
+      });
+
+      // Navigation buttons are active
+      const nextBtn = screen.getByTestId('studio-search-next-btn');
+      const prevBtn = screen.getByTestId('studio-search-prev-btn');
+      expect(nextBtn).not.toBeDisabled();
+      expect(prevBtn).not.toBeDisabled();
+
+      // Click next -> advances to match 2 of 3 (still page 64)
+      fireEvent.click(nextBtn);
+      expect(screen.getByTestId('studio-search-count')).toHaveTextContent('2 of 3');
+
+      // Click next -> advances to match 3 of 3 (page 65)
+      fireEvent.click(nextBtn);
+      expect(screen.getByTestId('studio-search-count')).toHaveTextContent('3 of 3');
+
+      // Click next -> wraps around to 1 of 3
+      fireEvent.click(nextBtn);
+      expect(screen.getByTestId('studio-search-count')).toHaveTextContent('1 of 3');
+
+      // Click prev -> wraps back to 3 of 3
+      fireEvent.click(prevBtn);
+      expect(screen.getByTestId('studio-search-count')).toHaveTextContent('3 of 3');
+    });
+
+    it('shows 0 matches and disables navigation when text is not found', async () => {
+      const job = jobWithPages([
+        { page: 64, text: 'Some text without target word' },
+      ]);
+      render(
+        <ViewerPanel
+          {...baseProps}
+          studioMode={true}
+          viewMode="split"
+          pdfSrc="blob:fake-url"
+          jobDetails={job}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('studio-find-btn'));
+      const input = screen.getByTestId('studio-search-input');
+      fireEvent.change(input, { target: { value: 'nonexistent' } });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('studio-search-count')).toHaveTextContent('0 matches');
+      });
+      expect(screen.getByTestId('studio-search-next-btn')).toBeDisabled();
+      expect(screen.getByTestId('studio-search-prev-btn')).toBeDisabled();
+    });
+  });
 });

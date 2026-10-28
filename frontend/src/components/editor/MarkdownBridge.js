@@ -5,6 +5,8 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { Markdown } from 'tiptap-markdown';
 import DOMPurify from 'dompurify';
 
+import { SearchHighlightExtension } from './SearchHighlightExtension';
+
 // Centralizes the TipTap <-> Markdown wiring so WysiwygEditor.jsx doesn't need
 // to know TipTap extension internals, and so the exact same extension set is
 // used everywhere an editor instance is created (avoids two call sites
@@ -51,6 +53,7 @@ export function buildEditorExtensions({ placeholder } = {}) {
       transformPastedText: true,
       transformCopiedText: true,
     }),
+    SearchHighlightExtension,
   ];
 }
 

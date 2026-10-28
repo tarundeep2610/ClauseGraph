@@ -45,6 +45,15 @@ describe('findRangeForPage', () => {
     expect(findRangeForPage(ranges, 405).key).toBe('annexure:a-2');
   });
 
+  it('prefers a range starting on the page over an outgoing range closing on that page', () => {
+    const boundaryRanges = [
+      { key: 'conclusion', start_page: 50, end_page: 60, depth: 1 },
+      { key: 'subdoc:clause-iii', start_page: 56, end_page: 60, depth: 3 },
+      { key: 'memo-of-costs', start_page: 60, end_page: 61, depth: 1 },
+    ];
+    expect(findRangeForPage(boundaryRanges, 60).key).toBe('memo-of-costs');
+  });
+
   it('returns null when no range covers the page', () => {
     expect(findRangeForPage(ranges, 999)).toBeNull();
   });

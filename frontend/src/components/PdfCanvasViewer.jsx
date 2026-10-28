@@ -60,7 +60,18 @@ export function clampZoom(z) {
 // exactly as before for every other caller (the non-Studio dual-viewport
 // panes, which have no external zoom UI of their own).
 const PdfCanvasViewer = forwardRef(function PdfCanvasViewer(
-  { pdfSrc, pageNum, totalPages, onPageChange, showPageNav = true, showZoomControls = true, onZoomLevelChange },
+  {
+    pdfSrc,
+    pageNum,
+    totalPages,
+    onPageChange,
+    showPageNav = true,
+    showZoomControls = true,
+    onZoomLevelChange,
+    searchQuery = '',
+    activeMatchIndex = -1,
+    bothPanesSearch = true,
+  },
   ref
 ) {
   const canvasRef = useRef(null);
@@ -75,6 +86,7 @@ const PdfCanvasViewer = forwardRef(function PdfCanvasViewer(
   const [loadedDoc, setLoadedDoc] = useState(null);
   const [error, setError] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [pdfMatches, setPdfMatches] = useState([]);
 
   const effectiveTotalPages = totalPages || loadedDoc?.numPages || 0;
   const currentPage = Math.min(Math.max(pageNum || 1, 1), effectiveTotalPages || pageNum || 1);
@@ -236,7 +248,83 @@ const PdfCanvasViewer = forwardRef(function PdfCanvasViewer(
     if (onZoomLevelChange) onZoomLevelChange(zoomLevel);
   }, [zoomLevel, onZoomLevelChange]);
 
-  useImperativeHandle(ref, () => ({ zoomIn, zoomOut, resetZoom, fitPage }));
+  // Search the current PDF page text content when bothPanesSearch is true
+  useEffect(() => {
+    if (!loadedDoc || !searchQuery || !searchQuery.trim() || !bothPanesSearch) {
+      setPdfMatches([]);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const page = await loadedDoc.getPage(currentPage);
+        if (cancelled || typeof page?.getTextContent !== 'function') {
+          if (!cancelled) setPdfMatches([]);
+          return;
+        }
+        const textContent = await page.getTextContent();
+        if (cancelled || !textContent?.items?.length) {
+          if (!cancelled) setPdfMatches([]);
+          return;
+        }
+
+        const containerWidth = containerRef.current?.clientWidth || 800;
+        const baseViewport = page.getViewport({ scale: 1 });
+        const scale = (containerWidth / baseViewport.width) * zoomLevel;
+        const viewport = page.getViewport({ scale });
+
+        const q = searchQuery.trim().toLowerCase();
+        const matches = [];
+
+        for (const item of textContent.items) {
+          if (!item.str) continue;
+          const str = item.str.toLowerCase();
+          let idx = 0;
+          while ((idx = str.indexOf(q, idx)) !== -1) {
+            const tx = item.transform[4];
+            const ty = item.transform[5];
+            const itemWidth = item.width || (item.str.length * 8);
+            const itemHeight = item.height || Math.hypot(item.transform[2], item.transform[3]) || 12;
+
+            const charWidth = itemWidth / item.str.length;
+            const matchStartX = tx + (idx * charWidth);
+            const matchWidth = q.length * charWidth;
+
+            const [vx, vy] = viewport.convertToViewportPoint(matchStartX, ty + itemHeight);
+            const scaledWidth = matchWidth * (viewport.scale / (baseViewport.scale || 1));
+            const scaledHeight = itemHeight * (viewport.scale / (baseViewport.scale || 1));
+
+            matches.push({
+              x: vx,
+              y: vy,
+              width: scaledWidth,
+              height: scaledHeight,
+            });
+            idx += q.length;
+          }
+        }
+        if (!cancelled) {
+          setPdfMatches(matches);
+        }
+      } catch (err) {
+        if (!cancelled) setPdfMatches([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadedDoc, currentPage, searchQuery, bothPanesSearch, zoomLevel]);
+
+  useImperativeHandle(ref, () => ({
+    zoomIn,
+    zoomOut,
+    resetZoom,
+    fitPage,
+    find: (q) => {
+      // Imperative helper if needed
+      return pdfMatches;
+    },
+  }));
 
   function goToPage(n) {
     const clamped = Math.min(Math.max(n, 1), effectiveTotalPages || n);
@@ -251,7 +339,27 @@ const PdfCanvasViewer = forwardRef(function PdfCanvasViewer(
             Failed to render page {currentPage}: {error}
           </div>
         )}
-        <canvas ref={canvasRef} data-testid="pdf-canvas" style={{ display: error ? 'none' : 'block' }} />
+        <div style={{ position: 'relative', display: error ? 'none' : 'inline-block' }}>
+          <canvas ref={canvasRef} data-testid="pdf-canvas" />
+          {pdfMatches.map((m, i) => (
+            <div
+              key={i}
+              className={`pdf-search-highlight${i === activeMatchIndex ? ' active' : ''}`}
+              data-testid={`pdf-search-highlight-${i}`}
+              style={{
+                position: 'absolute',
+                left: `${Math.round(m.x)}px`,
+                top: `${Math.round(m.y)}px`,
+                width: `${Math.round(m.width)}px`,
+                height: `${Math.round(m.height)}px`,
+                backgroundColor: i === activeMatchIndex ? 'rgba(255, 152, 0, 0.6)' : 'rgba(255, 235, 59, 0.4)',
+                border: i === activeMatchIndex ? '1px solid #e65100' : 'none',
+                pointerEvents: 'none',
+                borderRadius: '2px',
+              }}
+            />
+          ))}
+        </div>
       </div>
       <div className="pdf-canvas-nav">
         {showPageNav && (
