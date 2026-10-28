@@ -135,9 +135,13 @@ class TestStructureMetrics:
 
 class TestGroundingMetrics:
     def test_normalize_quote(self):
+        # Quote marks (curly or straight) and other non-word punctuation are
+        # now stripped entirely, not just curly->straight-replaced -- this
+        # mirrors ai_action_items._norm_for_action_item_match's tolerance so
+        # eval scoring and the live grounding gate agree on "the same quote".
         raw = "  \u201cThe   Appellant \t May Kindly\nBe Permitted\u201d  "
         norm = normalize_quote(raw)
-        assert norm == '"the appellant may kindly be permitted"'
+        assert norm == "the appellant may kindly be permitted"
 
     def test_verify_quote_grounding(self):
         page_text = "In view of the above, the appellant may kindly be permitted to place Annexure A-1 on record."
@@ -164,6 +168,40 @@ class TestGroundingMetrics:
         assert scores["recall"] == 0.5
         assert scores["by_type"]["obligation"]["precision"] == 1.0
         assert scores["by_type"]["deadline"]["recall"] == 0.0
+
+    def test_score_action_items_cross_type_obligation_condition(self):
+        """Real case found via scratch/analyze_crosstype_impact.py (dfccil
+        fixture): gold tags an EMD-exemption clause as "condition", but the
+        model naturally extracts the identical real-world sentence as
+        "obligation" -- these must match (not double-penalize as both a
+        false positive and a false negative), and the by_type breakdown
+        must stay internally sane even though the gold item's type and its
+        matched actual item's type now differ."""
+        quote = ("The bidder seeking EMD exemption, must submit the valid supporting document "
+                 "for the relevant category as per GeM GTC with the bid.")
+        gold = [{"page": 3, "item_type": "condition", "evidence_quote": quote}]
+        actual = [{"page": 3, "item_type": "obligation", "evidence_quote": quote}]
+        scores = score_action_items(gold, actual)
+        assert scores["matched_count"] == 1
+        assert scores["precision"] == 1.0
+        assert scores["recall"] == 1.0
+        assert scores["false_positives"] == []
+        assert scores["false_negatives"] == []
+        # The gold item is "condition" but matched an "obligation" actual item --
+        # both per-type buckets must reflect the match on their own side, not
+        # show a phantom miss.
+        assert scores["by_type"]["condition"]["recall"] == 1.0
+        assert scores["by_type"]["obligation"]["precision"] == 1.0
+
+    def test_score_action_items_cross_type_does_not_apply_to_deadline(self):
+        """Cross-type matching is scoped to obligation<->condition only --
+        a deadline/condition pair on the same page with a similar quote must
+        NOT match, even though the quotes would otherwise score high."""
+        gold = [{"page": 5, "item_type": "deadline", "evidence_quote": "payment due within 30 days of invoice"}]
+        actual = [{"page": 5, "item_type": "condition", "evidence_quote": "payment due within 30 days of invoice"}]
+        scores = score_action_items(gold, actual)
+        assert scores["matched_count"] == 0
+        assert scores["recall"] == 0.0
 
 
 class TestOCRErrorMetrics:

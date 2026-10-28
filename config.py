@@ -175,7 +175,12 @@ AI_INDEX_CHUNK_PAGES = int(os.environ.get("AI_INDEX_CHUNK_PAGES", "3"))
 AI_INDEX_CHUNK_OVERLAP_PAGES = int(os.environ.get("AI_INDEX_CHUNK_OVERLAP_PAGES", "0"))
 AI_INDEX_CHUNK_CHARS_MAX = int(os.environ.get("AI_INDEX_CHUNK_CHARS_MAX", "60000"))
 AI_INDEX_ADAPTIVE_CHUNKING = os.environ.get("AI_INDEX_ADAPTIVE_CHUNKING", "true").strip().lower() == "true"
-AI_INDEX_TWO_PASS = os.environ.get("AI_INDEX_TWO_PASS", "false").strip().lower() == "true"
+# Default ON as of 2026-10-27: a live A/B on tender-135p pages 84-126 (the
+# documented AS-IS-catalogue false-positive zone) showed two-pass cutting
+# action-item false positives from 69 to 26 (-62%) with zero recall cost
+# (gold=0 in that zone either way). A job's own engine_params.ai_index_two_pass,
+# when explicitly set, still overrides this default for either pipeline.
+AI_INDEX_TWO_PASS = os.environ.get("AI_INDEX_TWO_PASS", "true").strip().lower() == "true"
 # How many neighboring pages (each direction, within the same chunk) to
 # search when grounding an AI-reported heading whose claimed start_page
 # doesn't actually contain matching text — see

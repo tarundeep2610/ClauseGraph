@@ -96,8 +96,11 @@ async def _run_action_items(args: argparse.Namespace) -> int:
     runner = ActionItemsEvalRunner()
     trials = args.trials or dataset.default_trials
 
+    if args.page_from is not None or args.page_to is not None:
+        print(f"\n[SLICE MODE] Running targeted evaluation on Pages {args.page_from} to {args.page_to}")
+
     print(f"\n--- Running Action Items Benchmark: {dataset.name} ({trials} trial(s)) ---")
-    results = await runner.run(args.dataset, trials=trials)
+    results = await runner.run(args.dataset, trials=trials, page_from=args.page_from, page_to=args.page_to)
 
     mean_scores = {k: v["mean"] for k, v in results.get("spread", {}).items()}
     gate_res = evaluate_action_items_gates(mean_scores)
