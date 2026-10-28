@@ -102,6 +102,20 @@
     },
     {
       "page": 4,
+      "item_type": "obligation",
+      "item_text": "TReDS-registered MSME sellers must register with a TReDS exchange to receive payment via that channel",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "cadence": null,
+      "end_page": null,
+      "evidence_quote": "sellers intending to avail payment through TReDS are required to be registered with at least one TReDS exchange in which the buyer is registered.",
+      "responsible_party": "Bidder",
+      "confidence": "high",
+      "occurrence_index": 7
+    },
+    {
+      "page": 4,
       "item_type": "condition",
       "item_text": "Class-I/Class-II local-content certificate required to claim Make-in-India purchase preference",
       "date_text": null,

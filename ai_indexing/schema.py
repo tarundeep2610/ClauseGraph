@@ -25,81 +25,9 @@ import config
 _MD_HEADING_PREFIX_RE = re.compile(r"^\s*#{1,6}\s+")
 _MD_EMPHASIS_RE = re.compile(r"(\*\*|\*|__|_|`)")
 _TRAILING_COLON_RE = re.compile(r"\s*:\s*$")
-# Standalone page/sheet stamp numbers, bare integers, or page markers (e.g. "-:12:-", "20", "Page 5", "5 of 100")
-_BARE_PAGE_OR_STAMP_RE = re.compile(
-    r"^\s*(?:[-–—(]?\s*[:\.]?\s*[-–—]?\s*\d+\s*[:\.]?\s*[-–—)]?|"
-    r"[Pp]age\s+\d+(?:\s+of\s+\d+)?)\s*$"
-)
-
-# Domain-generic legal administrative noise (court headers, case numbers, counsel, fee lines, party delimiters, printer stamps)
-_GENERIC_LEGAL_NOISE_RE = re.compile(
-    r"^\s*(?:"
-    r"Versus|V/s|Vs\.?|"
-    r"Advocate|Advocates|Counsel(?:\s+for\s+.*)?|Sr\.?\s*Advocate|ATOVOCATG|"
-    r".*(?:\.{2,}|[-–—]{2,}|\()\s*(?:Appellants?|Respondents?|Petitioners?|Defendants?|Plaintiffs?)\s*[\.:\)]?|"
-    r"(?:Dated\s*[:\.]?\s*)?\d{1,2}[\./\-]\d{1,2}[\./\-]\d{2,4}|"
-    r"Total\s+\d+.*|U·f\s+\d+.*|"
-    r"IN\s+THE\s+(?:HIGH\s*COURT|SUPREME\s*COURT|DISTRICT\s*COURT|COURT\s*OF)\b.*|"
-    r"AT\s+[A-Z\s]+|JUDICIAL\s+DEPARTMENT|CIVIL\s+APPELLATE\s+SIDE|"
-    r"(?:F\.?A\.?O\.?|Civil\s+Misc\.?|C\.?M\.?|W\.?P\.?|Arbitration\s+Case|Commercial\s+Appeal)(?:[\s\(\.\-].*|$)|"
-    r".*Appeal\s+No\.?\s*\d+.*|"
-    r"Stereo\s+H\.?C\.?J\.?D\.?.*|.*Govt\.?\s*Press.*|^[A-Za-z]\d{1,4}$|"
-    r"INDIA\s+COURT\s+FEE|COURT\s+FEE|Rs\.\s*\d+|\bRUPEES\b|Price\s*:\s*\d+.*|.*Paise\b|\([A-Z]{2,}\s+[A-Z\s]{2,}\)|"
-    r"Endst\.?\s*No\.?[\s\.\:\/\-].*|"
-    r"Memo\s+No\.?[\s\.\:\/\-].*|D\.?\s*NO\.?[\s\.\:\/\-].*|"
-    r"Copy\s+(?:of\s+the\s+above\s+)?(?:is\s+)?forwarded\s+to\b.*|"
-    r"Copy\s+to\s*:?|"
-    r"(?:\(?\d+[\.\)]?\s+)?(?:The\s+)?(?:Sr\.?\s*PS|Superin[tl][a-z]+ing\s*Engineer|Executive\s*Engineer|Chief\s*Engineer|Chief\s*Auditor|Director/|FA\s*&\s*CAO|Dy\.?\s*Secy|Supdt\.?\s*(?:\([^\)]*\))?|Accounts\s*Officer|Personal\s*Assistant|Under\s*Secretary)\b.*|"
-    r"(?:AND|OR|WITH|FOR|IN|ON|OF|AT|BY|TO)|"
-    r"To\s*,?|From|Dear\s+(?:Sirs?|Madam)\s*,?|"
-    r"Yours\s+faithfully|Thanking\s+you|"
-    r"(?:Tel|Ph|Fax)\.?:?\s*[\d\s\-\/\(\)]+|"
-    r"\d+[\.\)]?\s+(?:Our|Your)\s+.*(?:No\.?|Letter|Bid|Ref).*(?:Dtd|DTD|Dated)\.?\s*:.*|"
-    r"Our\s+Ref\.?\s*[A-Z0-9\/\-]+\s*$|"
-    r"Authorized\s+Signator(?:y|ies)\b.*|"
-    r"For\s+[A-Z0-9\s,\.\/&\-]+\b(?:LTD|LIMITED|BANK|CORP|INC|NA|N\.A\.|CHENNAI)\b.*|"
-    r"IN\s+WITNESS\s+WHEREOF\b.*|"
-    r"Signed,?\s+sealed\s+and\s+Delivered\b.*|"
-    r"NAME\s*:.*|"
-    r"TITLE\s*:.*|"
-    r"IN\s+THE\s+PRESENCE\s+OF\b.*|"
-    r"(?:\\?[\$\\]\s*)?(?:\\therefore|\\Delta|\\frac|\\sum|\\times|\\le|\\ge|\{S\}|S_\\Delta)\b.*|"
-    r"(?:CNR|CIS|Case|Diary|Registration)\s*No\.?[\s\.\:\/\-][A-Z0-9\/\-]+.*|"
-    r"(?:\(?\d+[\.\)]?\s+)?(?:Mr\.?|Ms\.?|Sh\.?|Justice\s+)?.*?\b(?:Presiding\s*Arbitrator|Sole\s*Arbitrator|Co-Arbitrator|\bArbitrator,\b).*|"
-    r"OPENING\s+SHEET\s+FOR\s+CIVIL\s+APPEALS.*|"
-    r"Claim\s+in\s+appeal.*|"
-    r"Enactment\s+and\s+section\s+under\s+which.*|"
-    r"\(ORDER\s+\d+[\s,]+RULE\s+\d+.*?\)|"
-    r"(?:\([A-Za-z\s\.]+\)|[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*,\s*(?:Presiding\s*Judge|(?:Addl\.?|Additional)\s*District\s*Judge|District\s*Judge|Commercial\s*Court|Tribunal\s*Member|Arbitrator|Sole\s*Arbitrator)\b.*|"
-    r"(?:AIJ|ADJ|DJ|CJ|Additional\s+District\s+Judge|Addl\.?\s*District\s*Judge|District\s*Judge)-cum-[\s]*Presiding\s*Judge\b.*|"
-    r"ATTESTED\b.*|"
-    r"(?:Examiner|Examine)\b.*|"
-    r"(?:Copying|Copping)(?:\s+Agency)?\b.*|"
-    r"Distt?\.?\s*(?:&?\s*Sessions\s+Court|[\d\.\s\/\-]+).*|"
-    r"Announced\s+in\s+open\s+Court\b.*|"
-    r"(?:s\.?\s*grapher|Stenographer)[-\d\s]*.*|"
-    r".*\b(?:Alka\s+Malik|Gurugram)\b.*|"
-    r"D\s*[:\.]\s*\d{1,2}[\./\-]\d{1,2}[\./\-]\d{2,4}\.?.*|"
-    r"(?:Compl|Counsel)\s+for\s+.*|"
-    r"(?:KOLDEEP\s+TIWALI|VESSU|MP\s+USE\s+T&D)\b.*|"
-    r"Total\s+(?:Erection|Training|Type\s+Test|Supply|Civil|Installation|Freight|Cost|Charges|Price)\b.*|"
-    r"Freight\s*&\s*insurance\s+charges\b.*|"
-    r".*?\b(?:Versus|V/s|Vs\.)\b.*|"
-    r"\(?UID\s*No\.?\s*[A-Z0-9]+\)?.*|"
-    r"Register\s*No\.?\b.*|"
-    r"Remarks\b.*|"
-    r"(?:Special\s+)?Commercial\s+Court\s+at\b.*|"
-    r"Date\s*[:\s]\s*.*|"
-    r"Bank\s+Guarantee\s+No\.?\s*\d+.*|"
-    r"CONTRACT\s+No\.?\s*[-A-Z0-9\/\(\)\s]+|"
-    r"In\s+(?:F\.?A\.?O\.?|C\.?M\.?|W\.?P\.?|Civil|Arbitration)\b.*|"
-    r".*,\s*Panchkula\s*-\s*\d{6}\s*$|"
-    r".*\(As\s+per\s+(?:Technical\s+)?Specifications?\)\s*$|"
-    r"[A-Z]{1,3}\s*[-–—]?\s*\d+[a-zA-Z]?|"
-    r"[A-Z]{2}|\d+[a-z]|"
-    r"\(?(?:[a-zA-Z]|\d{1,2}|[ivxlcdmIVXLCDM]{1,4})\)"
-    r")[.,;:]?\s*$",
-    re.IGNORECASE
+from ai_indexing.guards import (
+    _BARE_PAGE_OR_STAMP_RE,
+    _GENERIC_LEGAL_NOISE_RE,
 )
 
 

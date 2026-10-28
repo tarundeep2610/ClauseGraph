@@ -42,7 +42,7 @@ import html
 import logging
 import re
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ai_indexing
 import ai_reference_index
@@ -125,6 +125,10 @@ def locate_action_item_block(
         page_norm = _norm_for_action_item_match(page_text)
         if target in page_norm:
             return (best_idx if best_idx is not None else 0), "page_text", best_ratio
+        t_words = set(target.split())
+        p_words = set(page_norm.split())
+        if t_words and len(t_words & p_words) / len(t_words) >= 0.80 and len(t_words) >= 4:
+            return (best_idx if best_idx is not None else 0), "page_text", best_ratio
 
     return None
 
@@ -145,6 +149,8 @@ def _ground_action_item(
     item's `page` corrected to wherever it actually grounded, or None if it
     grounds nowhere in the window at all (dropped, never persisted on the
     model's word alone)."""
+    if isinstance(item, dict):
+        item = ai_indexing.AIActionItem(**item)
     claimed_page = item.page
     candidate_pages = [claimed_page]
     for delta in range(1, config.AI_INDEX_GROUND_PAGE_WINDOW + 1):
@@ -282,7 +288,7 @@ async def reindex_action_items_for_job(
                 # pass and the action-item pass have independent circuit
                 # breakers / retry state.
                 structure_indexer = ai_indexing.StructureIndexer(resolved)
-                macro_skeleton = await ai_reference_index._extract_macro_skeleton(
+                macro_skeleton = await ai_indexing.extract_macro_skeleton(
                     pages=page_inputs, indexer=structure_indexer,
                     cancel_check=_cancel_check, raw_text_by_page=raw_text_by_page,
                 )
@@ -306,6 +312,20 @@ async def reindex_action_items_for_job(
             chunks = ai_indexing.plan_chunks(
                 page_inputs, max_pages=chunk_pages_size, max_chars=chunk_chars_max, overlap_pages=overlap_pages,
             )
+
+        # ATC Micro-Chunking: dense ATC covenant pages get isolated single-page chunks to prevent attention loss
+        split_chunks: List[ai_indexing.ChunkPlan] = []
+        for ch in chunks:
+            has_dense_atc = any(
+                re.search(r"\b(?:Buyer\s+Added\s+(?:Bid\s+Specific\s+)?(?:Additional\s+Terms|ATC)|Buyer\s+Added\s+text\s+based\s+ATC)\b", p.text, re.I)
+                for p in ch.pages
+            )
+            if has_dense_atc and len(ch.pages) > 1:
+                for p in ch.pages:
+                    split_chunks.append(ai_indexing.ChunkPlan(pages=[p], total_chars=len(p.text or "")))
+            else:
+                split_chunks.append(ch)
+        chunks = split_chunks
         total_chunks = len(chunks)
 
         chunks_log: List[Dict[str, Any]] = []
@@ -323,6 +343,7 @@ async def reindex_action_items_for_job(
         last_persisted_page_num: Optional[int] = None
         items_found_total = 0
         items_dropped_ungrounded_total = 0
+        seen_delivery_requirements: Set[str] = set()
 
         # Deque-based so a truncated chunk can be split in half and requeued
         # at finer granularity — mirrors ai_reference_index.py's own micro
@@ -363,7 +384,7 @@ async def reindex_action_items_for_job(
             )
 
             macro_ctx = (
-                ai_reference_index._get_active_macro_context(macro_skeleton, chunk.page_nums[0])
+                ai_indexing.get_active_macro_context(macro_skeleton, chunk.page_nums[0])
                 if macro_skeleton else None
             )
 
@@ -429,8 +450,81 @@ async def reindex_action_items_for_job(
                     if grounded is None:
                         ungrounded_this_chunk += 1
                         continue
+                    if macro_skeleton:
+                        macro_ctx = ai_indexing.get_active_macro_context(macro_skeleton, grounded["page"])
+                        role = macro_ctx.get("division_role", "general") if macro_ctx else "general"
+                        if ai_indexing.is_as_is_catalogue_other_leak(grounded.get("item_type"), grounded.get("evidence_quote", ""), role):
+                            continue
+                        if ai_indexing.is_ungated_sow_feature_description(grounded.get("item_type"), grounded.get("evidence_quote", ""), role):
+                            continue
+                    if ai_indexing.is_bare_parameter_or_platform_disclaimer(grounded.get("item_type"), grounded.get("evidence_quote", "")):
+                        continue
+                    if ai_indexing.is_litigation_argument_or_past_recital(grounded.get("evidence_quote", "")):
+                        continue
+                    if ai_indexing.is_alternative_security_instrument_duplicate(grounded.get("item_type"), grounded.get("evidence_quote", "")):
+                        continue
+                    if grounded.get("item_text", "").startswith("Delivery required within"):
+                        req = grounded.get("item_text")
+                        if req in seen_delivery_requirements:
+                            continue
+                        seen_delivery_requirements.add(req)
                     grounded["detection_model"] = result.model
                     final_items_by_page.setdefault(grounded["page"], []).append(grounded)
+
+                # Deterministic harvester pass to catch vital contractual milestones/deadlines
+                for p in chunk.pages:
+                    harvested = ai_indexing.harvest_action_items_from_text(p.page_num, p.text)
+                    existing_items = final_items_by_page.setdefault(p.page_num, [])
+                    for h_item in harvested:
+                        g_h = _ground_action_item(h_item, page_blocks, chunk_page_texts)
+                        if g_h is None:
+                            continue
+                        if macro_skeleton:
+                            macro_ctx = ai_indexing.get_active_macro_context(macro_skeleton, g_h["page"])
+                            role = macro_ctx.get("division_role", "general") if macro_ctx else "general"
+                            if ai_indexing.is_as_is_catalogue_other_leak(g_h.get("item_type"), g_h.get("evidence_quote", ""), role):
+                                continue
+                            if ai_indexing.is_ungated_sow_feature_description(g_h.get("item_type"), g_h.get("evidence_quote", ""), role):
+                                continue
+                        if ai_indexing.is_bare_parameter_or_platform_disclaimer(g_h.get("item_type"), g_h.get("evidence_quote", "")):
+                            continue
+                        if ai_indexing.is_alternative_security_instrument_duplicate(g_h.get("item_type"), g_h.get("evidence_quote", "")):
+                            continue
+                        if g_h.get("item_text", "").startswith("Delivery required within"):
+                            req = g_h.get("item_text")
+                            if req in seen_delivery_requirements:
+                                continue
+                            seen_delivery_requirements.add(req)
+                        matched_llm_item = None
+                        h_clean = re.sub(r"<[^>]+>", " ", g_h.get("evidence_quote") or "")
+                        h_quote_norm = re.sub(r"\W+", "", h_clean.lower())
+                        h_date_iso = g_h.get("date_iso")
+                        h_type = g_h.get("item_type")
+
+                        for ex in existing_items:
+                            ex_clean = re.sub(r"<[^>]+>", " ", ex.get("evidence_quote") or "")
+                            ex_quote_norm = re.sub(r"\W+", "", ex_clean.lower())
+                            if (h_quote_norm and (h_quote_norm in ex_quote_norm or ex_quote_norm in h_quote_norm)) or \
+                               (h_date_iso and ex.get("date_iso") == h_date_iso and ex.get("item_type") == h_type) or \
+                               (g_h.get("date_text") and ex.get("date_text") == g_h.get("date_text") and g_h.get("anchor_event") and ex.get("anchor_event") == g_h.get("anchor_event") and ex.get("item_type") == h_type):
+                                matched_llm_item = ex
+                                break
+
+                        if matched_llm_item:
+                            if g_h.get("confidence") == "high" or g_h.get("item_type") == "condition":
+                                matched_llm_item["item_type"] = g_h["item_type"]
+                                matched_llm_item["item_text"] = g_h["item_text"]
+                                if len(g_h.get("evidence_quote", "")) >= len(matched_llm_item.get("evidence_quote", "")):
+                                    matched_llm_item["evidence_quote"] = g_h["evidence_quote"]
+                            if not matched_llm_item.get("date_iso") and h_date_iso:
+                                matched_llm_item["date_iso"] = h_date_iso
+                            if not matched_llm_item.get("date_text") and g_h.get("date_text"):
+                                matched_llm_item["date_text"] = g_h["date_text"]
+                            if not matched_llm_item.get("anchor_event") and g_h.get("anchor_event"):
+                                matched_llm_item["anchor_event"] = g_h["anchor_event"]
+                        else:
+                            g_h["detection_model"] = f"{result.model}+harvest" if result else "harvest"
+                            existing_items.append(g_h)
 
                 if ungrounded_this_chunk:
                     warning_counts["action_item_ungrounded_dropped"] = ungrounded_this_chunk

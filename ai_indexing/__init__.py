@@ -84,6 +84,24 @@ from ai_indexing.recording import (
     record_scope,
     replay_scope,
 )
+from ai_indexing.macro import (
+    extract_macro_skeleton,
+    get_active_macro_context,
+    classify_division_role,
+)
+from ai_indexing.guards import (
+    is_administrative_noise,
+    is_table_header_or_form_field,
+    is_document_noise_or_running_header,
+    is_as_is_catalogue_other_leak,
+    is_bare_parameter_or_platform_disclaimer,
+    is_alternative_security_instrument_duplicate,
+    is_ungated_sow_feature_description,
+    is_litigation_argument_or_past_recital,
+)
+from ai_indexing.harvesters import (
+    harvest_action_items_from_text,
+)
 
 __all__ = [
     "AIIndexError", "AIConfigError", "AIAuthError",
@@ -102,4 +120,12 @@ __all__ = [
     "ChunkActionItemResult", "ActionItemIndexer",
     "ResolvedAIConfig", "resolve_active_config", "describe_active_config",
     "RecordSession", "ReplaySession", "ReplayFidelityError", "record_scope", "replay_scope",
+    "extract_macro_skeleton", "get_active_macro_context", "classify_division_role",
+    "is_administrative_noise", "is_table_header_or_form_field",
+    "is_document_noise_or_running_header", "is_as_is_catalogue_other_leak",
+    "is_bare_parameter_or_platform_disclaimer",
+    "is_alternative_security_instrument_duplicate",
+    "is_ungated_sow_feature_description",
+    "is_litigation_argument_or_past_recital",
+    "harvest_action_items_from_text",
 ]

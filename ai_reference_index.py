@@ -346,21 +346,7 @@ _FORM_FIELD_RE = re.compile(
 _FORM_DOTTED_FIELD_RE = re.compile(r"^[\w\s]{2,35}[:\.]\s*[\._]{3,}\s*$")
 
 
-def _is_table_header_or_form_field(text: str) -> bool:
-    """True if text is a generic table column header (e.g. 'S.No.', 'Description')
-    or a form/signature placeholder ('Authorized Signatory:', 'Date: ....')."""
-    stripped = (text or "").strip()
-    if not stripped:
-        return False
-    # Normalize punctuation and spacing to spaces for robust matching:
-    norm = re.sub(r"[^\w]+", " ", stripped.lower()).strip()
-    if norm in _TABLE_COLUMN_HEADERS:
-        return True
-    if _FORM_FIELD_RE.match(stripped):
-        return True
-    if _FORM_DOTTED_FIELD_RE.match(stripped):
-        return True
-    return False
+_is_table_header_or_form_field = ai_indexing.is_table_header_or_form_field
 
 
 def _is_index_or_toc_page(blocks: List[str]) -> bool:
@@ -382,18 +368,7 @@ _RUNNING_HEADER_PATTERNS = [
 ]
 
 
-def _is_document_noise_or_running_header(text: str, page_num: int) -> bool:
-    """True if text is a repeating document running header (e.g. 'Tender Specification No...'
-    on page > 1), correspondence office/date metadata, or full prose body sentence hallucinated as a heading."""
-    stripped = (text or "").strip()
-    if not stripped:
-        return True
-    for pat in _RUNNING_HEADER_PATTERNS:
-        if pat.search(stripped):
-            if pat.pattern.startswith("^Tender") and page_num == 1:
-                return False
-            return True
-    return False
+_is_document_noise_or_running_header = ai_indexing.is_document_noise_or_running_header
 
 
 
@@ -1775,203 +1750,10 @@ async def review_docrefs_for_job(job_id: str, engine_params: Optional[Dict[str, 
 
 
 
-async def _extract_macro_skeleton(
-    pages: List[ai_indexing.PageInput],
-    indexer: ai_indexing.StructureIndexer,
-    cancel_check=None,
-    raw_text_by_page: Optional[Dict[int, str]] = None,
-    coarse_chunk_pages: int = 15,
-) -> List[Dict[str, Any]]:
-    """Pass 1: Fast macro skeleton extraction using coarse chunks (~15 pages)
-    and MACRO_SYSTEM_PROMPT.
-    Returns list of macro containers bounded by sibling start_page - 1.
-    Refinement 2: Graceful degradation / non-fatal.
-    """
-    if not pages:
-        return []
-    total_pages = pages[-1].page_num if pages else 0
-    macro_chunks_queue = collections.deque(ai_indexing.plan_chunks(
-        pages,
-        max_pages=coarse_chunk_pages,
-        max_chars=60000,
-        overlap_pages=0,
-    ))
-    raw_macro_headings: List[Any] = []
-    while macro_chunks_queue:
-        if cancel_check and cancel_check():
-            break
-        m_chunk = macro_chunks_queue.popleft()
-        annotated_m_chunk = ai_indexing.ChunkPlan(
-            pages=[
-                ai_indexing.PageInput(
-                    page_num=p.page_num,
-                    text=reference_index.build_layout_annotated_text(p.text, (raw_text_by_page or {}).get(p.page_num)),
-                )
-                for p in m_chunk.pages
-            ],
-            truncated_pages=m_chunk.truncated_pages,
-            total_chars=m_chunk.total_chars,
-        )
-        # Parse plain page blocks and block types for grounding validation
-        m_page_blocks = {}
-        m_page_types = {}
-        for p in m_chunk.pages:
-            b, t, _ = reference_index.parse_page_blocks_with_row_ids(p.text)
-            m_page_blocks[p.page_num] = b
-            m_page_types[p.page_num] = t
-        try:
-            m_res = await indexer.extract_structure_for_chunk(
-                annotated_m_chunk,
-                is_macro_pass=True,
-                cancel_check=cancel_check,
-            )
-            if m_res.truncated:
-                if len(m_chunk.pages) > 1:
-                    mid = len(m_chunk.pages) // 2
-                    first_half = m_chunk.pages[:mid]
-                    second_half = m_chunk.pages[mid:]
-                    logger.warning(
-                        "Pass 1 macro chunk %s truncated (finish_reason=length); splitting into %s and %s",
-                        m_chunk.page_nums,
-                        [p.page_num for p in first_half],
-                        [p.page_num for p in second_half],
-                    )
-                    c_first = ai_indexing.ChunkPlan(
-                        pages=first_half,
-                        truncated_pages=[],
-                        total_chars=sum(len(p.text or "") for p in first_half),
-                    )
-                    c_second = ai_indexing.ChunkPlan(
-                        pages=second_half,
-                        truncated_pages=[],
-                        total_chars=sum(len(p.text or "") for p in second_half),
-                    )
-                    macro_chunks_queue.appendleft(c_second)
-                    macro_chunks_queue.appendleft(c_first)
-                    continue
-                else:
-                    logger.warning(
-                        "Pass 1 single-page macro chunk %s truncated; cannot split further, accepting result as-is",
-                        m_chunk.page_nums,
-                    )
-
-            if m_res.outcome == ai_indexing.ChunkOutcome.OK and m_res.headings:
-                for h in m_res.headings:
-                    txt = (h.heading_text or "").strip()
-                    if not txt:
-                        continue
-                    if _is_table_header_or_form_field(txt) or _is_document_noise_or_running_header(txt, h.start_page):
-                        continue
-                    is_bare, _ = _is_bare_heading_marker(txt)
-                    if is_bare:
-                        continue
-
-                    # Grounding check: verify that this macro container actually exists
-                    # on its claimed start_page (or an immediate neighbor within the chunk).
-                    sp = h.start_page
-                    blocks = m_page_blocks.get(sp, [])
-                    loc = locate_heading_block(blocks, txt, used_block_idxs=set())
-                    actual_page = sp
-                    if loc is None and (sp - 1) in m_page_blocks:
-                        loc = locate_heading_block(m_page_blocks[sp - 1], txt, used_block_idxs=set())
-                        if loc is not None:
-                            h.start_page = sp - 1
-                            actual_page = sp - 1
-                    elif loc is None and (sp + 1) in m_page_blocks:
-                        loc = locate_heading_block(m_page_blocks[sp + 1], txt, used_block_idxs=set())
-                        if loc is not None:
-                            h.start_page = sp + 1
-                            actual_page = sp + 1
-
-                    # Exclude unlocated macro hallucinations (e.g. LLM guessing section pages from TOC)
-                    if loc is None:
-                        continue
-
-                    # A macro container is a major top-level document division
-                    # (Section, Chapter, Annexure, Schedule, Part), never an internal table cell.
-                    act_types = m_page_types.get(actual_page, [])
-                    if loc[0] < len(act_types) and act_types[loc[0]] == "table_cell":
-                        continue
-
-                    # Grounding check for TOC pages: An INDEX / Table of Contents page is merely
-                    # an outline pointing elsewhere, not a substantive container starting on this page.
-                    actual_blocks = m_page_blocks.get(h.start_page, [])
-                    if _is_index_or_toc_page(actual_blocks):
-                        continue
-
-                    raw_macro_headings.append(h)
-        except Exception as e:
-            logger.warning("Pass 1 macro chunk %s encountered error: %s", m_chunk.page_nums, e)
-            continue
-
-    if not raw_macro_headings:
-        return []
-
-    raw_macro_headings.sort(key=lambda h: (h.start_page, h.level or 1))
-
-    # Deduplicate headings on the same page with identical normalized text
-    seen_on_page: Set[Tuple[int, str]] = set()
-    unique_macro: List[Any] = []
-    for h in raw_macro_headings:
-        norm = _norm_for_match(h.heading_text)
-        key = (h.start_page, norm)
-        if key in seen_on_page:
-            continue
-        seen_on_page.add(key)
-        unique_macro.append(h)
-
-    # Compute container boundaries (end_page)
-    containers: List[Dict[str, Any]] = []
-    for idx, h in enumerate(unique_macro):
-        lvl = h.level or 1
-        end_p = None
-        for next_h in unique_macro[idx + 1:]:
-            next_lvl = next_h.level or 1
-            if next_lvl <= lvl:
-                if next_h.start_page > h.start_page:
-                    end_p = next_h.start_page - 1
-                else:
-                    end_p = h.start_page
-                break
-        if end_p is None:
-            end_p = total_pages
-
-        containers.append({
-            "heading_text": h.heading_text.strip(),
-            "level": lvl,
-            "start_page": h.start_page,
-            "end_page": end_p,
-            "parent_ref": h.parent_ref,
-            "raw_heading": h,
-        })
-
-    return containers
-
-
-def _get_active_macro_context(
-    macro_skeleton: Optional[List[Dict[str, Any]]],
-    page_num: int,
-) -> Optional[Dict[str, Any]]:
-    """Finds the open level-1 and level-2 macro container active on page_num."""
-    if not macro_skeleton:
-        return None
-    active_root = None
-    active_parent = None
-    for c in macro_skeleton:
-        start_p = c["start_page"]
-        end_p = c.get("end_page") or 999999
-        if start_p <= page_num <= end_p:
-            if c.get("level", 1) == 1:
-                active_root = c["heading_text"]
-            elif c.get("level") == 2:
-                active_parent = c["heading_text"]
-
-    if not active_root and not active_parent:
-        return None
-    return {
-        "root_container": active_root,
-        "parent_clause": active_parent,
-    }
+# Pass 1 Macro Skeleton extraction and active division context resolution
+# are consolidated in ai_indexing.macro for DRY reuse across pipelines:
+_extract_macro_skeleton = ai_indexing.extract_macro_skeleton
+_get_active_macro_context = ai_indexing.get_active_macro_context
 
 
 def _merge_macro_and_micro_events(

@@ -93,6 +93,12 @@ def evaluate_action_items_gates(metrics: Dict[str, Any]) -> GateEvaluationResult
     if r < ACTION_ITEMS_GATES["min_recall"]:
         violations.append(f"Recall {r:.3f} fell below minimum {ACTION_ITEMS_GATES['min_recall']:.3f}")
 
+    min_gr = ACTION_ITEMS_GATES.get("min_grounding_rate")
+    if min_gr is not None:
+        gr = metrics.get("grounding_rate", 1.0)
+        if gr < min_gr:
+            violations.append(f"Grounding rate {gr:.3f} fell below minimum {min_gr:.3f}")
+
     return GateEvaluationResult(
         passed=len(violations) == 0,
         violations=violations,

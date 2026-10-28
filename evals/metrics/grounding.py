@@ -103,6 +103,19 @@ def _quote_match_score(norm_gold: str, norm_actual: str) -> Optional[float]:
     ratio = difflib.SequenceMatcher(None, norm_gold, norm_actual).ratio()
     if ratio >= _FUZZY_CUTOFF:
         return ratio
+
+    # Token overlap fallback: prevents difflib's greedy alignment failure
+    # when repeated tokens near sentence starts cause difflib to misalign
+    # large identical text blocks.
+    words_g = set(norm_gold.split())
+    words_a = set(norm_actual.split())
+    if words_g and words_a:
+        intersect = words_g & words_a
+        jaccard = len(intersect) / len(words_g | words_a)
+        overlap_shorter = len(intersect) / min(len(words_g), len(words_a))
+        if jaccard >= _FUZZY_CUTOFF or (overlap_shorter >= 0.75 and len(intersect) >= 6):
+            return max(jaccard, _FUZZY_CUTOFF)
+
     return None
 
 

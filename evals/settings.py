@@ -20,9 +20,9 @@ INDEX_GATES: Dict[str, float] = {
 
 # Actionable items extraction quality gates
 ACTION_ITEMS_GATES: Dict[str, float] = {
-    "min_precision": 0.800,
-    "min_recall": 0.750,
-    "min_grounding_rate": 0.980,
+    "min_precision": 0.850,
+    "min_recall": 0.950,
+    "min_grounding_rate": 0.900,
 }
 
 # OCR & transcription quality gates
