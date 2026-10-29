@@ -1,0 +1,211 @@
+{
+  "job_id": "4755bd5c-e11e-4be0-baa9-26d299f1e37c",
+  "total_pages": 27,
+  "targets": [
+    {
+      "page": 1,
+      "key": "subdoc:contract-jcdd-02",
+      "label": "CONTRACT JCDD-02",
+      "scope_key": null,
+      "occurrence_index": 0
+    },
+    {
+      "page": 1,
+      "key": "subdoc:tender-documents",
+      "label": "TENDER DOCUMENTS",
+      "scope_key": "subdoc:contract-jcdd-02",
+      "occurrence_index": 0
+    },
+    {
+      "page": 1,
+      "key": "subdoc:volume-1",
+      "label": "VOLUME-1",
+      "scope_key": "subdoc:contract-jcdd-02",
+      "occurrence_index": 0
+    },
+    {
+      "page": 1,
+      "key": "subdoc:notice-of-tender-nit",
+      "label": "NOTICE OF TENDER (NIT)",
+      "scope_key": "subdoc:contract-jcdd-02",
+      "occurrence_index": 0
+    },
+    {
+      "page": 2,
+      "key": "subdoc:notice-inviting-tender",
+      "label": "NOTICE INVITING TENDER",
+      "scope_key": "subdoc:contract-jcdd-02",
+      "occurrence_index": 0
+    },
+    {
+      "page": 2,
+      "key": "point:1.1.1",
+      "label": "1.1.1 Name of Work:",
+      "scope_key": "subdoc:notice-inviting-tender",
+      "occurrence_index": 0
+    },
+    {
+      "page": 2,
+      "key": "point:1.1.2",
+      "label": "1.1.2 Key details :",
+      "scope_key": "subdoc:notice-inviting-tender",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "key": "point:1.1.2.1",
+      "label": "1.1.2.1 This is a Jaipur Metro Rail Corporation Ltd. (JMRCL/RMRCL) Funded work.",
+      "scope_key": "point:1.1.2",
+      "occurrence_index": 0
+    },
+    {
+      "page": 5,
+      "key": "point:1.1.3",
+      "label": "1.1.3 QUALIFICATION CRITERIA:",
+      "scope_key": "subdoc:notice-inviting-tender",
+      "occurrence_index": 0
+    },
+    {
+      "page": 5,
+      "key": "point:1.1.3.1",
+      "label": "1.1.3.1 Eligible Applicants:",
+      "scope_key": "point:1.1.3",
+      "occurrence_index": 0
+    },
+    {
+      "page": 13,
+      "key": "point:1.1.3.2",
+      "label": "1.1.3.2 Minimum Eligibility Criteria:",
+      "scope_key": "point:1.1.3",
+      "occurrence_index": 0
+    },
+    {
+      "page": 13,
+      "key": "point:a",
+      "label": "A. Work Experience",
+      "scope_key": "point:1.1.3.2",
+      "occurrence_index": 0
+    },
+    {
+      "page": 15,
+      "key": "point:1.1.3.2.1",
+      "label": "1.1.3.2.1 Additional Requirements:",
+      "scope_key": "point:1.1.3.2",
+      "occurrence_index": 0
+    },
+    {
+      "page": 19,
+      "key": "table:a",
+      "label": "TABLE – A* (As per Para (v) of Additional Requirements of NIT Clause 1.1.3.2 A)",
+      "scope_key": "point:1.1.3.2.1",
+      "occurrence_index": 0
+    },
+    {
+      "page": 20,
+      "key": "point:b",
+      "label": "B. Financial Standing:",
+      "scope_key": "point:1.1.3.2",
+      "occurrence_index": 0
+    },
+    {
+      "page": 21,
+      "key": "point:1.1.3.3",
+      "label": "1.1.3.3 Bid Capacity Criteria:",
+      "scope_key": "point:1.1.3",
+      "occurrence_index": 0
+    },
+    {
+      "page": 22,
+      "key": "point:1.1.4",
+      "label": "1.1.4 The Tender documents consist of:",
+      "scope_key": "subdoc:notice-inviting-tender",
+      "occurrence_index": 0
+    },
+    {
+      "page": 24,
+      "key": "subdoc:instructions-for-online-bid-submission",
+      "label": "Instructions for Online Bid Submission:",
+      "scope_key": "subdoc:contract-jcdd-02",
+      "occurrence_index": 0
+    },
+    {
+      "page": 24,
+      "key": "point:1",
+      "label": "REGISTRATION",
+      "scope_key": "subdoc:instructions-for-online-bid-submission",
+      "occurrence_index": 0
+    },
+    {
+      "page": 25,
+      "key": "point:2",
+      "label": "SEARCHING FOR TENDER DOCUMENTS",
+      "scope_key": "subdoc:instructions-for-online-bid-submission",
+      "occurrence_index": 0
+    },
+    {
+      "page": 25,
+      "key": "point:3",
+      "label": "PREPARATION OF BIDS",
+      "scope_key": "subdoc:instructions-for-online-bid-submission",
+      "occurrence_index": 0
+    },
+    {
+      "page": 26,
+      "key": "point:4",
+      "label": "SUBMISSION OF BIDS",
+      "scope_key": "subdoc:instructions-for-online-bid-submission",
+      "occurrence_index": 0
+    },
+    {
+      "page": 27,
+      "key": "point:5",
+      "label": "ASSISTANCE TO BIDDERS",
+      "scope_key": "subdoc:instructions-for-online-bid-submission",
+      "occurrence_index": 0
+    }
+  ],
+  "mentions": [
+    {
+      "page": 2,
+      "occurrence_index": 0,
+      "key": "point:1.1.3",
+      "raw_text": "Clause 1.1.3 of NIT",
+      "resolution": "exact"
+    },
+    {
+      "page": 3,
+      "occurrence_index": 0,
+      "key": "point:c18",
+      "raw_text": "clause C18 of ITT",
+      "resolution": "unresolved"
+    },
+    {
+      "page": 3,
+      "occurrence_index": 1,
+      "key": "point:c18",
+      "raw_text": "clause C18 of ITT",
+      "resolution": "unresolved"
+    },
+    {
+      "page": 4,
+      "occurrence_index": 0,
+      "key": "point:gcc-35",
+      "raw_text": "GCC Clause 35",
+      "resolution": "unresolved"
+    },
+    {
+      "page": 5,
+      "occurrence_index": 0,
+      "key": "point:1.1.3",
+      "raw_text": "clause 1.1.3 of NIT",
+      "resolution": "exact"
+    },
+    {
+      "page": 23,
+      "occurrence_index": 0,
+      "key": "point:c18",
+      "raw_text": "clause C18 of ITT",
+      "resolution": "unresolved"
+    }
+  ]
+}

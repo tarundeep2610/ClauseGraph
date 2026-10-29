@@ -1,0 +1,237 @@
+{
+  "job_id": "de8764d2-4249-49bd-a271-e8ec2c02c869",
+  "total_pages": 5,
+  "action_items": [
+    {
+      "page": 1,
+      "item_type": "obligation",
+      "item_text": "The Bidders shall not have a conflict of interest that affects the Bidding Process",
+      "evidence_quote": "The Bidders shall not have a conflict of interest that affects the Bidding Process. Any Bidder found to have conflict of interest shall be disqualified.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 1,
+      "item_type": "obligation",
+      "item_text": "Bidder must be registered on DMRC's e-tendering portal to participate",
+      "evidence_quote": "For participation in e-tendering process, the prospective bidder(s) has to be registered on DMRC's e-tendering portal https://eprocure.gov.in/eprocure/app.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 1,
+      "item_type": "obligation",
+      "item_text": "Tender Document can only be downloaded or uploaded using Class-II or Class-III digital signature",
+      "evidence_quote": "The Tender Document can only be downloaded or uploaded using Class-II or Class-III digital signature of the authorized signatory.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 2,
+      "item_type": "obligation",
+      "item_text": "Cost of Tender Document Rs. 29,500/- non-refundable acceptable online only",
+      "evidence_quote": "Rs. 29,500/- (Rs.25,000 /- + 18% GST). Cost of Tender Document shall be acceptable through online mode only i.e. RTGS/NEFT/IMPS/Customer payment portal.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 2,
+      "item_type": "obligation",
+      "item_text": "Bid Security/EMD Rs. 16,94,000/- acceptable online only",
+      "evidence_quote": "Rs.16,94,000/- (Rs. Sixteen Lakhs Ninty Four Thousand Only). Bid Security amount shall be acceptable through online mode only i.e. RTGS /NEFT /IMPS /Customer payment portal.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 2,
+      "item_type": "deadline",
+      "item_text": "Period of Sale of Tender Document online from 30.08.2024 to 30.09.2024 (upto 1500hrs)",
+      "evidence_quote": "From 30.08.2024 to 30.09.2024 (upto 1500hrs) e-tendering website https://eprocure.gov.in/eprocure/app",
+      "date_text": "From 30.08.2024 to 30.09.2024 (upto 1500hrs)",
+      "date_iso": "2024-09-30",
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 2,
+      "item_type": "deadline",
+      "item_text": "Pre-Bid queries must be sent latest by 1700 hrs on 05.09.2024",
+      "evidence_quote": "Further, bidders are requested to send Pre-bid queries on the registered official email of DMRC i.e. pbttenders@dmrc.org latest by 1700 hrs on 05.09.2024. Queries received after 1700 hrs on shall not be entertained.",
+      "date_text": "latest by 1700 hrs on 05.09.2024",
+      "date_iso": "2024-09-05",
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 2,
+      "item_type": "deadline",
+      "item_text": "Last Date of receiving written queries by DMRC till 06.09.2024 till 1700hrs",
+      "evidence_quote": "<td>5.</td><td>Last Date of receiving written queries by DMRC</td><td>06.09.2024 till 1700hrs</td>",
+      "date_text": "06.09.2024 till 1700hrs",
+      "date_iso": "2024-09-06",
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 2,
+      "item_type": "deadline",
+      "item_text": "DMRC response to queries by 13.09.2024",
+      "evidence_quote": "<td>6.</td><td>DMRC&#x27;s response to queries by</td><td>13.09.2024</td>",
+      "date_text": "13.09.2024",
+      "date_iso": "2024-09-13",
+      "anchor_event": null,
+      "responsible_party": "Purchaser",
+      "confidence": "high"
+    },
+    {
+      "page": 2,
+      "item_type": "deadline",
+      "item_text": "Date & Time of Submission of Bid online from 1000hrs 18.09.2024 to 30.09.2024 up to 1500hrs",
+      "evidence_quote": "From 1000hrs 18.09.2024 to 30.09.2024 up to 1500hrs",
+      "date_text": "From 1000hrs 18.09.2024 to 30.09.2024 up to 1500hrs",
+      "date_iso": "2024-09-30",
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 2,
+      "item_type": "deadline",
+      "item_text": "Date & Time of Opening of Technical Bids online on 01.10.2024 @ 1500hrs",
+      "evidence_quote": "<td>8.</td><td>Date &amp; Time of Opening of Technical Bids online</td><td>01.10.2024 @ 1500hrs</td>",
+      "date_text": "01.10.2024 @ 1500hrs",
+      "date_iso": "2024-10-01",
+      "anchor_event": null,
+      "responsible_party": "Purchaser",
+      "confidence": "high"
+    },
+    {
+      "page": 2,
+      "item_type": "condition",
+      "item_text": "Validity of Bid up to 180 days from the last date of submission of Bid",
+      "evidence_quote": "Up to 180 days from the last date of submission of Bid.",
+      "date_text": "Up to 180 days from the last date of submission of Bid",
+      "date_iso": null,
+      "anchor_event": "last date of submission of Bid",
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 3,
+      "item_type": "condition",
+      "item_text": "Bid summarily rejected if not accompanied with Tender Cost and/or EMD",
+      "evidence_quote": "The offer/bid of a bidder shall be declared as ineligible and the bid/Application shall be summarily rejected if it is not accompanied with the above Tender Cost &/or EMD.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 3,
+      "item_type": "condition",
+      "item_text": "Duplicate transaction reference number for more than one bid leads to summary rejection",
+      "evidence_quote": "If the same transaction reference number has been submitted for more than one bid, then all such bids shall be considered ineligible and summarily rejected.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 3,
+      "item_type": "condition",
+      "item_text": "Tender security must be made from the account of bidder only (or constituent member in JV)",
+      "evidence_quote": "Bidders to note that the payment of tender security shall be made from the account of bidder only, however, in case of JV / Consortium, the tender security can either be paid from JV/Consortium account or one of the constituent members of JV / Consortium.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 3,
+      "item_type": "condition",
+      "item_text": "Late bids after due date & time shall not be accepted under any circumstances",
+      "evidence_quote": "(f) Bids received after due Date & Time of Submission (e-tender) of Bids shall not be accepted under any circumstances.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 4,
+      "item_type": "obligation",
+      "item_text": "Lead Member of JV/Consortium must maintain minimum 51% aggregate shareholding during full tenure",
+      "evidence_quote": "II. The Lead Member of the JV/Consortium shall maintain a minimum percentage share of 51% of the aggregate shareholding of the JV/Consortium during full tenure of License Agreement.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 4,
+      "item_type": "condition",
+      "item_text": "Change in JV stake without DMRC approval entitles DMRC to encash security deposit or terminate with 30 days notice",
+      "evidence_quote": "III. Any change in percentage stake of JV/Consortium members without prior written approval of DMRC shall be treated as Material Breach of Contract and Licensee's Event of Default entitling DMRC to encash Security Deposit/Performance Security and/or to terminate the License Agreement after 30 days' notice.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Purchaser",
+      "confidence": "high"
+    },
+    {
+      "page": 4,
+      "item_type": "condition",
+      "item_text": "Minimum percentage stake of any member in JV/Consortium shall not be less than 15%",
+      "evidence_quote": "IV. Minimum percentage stake of any member in JV/Consortium during license period (including lock-in period) shall not be less than 15%.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 4,
+      "item_type": "condition",
+      "item_text": "Partners having less than 26% participation considered non-substantial and not considered for eligibility",
+      "evidence_quote": "V. Partners having less than 26% participation shall be considered as non-substantial partner and shall not be considered for evaluation which means that their eligibility shall not be considered for evaluation of JV/Consortium.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 4,
+      "item_type": "obligation",
+      "item_text": "All members of JV/Consortium jointly and severally liable for due performance",
+      "evidence_quote": "VI. All members of such entity shall be jointly and severely liable for the due performance of License agreement.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    }
+  ]
+}
