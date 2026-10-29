@@ -1,0 +1,295 @@
+{
+  "job_id": "a9da15c3-eb89-44f8-aabc-d8b49b28b543",
+  "total_pages": 59,
+  "targets": [
+    {
+      "page": 1,
+      "key": "subdoc:indianoil-mathura-refinery",
+      "label": "IndianOil Mathura Refinery",
+      "scope_key": null,
+      "occurrence_index": 0
+    },
+    {
+      "page": 1,
+      "key": "subdoc:instructions-to-tenderers-section-1",
+      "label": "Instructions to Tenderers: Section-1",
+      "scope_key": "subdoc:indianoil-mathura-refinery",
+      "occurrence_index": 0
+    },
+    {
+      "page": 2,
+      "key": "subdoc:section-1-instructions-to-tenderers",
+      "label": "SECTION-1 INSTRUCTIONS TO TENDERERS",
+      "scope_key": "subdoc:indianoil-mathura-refinery",
+      "occurrence_index": 0
+    },
+    {
+      "page": 2,
+      "key": "point:1.1",
+      "label": "1.1 GENERAL",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 2,
+      "key": "point:1.2",
+      "label": "1.2 Right of Owner:",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 2,
+      "key": "point:1.3",
+      "label": "1.3 Price Negotiations:",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 2,
+      "key": "point:1.4",
+      "label": "1.4 Legal dispute:",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 2,
+      "key": "point:1.5",
+      "label": "1.5 Bid validity:",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 2,
+      "key": "point:1.6",
+      "label": "1.6 Bid document and submission:",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 3,
+      "key": "point:1.7",
+      "label": "1.7 Pre-bid meeting (if applicable as per NIT):",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 3,
+      "key": "point:1.8",
+      "label": "1.8 Participation by consultant:",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 3,
+      "key": "point:1.9",
+      "label": "1.9 Manner in which the offer is to be submitted:",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "key": "point:1.10",
+      "label": "1.10 Tie between two bidders:",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 7,
+      "key": "point:2.0",
+      "label": "2.0 Guideline for EMD Submission, in case payment of EMD is applicable.",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 8,
+      "key": "point:2.3",
+      "label": "2.3 Guideline For Forfeiture of EMD:",
+      "scope_key": "point:2.0",
+      "occurrence_index": 0
+    },
+    {
+      "page": 8,
+      "key": "point:2.4",
+      "label": "2.4 Guideline for Preparation of EMD Bank Guarantee (BG):",
+      "scope_key": "point:2.0",
+      "occurrence_index": 0
+    },
+    {
+      "page": 10,
+      "key": "point:2.5",
+      "label": "2.5 Release of EMD:",
+      "scope_key": "point:2.0",
+      "occurrence_index": 0
+    },
+    {
+      "page": 10,
+      "key": "point:2.6",
+      "label": "2.6 SFMS (Structured financial Messaging System) Facility for Bank Guarantees for EMD /ISD/SD",
+      "scope_key": "point:2.0",
+      "occurrence_index": 0
+    },
+    {
+      "page": 11,
+      "key": "point:3.0",
+      "label": "3.0 Guideline With Respect to PQC Document(s):",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 11,
+      "key": "point:3.1",
+      "label": "3.1 Guidelines for submission of documents for experience against NIT clause no. 10.2",
+      "scope_key": "point:3.0",
+      "occurrence_index": 0
+    },
+    {
+      "page": 12,
+      "key": "point:3.2",
+      "label": "3.2 Guidelines for submission of documents related to Annual Turnover against NIT clause no. 10.1",
+      "scope_key": "point:3.0",
+      "occurrence_index": 0
+    },
+    {
+      "page": 16,
+      "key": "point:4.0",
+      "label": "4.0 Sub-contracting",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 16,
+      "key": "point:5.0",
+      "label": "5.0 Integrity Pact Program (IP)",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 16,
+      "key": "point:6.0",
+      "label": "6.0 Guideline for Insolvency and Bankruptcy CODE, 2016 (IBC)",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 17,
+      "key": "point:7.0",
+      "label": "7.0 GST CONDITIONS:",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 19,
+      "key": "point:8.0",
+      "label": "8.0 INCOME TAX",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 20,
+      "key": "point:9.0",
+      "label": "9.0 Vendor Grievance Redressal Portal",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 21,
+      "key": "point:10.0",
+      "label": "10.0 ePAY ONE PORTAL:",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 21,
+      "key": "point:11.0",
+      "label": "11.0 Invalid Bids/ Bids liable for rejection",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 22,
+      "key": "point:12.0",
+      "label": "12.0 BLACKLISTING/HOLIDAY LISTING/DEBARMENT/BANNING POLICY OF IOCL:",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 22,
+      "key": "point:13.0",
+      "label": "13.0 Mobilization Advance (For Contract value is Rs. 10 Crore and above)",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 28,
+      "key": "point:18.0",
+      "label": "18.0 ADDITIONAL SAFETY REQUIREMENT:",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 28,
+      "key": "point:19.0",
+      "label": "19.0 TERMS AND CONDITIONS FOR BIDDERS FROM A COUNTRY WHICH SHARES LAND BORDER WITH INDIA",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 30,
+      "key": "point:20.0",
+      "label": "20.0 Declaration to be obtained from the Contractor at the time of settlement of final bill",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    },
+    {
+      "page": 31,
+      "key": "point:21.0",
+      "label": "21.0 GENERAL GUIDELINES FOR REVERSE AUCTION",
+      "scope_key": "subdoc:section-1-instructions-to-tenderers",
+      "occurrence_index": 0
+    }
+  ],
+  "mentions": [
+    {
+      "page": 7,
+      "occurrence_index": 0,
+      "key": "point:nit-10",
+      "raw_text": "NIT Clause 10",
+      "resolution": "unresolved"
+    },
+    {
+      "page": 11,
+      "occurrence_index": 0,
+      "key": "point:3.1",
+      "raw_text": "NIT clause no. 10.2",
+      "resolution": "exact"
+    },
+    {
+      "page": 12,
+      "occurrence_index": 0,
+      "key": "point:3.2",
+      "raw_text": "NIT clause no. 10.1",
+      "resolution": "exact"
+    },
+    {
+      "page": 22,
+      "occurrence_index": 0,
+      "key": "point:gcc-2.1.1.0",
+      "raw_text": "clause No. 2.1.1.0 of GCC",
+      "resolution": "unresolved"
+    },
+    {
+      "page": 27,
+      "occurrence_index": 0,
+      "key": "point:gcc-6.3.3.0",
+      "raw_text": "clause 6.3.3.0 of GCC",
+      "resolution": "unresolved"
+    },
+    {
+      "page": 31,
+      "occurrence_index": 0,
+      "key": "point:nit-2.2",
+      "raw_text": "NIT clause 2.2",
+      "resolution": "unresolved"
+    }
+  ]
+}

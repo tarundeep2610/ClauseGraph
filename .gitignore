@@ -247,6 +247,14 @@ qwen_comparison_results/
 # data dumps are not.
 scratch/baseline_post_fix_1/
 scratch/existing_eval_reports/
+scratch/build_gold_fixture_*.py
+scratch/check_*.py
+scratch/find_*.py
+scratch/get_*.py
+scratch/inspect_job*.py
+scratch/print_*.py
+scratch/survey_*.py
+scratch/test_job*.py
 
 # Build artifacts / bundled images
 *.tar

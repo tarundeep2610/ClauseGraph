@@ -1,0 +1,54 @@
+{
+  "job_id": "3fb2b1cf-dc4d-4d5f-bd06-7c680dfa051c",
+  "total_pages": 61,
+  "action_items": [
+    {
+      "page": 1,
+      "item_type": "deadline",
+      "item_text": "Judgment reserved on 12.02.2026",
+      "evidence_quote": "Judgment reserved on: 12.02.2026",
+      "date_text": "12.02.2026",
+      "date_iso": "2026-02-12",
+      "anchor_event": null,
+      "responsible_party": "Court",
+      "confidence": "high",
+      "occurrence_index": 0
+    },
+    {
+      "page": 1,
+      "item_type": "deadline",
+      "item_text": "Judgment pronounced on 09.03.2026",
+      "evidence_quote": "Judgment pronounced on: 09.03.2026",
+      "date_text": "09.03.2026",
+      "date_iso": "2026-03-09",
+      "anchor_event": null,
+      "responsible_party": "Court",
+      "confidence": "high",
+      "occurrence_index": 0
+    },
+    {
+      "page": 3,
+      "item_type": "obligation",
+      "item_text": "Clause 4.03 replaced monthly service charge with fixed transportation charge of Rs. 38,67,600/- per month",
+      "evidence_quote": "clause 4.03 of the Primary Agreement was substituted by a new clause 4.03, which replaced the formula based monthly service charge with a fixed transportation charge of Rs. 38,67,600/-",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Appellant",
+      "confidence": "high",
+      "occurrence_index": 0
+    },
+    {
+      "page": 61,
+      "item_type": "condition",
+      "item_text": "There shall be no order(s) as to cost",
+      "evidence_quote": "79. There shall be no order(s) as to cost.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Court",
+      "confidence": "high",
+      "occurrence_index": 0
+    }
+  ]
+}

@@ -1,0 +1,205 @@
+{
+  "job_id": "de8764d2-4249-49bd-a271-e8ec2c02c869",
+  "source_job_id": "de8764d2-4249-49bd-a271-e8ec2c02c869",
+  "total_pages": 5,
+  "targets": [
+    {
+      "page": 1,
+      "key": "subdoc:chapter-1-notice-inviting-tender-bid",
+      "label": "Chapter-1: NOTICE INVITING TENDER (BID)",
+      "scope_key": null,
+      "occurrence_index": 0
+    },
+    {
+      "page": 1,
+      "key": "point:1.1",
+      "label": "1.1.",
+      "scope_key": "subdoc:chapter-1-notice-inviting-tender-bid",
+      "occurrence_index": 0
+    },
+    {
+      "page": 1,
+      "key": "point:1.2",
+      "label": "1.2.",
+      "scope_key": "subdoc:chapter-1-notice-inviting-tender-bid",
+      "occurrence_index": 0
+    },
+    {
+      "page": 1,
+      "key": "point:1.3",
+      "label": "1.3. Salient features of Bidding Process:",
+      "scope_key": "subdoc:chapter-1-notice-inviting-tender-bid",
+      "occurrence_index": 0
+    },
+    {
+      "page": 1,
+      "key": "point:a",
+      "label": "a) DMRC has adopted a single stage two packet bidding process",
+      "scope_key": "point:1.3",
+      "occurrence_index": 0
+    },
+    {
+      "page": 1,
+      "key": "point:b",
+      "label": "b) For participation in e-tendering process",
+      "scope_key": "point:1.3",
+      "occurrence_index": 0
+    },
+    {
+      "page": 2,
+      "key": "point:c",
+      "label": "c) Schedule of Bidding Process:",
+      "scope_key": "point:1.3",
+      "occurrence_index": 0
+    },
+    {
+      "page": 3,
+      "key": "point:d",
+      "label": "(d) All the uploaded files in Bid submission should be named properly",
+      "scope_key": "point:1.3",
+      "occurrence_index": 0
+    },
+    {
+      "page": 3,
+      "key": "point:e",
+      "label": "(e) The payment of the tender cost and is acceptable from any account",
+      "scope_key": "point:1.3",
+      "occurrence_index": 0
+    },
+    {
+      "page": 3,
+      "key": "point:f",
+      "label": "(f) Bids received after due Date & Time of Submission",
+      "scope_key": "point:1.3",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "key": "point:g",
+      "label": "(g) In case of a Bid by a JV/Consortium of firms",
+      "scope_key": "point:1.3",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "key": "point:i",
+      "label": "I. For the purpose of evaluation of Consortium/JV",
+      "scope_key": "point:g",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "key": "point:ii",
+      "label": "II. The Lead Member of the JV/Consortium shall maintain a minimum percentage share",
+      "scope_key": "point:g",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "key": "point:iii",
+      "label": "III. Any change in percentage stake of JV/Consortium members",
+      "scope_key": "point:g",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "key": "point:iv",
+      "label": "IV. Minimum percentage stake of any member in JV/Consortium",
+      "scope_key": "point:g",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "key": "point:v",
+      "label": "V. Partners having less than 26% participation shall be considered as non-substantial partner",
+      "scope_key": "point:g",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "key": "point:vi",
+      "label": "VI. All members of such entity shall be jointly and severely liable",
+      "scope_key": "point:g",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "key": "point:vii",
+      "label": "VII. For the purpose of evaluation of the consortium/JV each member's contribution",
+      "scope_key": "point:g",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "key": "point:1.4",
+      "label": "1.4. The Bidders are advised to keep in touch with e-tendering portal",
+      "scope_key": "subdoc:chapter-1-notice-inviting-tender-bid",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "key": "point:1.5",
+      "label": "1.5. The cost of Tender document amount and Bid Security/EMD amount",
+      "scope_key": "subdoc:chapter-1-notice-inviting-tender-bid",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "key": "point:1.6",
+      "label": "1.6. In case of any query regarding the Tender Document",
+      "scope_key": "subdoc:chapter-1-notice-inviting-tender-bid",
+      "occurrence_index": 0
+    },
+    {
+      "page": 5,
+      "key": "point:1.7",
+      "label": "1.7. “Condition of contract on Safety and Health for Property Business contracts”",
+      "scope_key": "subdoc:chapter-1-notice-inviting-tender-bid",
+      "occurrence_index": 0
+    }
+  ],
+  "mentions": [
+    {
+      "page": 1,
+      "occurrence_index": 0,
+      "key": "annexure:1",
+      "raw_text": "Annexure-1",
+      "resolution": "unresolved"
+    },
+    {
+      "page": 1,
+      "occurrence_index": 1,
+      "key": "annexure:1",
+      "raw_text": "Annexure-1",
+      "resolution": "unresolved"
+    },
+    {
+      "page": 3,
+      "occurrence_index": 0,
+      "key": "point:1.3-c",
+      "raw_text": "Sr. No. 1.3 (c)",
+      "resolution": "exact"
+    },
+    {
+      "page": 3,
+      "occurrence_index": 1,
+      "key": "point:1.3-c-7",
+      "raw_text": "Clause 1.3(c) (7)",
+      "resolution": "exact"
+    },
+    {
+      "page": 4,
+      "occurrence_index": 0,
+      "key": "point:1.3-c",
+      "raw_text": "1.3(c)",
+      "resolution": "exact"
+    },
+    {
+      "page": 4,
+      "occurrence_index": 1,
+      "key": "point:1.3-c-7",
+      "raw_text": "Clause 1.3 (c)(7)",
+      "resolution": "exact"
+    }
+  ]
+}
