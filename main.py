@@ -5,26 +5,29 @@ import sys
 import json
 import time
 import signal
-import base64
 import uuid
 import math
 import collections
 import urllib.parse
-import requests
-import secrets
 import asyncio
 from contextlib import asynccontextmanager
 import pypdfium2 as pdfium
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query, BackgroundTasks
 from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.datastructures import MutableHeaders
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
+import config
 import database
 import task_queue
+import gpu_ocr_client
+from auth_deps import Principal, UserRole, require_role
+from auth_router import router as auth_router
+
+_require_admin = require_role([UserRole.ADMIN])
+_require_user = require_role([UserRole.ADMIN, UserRole.USER])
 
 # ─── Unlimited-OCR native engine ────────────────────────────────────────────
 try:
@@ -73,8 +76,12 @@ app = FastAPI(
     lifespan=_lifespan,
 )
 
-_ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
-app.mount("/assets", StaticFiles(directory=_ASSETS_DIR), name="assets")
+_FRONTEND_DIST_DIR = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+_ASSETS_DIR = os.path.join(_FRONTEND_DIST_DIR, "assets")
+if os.path.isdir(_ASSETS_DIR):
+    app.mount("/assets", StaticFiles(directory=_ASSETS_DIR), name="assets")
+
+app.include_router(auth_router)
 
 # CORS: restrict to localhost origins only (wildcard + credentials is a spec violation)
 app.add_middleware(
@@ -84,9 +91,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-security = HTTPBasic()
-
 
 class _ActivityMiddleware:
     def __init__(self, app):
@@ -223,20 +227,18 @@ def _save_custom_prompts():
 
 
 # ─── Rate limiting ────────────────────────────────────────────────────────────
-_RATE_LIMIT_MAX = int(os.environ.get("JOB_RATE_LIMIT", "10"))
-_RATE_LIMIT_WINDOW = int(os.environ.get("JOB_RATE_LIMIT_WINDOW_SECONDS", "60"))
-_rate_buckets: dict = {}  # username -> deque of submission timestamps
+_rate_buckets: dict = {}  # rate_limit_key -> deque of submission timestamps
 
-def _check_rate_limit(username: str):
+def _check_rate_limit(rate_limit_key: str):
     now = time.time()
-    dq = _rate_buckets.setdefault(username, collections.deque())
-    while dq and now - dq[0] > _RATE_LIMIT_WINDOW:
+    dq = _rate_buckets.setdefault(rate_limit_key, collections.deque())
+    while dq and now - dq[0] > config.RATE_LIMIT_WINDOW:
         dq.popleft()
-    if len(dq) >= _RATE_LIMIT_MAX:
-        retry_after = max(1, math.ceil(dq[0] + _RATE_LIMIT_WINDOW - now))
+    if len(dq) >= config.RATE_LIMIT_MAX:
+        retry_after = max(1, math.ceil(dq[0] + config.RATE_LIMIT_WINDOW - now))
         raise HTTPException(
             status_code=429,
-            detail=f"Rate limit exceeded: max {_RATE_LIMIT_MAX} OCR requests per {_RATE_LIMIT_WINDOW}s.",
+            detail=f"Rate limit exceeded: max {config.RATE_LIMIT_MAX} OCR requests per {config.RATE_LIMIT_WINDOW}s.",
             headers={"Retry-After": str(retry_after)},
         )
     dq.append(now)
@@ -287,118 +289,24 @@ def clean_captcha_result(text: str, expected_len: int = None) -> str:
     return result
 
 # Configuration
-OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/generate"
-OCR_USER = os.environ.get("OCR_USER", "admin")
-OCR_PASS = os.environ.get("OCR_PASS", "admin123")
-DEFAULT_RENDER_SCALE = float(os.environ.get("RENDER_SCALE", "1.5"))
-OCR_TIMEOUT = int(os.environ.get("OCR_TIMEOUT_SECONDS", "600"))
+DEFAULT_RENDER_SCALE = config.DEFAULT_RENDER_SCALE
+OCR_TIMEOUT = config.OCR_TIMEOUT
 
-def authenticate_user(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, OCR_USER)
-    correct_password = secrets.compare_digest(credentials.password, OCR_PASS)
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=401,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
-
-_ollama_model_ready: bool = False
+async def run_ocr_for_image(pil_image, prompt: str, tiling: bool, timeout: int, options: dict = None) -> str:
+    """GLM engine — always a network call to Ollama on the GPU box (via gpu_ocr_client)."""
+    return await gpu_ocr_client.run_glm_ocr(pil_image, prompt, tiling, timeout, options)
 
 
-def _reset_ollama_model_ready():
-    """Call when Ollama returns a model-not-found error so the next request re-checks."""
-    global _ollama_model_ready
-    _ollama_model_ready = False
-
-
-def ensure_ollama_model_on_demand():
-    """Pulls glm-ocr in Ollama ONLY when a user actively runs GLM-OCR and the model is not yet pulled."""
-    global _ollama_model_ready
-    if _ollama_model_ready:
-        return
-    ollama_base = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-    try:
-        tags_resp = requests.get(f"{ollama_base}/api/tags", timeout=3)
-        if tags_resp.status_code == 200:
-            models = [m.get("name") for m in tags_resp.json().get("models", [])]
-            if any("glm-ocr" in m for m in models):
-                _ollama_model_ready = True
-            else:
-                print("[Service] 📥 On-demand GLM-OCR request received. Pulling 'glm-ocr' model in Ollama...")
-                pull_resp = requests.post(f"{ollama_base}/api/pull", json={"name": "glm-ocr", "stream": False}, timeout=300)
-                if pull_resp.status_code == 200:
-                    print("[Service] ✅ 'glm-ocr' model successfully pulled into Ollama!")
-                    _ollama_model_ready = True
-    except Exception as e:
-        print(f"[Service] On-demand Ollama model check note: {e}")
-
-def run_ocr_for_image(pil_image, prompt: str, tiling: bool, timeout: int, options: dict = None) -> str:
-    ensure_ollama_model_on_demand()
-    default_options = {"num_ctx": 8192, "temperature": 0.0, "num_predict": 2048, "repeat_penalty": 1.2}
-    resolved_options = options if options is not None else default_options
-
-    if not tiling:
-        buffered = io.BytesIO()
-        pil_image.save(buffered, format="JPEG", quality=85)
-        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-        payload = {
-            "model": "glm-ocr",
-            "prompt": prompt,
-            "images": [img_base64],
-            "stream": False,
-            "options": resolved_options,
-        }
-        response = requests.post(OLLAMA_URL, json=payload, timeout=timeout)
-        if response.status_code != 200:
-            _reset_ollama_model_ready()
-            raise Exception(f"Ollama server returned an error: {response.text}")
-        return response.json().get("response", "").strip()
-    else:
-        width, height = pil_image.size
-        slice_1 = pil_image.crop((0, 0, width, int(height * 0.42)))
-        slice_2 = pil_image.crop((0, int(height * 0.30), width, int(height * 0.72)))
-        slice_3 = pil_image.crop((0, int(height * 0.60), width, height))
-
-        tiling_options = {"num_ctx": 4096, "temperature": 0.0, "num_predict": 1024, "repeat_penalty": 1.2}
-
-        results = []
-        for idx, half in enumerate([slice_1, slice_2, slice_3]):
-            buffered = io.BytesIO()
-            half.save(buffered, format="JPEG", quality=85)
-            img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-            payload = {
-                "model": "glm-ocr",
-                "prompt": prompt,
-                "images": [img_base64],
-                "stream": False,
-                "options": tiling_options,
-            }
-            response = requests.post(OLLAMA_URL, json=payload, timeout=timeout)
-            if response.status_code != 200:
-                _reset_ollama_model_ready()
-                raise Exception(f"Ollama server returned an error on section {idx + 1}: {response.text}")
-            results.append(response.json().get("response", "").strip())
-
-        return (
-            f"### Document Section: Top Half (Metadata)\n\n"
-            f"{results[0]}\n\n"
-            f"---\n\n"
-            f"### Document Section: Middle (Table Grid)\n\n"
-            f"{results[1]}\n\n"
-            f"---\n\n"
-            f"### Document Section: Bottom Half (Descriptions & Verification)\n\n"
-            f"{results[2]}"
-        )
-
-def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeout: int, base_size: int = 1024) -> str:
-    if not _UNLIMITED_OCR_AVAILABLE or unlimited_ocr_engine is None:
-        raise Exception("unlimited_ocr_engine is not installed.")
+async def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeout: int, base_size: int = 1024) -> str:
     effective_prompt = "document parsing." if len(prompt) > 80 else prompt
-    return unlimited_ocr_engine.run_ocr(pil_image, prompt=effective_prompt, base_size=base_size, timeout=timeout)
+    if config.OCR_LOCAL_ENGINE:
+        # Dev-only fallback: run in-process on this machine without a GPU server.
+        if not _UNLIMITED_OCR_AVAILABLE or unlimited_ocr_engine is None:
+            raise Exception("unlimited_ocr_engine is not installed.")
+        return await asyncio.to_thread(
+            unlimited_ocr_engine.run_ocr, pil_image, effective_prompt, base_size, timeout
+        )
+    return await gpu_ocr_client.run_unlimited_ocr(pil_image, effective_prompt, timeout, base_size=base_size)
 
 
 _idle_watcher_task: asyncio.Task | None = None
@@ -407,11 +315,11 @@ _idle_watcher_task: asyncio.Task | None = None
 # ─── SETTINGS & PROMPTS API ───────────────────────────────────────────────────
 
 @app.get("/api/settings")
-def get_settings(username: str = Depends(authenticate_user)):
+def get_settings(principal: Principal = Depends(_require_admin)):
     return _load_settings()
 
 @app.post("/api/settings")
-def save_settings(body: dict, username: str = Depends(authenticate_user)):
+def save_settings(body: dict, principal: Principal = Depends(_require_admin)):
     current = _load_settings()
     if "output_path" in body:
         op = body["output_path"]
@@ -425,11 +333,11 @@ def save_settings(body: dict, username: str = Depends(authenticate_user)):
     return current
 
 @app.get("/api/prompts")
-def get_prompts(username: str = Depends(authenticate_user)):
+def get_prompts(principal: Principal = Depends(_require_user)):
     return {"prompts": PROMPTS, "defaults": _DEFAULT_PROMPTS}
 
 @app.post("/api/prompts/{mode}")
-def save_prompt(mode: str, body: dict, username: str = Depends(authenticate_user)):
+def save_prompt(mode: str, body: dict, principal: Principal = Depends(_require_admin)):
     allowed = set(_DEFAULT_PROMPTS.keys())
     if mode not in allowed:
         raise HTTPException(status_code=400, detail=f"Unknown prompt mode '{mode}'. Allowed: {allowed}")
@@ -441,7 +349,7 @@ def save_prompt(mode: str, body: dict, username: str = Depends(authenticate_user
     return {"mode": mode, "text": text}
 
 @app.delete("/api/prompts/{mode}")
-def reset_prompt(mode: str, username: str = Depends(authenticate_user)):
+def reset_prompt(mode: str, principal: Principal = Depends(_require_admin)):
     if mode not in _DEFAULT_PROMPTS:
         raise HTTPException(status_code=400, detail=f"Unknown prompt mode '{mode}'")
     PROMPTS[mode] = _DEFAULT_PROMPTS[mode]
@@ -461,29 +369,13 @@ def idle_status():
         "enabled": timeout_mins > 0,
     }
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-def get_ui(username: str = Depends(authenticate_user)):
-    ui_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
-    if not os.path.exists(ui_path):
-        return HTMLResponse(
-            content="<h1>GLM-OCR Service</h1><p>UI file static/index.html is missing.</p>",
-            status_code=404
-        )
-    with open(ui_path, "r", encoding="utf-8") as f:
-        return f.read()
-
 @app.get("/health")
-def health_check():
-    try:
-        ollama_base = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-        resp = requests.get(ollama_base, timeout=2)
-        ollama_status = "online" if resp.status_code == 200 else "offline"
-    except Exception:
-        ollama_status = "unreachable"
-
+async def health_check():
+    gpu_health = await gpu_ocr_client.check_health()
     return {
         "status": "healthy",
-        "ollama_connection": ollama_status,
+        "ollama_connection": gpu_health["ollama"],
+        "gpu_ocr_service_connection": gpu_health["gpu_ocr_service"],
     }
 
 # ─── FAIL-SAFE PERSISTENT JOB API ENDPOINTS ───────────────────────────────────
@@ -505,13 +397,13 @@ async def submit_ocr_job(
     unlimited_base_size: int = Query(1024, ge=128, le=2048, description="Unlimited-OCR base resolution"),
     # Page selection
     page_range: str = Query("", description="Page range to process, e.g. '1-10,25,50-100'. Empty = all pages."),
-    username: str = Depends(authenticate_user)
+    principal: Principal = Depends(_require_user)
 ):
     """
     Submits a document for fail-safe background processing.
     Returns immediately with job_id. Processing continues even if browser tab is closed.
     """
-    _check_rate_limit(username)
+    _check_rate_limit(principal.rate_limit_key)
 
     filename = file.filename
     filename_lower = filename.lower()
@@ -605,18 +497,18 @@ async def submit_ocr_job(
     }
 
 @app.get("/api/jobs")
-def list_ocr_jobs(limit: int = Query(50, ge=1, le=200), username: str = Depends(authenticate_user)):
+def list_ocr_jobs(limit: int = Query(50, ge=1, le=200), principal: Principal = Depends(_require_user)):
     """Lists all past and current OCR jobs for the UI Document History Panel."""
     return database.list_jobs(limit=limit)
 
 @app.post("/api/jobs/stop-all")
-def stop_all_ocr_jobs(username: str = Depends(authenticate_user)):
+def stop_all_ocr_jobs(principal: Principal = Depends(_require_admin)):
     """Cancel all currently running OCR tasks and mark them paused."""
     count = task_queue.cancel_all_jobs()
     return {"message": f"Requested cancellation of {count} active job(s).", "cancelled": count}
 
 @app.post("/api/shutdown")
-async def shutdown_server(username: str = Depends(authenticate_user)):
+async def shutdown_server(principal: Principal = Depends(_require_admin)):
     """Stop all OCR tasks and shut down the server process to free memory."""
     task_queue.cancel_all_jobs()
     loop = asyncio.get_running_loop()
@@ -624,7 +516,7 @@ async def shutdown_server(username: str = Depends(authenticate_user)):
     return {"message": "Server is shutting down."}
 
 @app.get("/api/jobs/{job_id}")
-def get_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
+def get_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
     """Retrieves full details, live progress, and extracted text for a specific job."""
     job = database.get_job(job_id)
     if not job:
@@ -635,7 +527,7 @@ def get_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
 def get_job_uploaded_file(
     job_id: str,
     download: bool = Query(False, description="Set to true to force file download"),
-    username: str = Depends(authenticate_user)
+    principal: Principal = Depends(_require_user)
 ):
     """Serves the original uploaded PDF or image file for preview or downloading."""
     job = database.get_job(job_id)
@@ -653,7 +545,7 @@ def get_job_uploaded_file(
     )
 
 @app.get("/api/jobs/{job_id}/download-result")
-def download_ocr_result(job_id: str, username: str = Depends(authenticate_user)):
+def download_ocr_result(job_id: str, principal: Principal = Depends(_require_user)):
     """Downloads the extracted OCR result text as a formatted Markdown (.md) document."""
     job = database.get_job(job_id)
     if not job:
@@ -687,7 +579,7 @@ def download_ocr_result(job_id: str, username: str = Depends(authenticate_user))
     )
 
 @app.post("/api/jobs/{job_id}/pause")
-def pause_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
+def pause_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
     """Pause a running OCR job after its current page completes."""
     job = database.get_job(job_id)
     if not job:
@@ -698,9 +590,9 @@ def pause_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
     return {"message": f"Job {job_id} will pause after the current page.", "status": "pausing"}
 
 @app.post("/api/jobs/{job_id}/retry")
-async def retry_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
+async def retry_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
     """Retries or resumes a failed or stuck OCR job."""
-    _check_rate_limit(username)
+    _check_rate_limit(principal.rate_limit_key)
     job = database.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -721,7 +613,7 @@ async def retry_ocr_job(job_id: str, username: str = Depends(authenticate_user))
     return {"message": f"Job {job_id} retried successfully.", "status": "processing"}
 
 @app.delete("/api/jobs/{job_id}")
-async def delete_ocr_job(job_id: str, username: str = Depends(authenticate_user)):
+async def delete_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
     """Deletes an OCR job and removes its associated uploaded file from disk."""
     if task_queue.is_job_active(job_id):
         task_queue.cancel_job(job_id)
@@ -742,9 +634,9 @@ async def ocr_single_page(
     prompt_mode: str = Query("document"),
     custom_prompt: str = Query(None),
     engine: str = Query("glm", pattern="^(unlimited|glm)$"),
-    username: str = Depends(authenticate_user)
+    principal: Principal = Depends(_require_user)
 ):
-    _check_rate_limit(username)
+    _check_rate_limit(principal.rate_limit_key)
 
     filename_lower = file.filename.lower()
     supported_extensions = (".pdf", ".png", ".jpg", ".jpeg", ".webp", ".bmp")
@@ -820,17 +712,13 @@ async def ocr_single_page(
 
     try:
         if engine == "unlimited":
-            raw_text = await asyncio.to_thread(
-                run_unlimited_ocr_for_image, pil_image, prompt, OCR_TIMEOUT
-            )
+            raw_text = await run_unlimited_ocr_for_image(pil_image, prompt, OCR_TIMEOUT)
         else:
-            raw_text = await asyncio.to_thread(
-                run_ocr_for_image, pil_image, prompt, tiling, OCR_TIMEOUT, ocr_options
-            )
+            raw_text = await run_ocr_for_image(pil_image, prompt, tiling, OCR_TIMEOUT, ocr_options)
             if is_captcha:
                 len_match = re.search(r'\b(\d+)\s+(?:alphanumeric\s+)?char', prompt, re.IGNORECASE)
                 raw_text = clean_captcha_result(raw_text, expected_len=int(len_match.group(1)) if len_match else None)
-    except requests.exceptions.Timeout:
+    except gpu_ocr_client.GPUServiceTimeout:
         raise HTTPException(status_code=504, detail=f"OCR request timed out after {OCR_TIMEOUT}s.")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"OCR engine error ({engine}): {str(e)}")
@@ -842,3 +730,20 @@ async def ocr_single_page(
         "render_scale": render_scale,
         "text": raw_text
     }
+
+# ─── SPA catch-all (must stay LAST so it never shadows an /api/* route) ──────
+# Public and unauthenticated by design: the React shell needs to render its own
+# login redirect and handle the OIDC /callback route before any token exists.
+# The real security boundary is every /api/* call the shell makes, not this route.
+_FRONTEND_INDEX_HTML = os.path.join(_FRONTEND_DIST_DIR, "index.html")
+
+
+@app.get("/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
+def spa_catch_all(full_path: str):
+    if not os.path.exists(_FRONTEND_INDEX_HTML):
+        return HTMLResponse(
+            content="<h1>GLM-OCR Service</h1><p>Frontend build missing — run `npm run build` in frontend/.</p>",
+            status_code=404
+        )
+    with open(_FRONTEND_INDEX_HTML, "r", encoding="utf-8") as f:
+        return f.read()

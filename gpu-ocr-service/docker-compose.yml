@@ -1,0 +1,89 @@
+version: "3.9"
+
+services:
+  # On Docker Desktop for Windows, containers run inside a WSL2 VM — inbound
+  # reachability from OUTSIDE that VM (including from another Tailscale peer)
+  # depends on Docker Desktop's own port-publish bridge, which only activates
+  # for an explicit "ports:" mapping. Without one, a service can be perfectly
+  # "listening" from inside WSL2 yet still be unreachable from any remote
+  # Tailscale peer, even though outbound-initiated Tailscale traffic (the
+  # tunnel negotiation itself) works fine regardless.
+  #
+  # NOTE: binding this to the Tailscale IP specifically (rather than 0.0.0.0)
+  # is NOT possible here — that IP only exists inside the container/WSL2
+  # world (Tailscale runs as a container, not a native Windows client), so
+  # the Windows host itself can't bind to it. Publishing on 0.0.0.0 means
+  # this port is technically reachable from the regular LAN too, not just
+  # the tailnet — the shared-secret check in Caddyfile is what actually
+  # protects it at that point, not network isolation alone. Matches the
+  # same 0.0.0.0 publish pattern already used for rokkaai-app:11600 on this
+  # same host.
+  tailscale:
+    image: tailscale/tailscale:latest
+    hostname: ocr-gpu
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_EXTRA_ARGS=--advertise-tags=tag:ocr-gpu
+      - TS_STATE_DIR=/var/lib/tailscale
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add: [NET_ADMIN, NET_RAW]
+    ports:
+      - "11610:11610"
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    network_mode: "service:tailscale"
+    depends_on: [tailscale]
+    environment:
+      # Bound to loopback only — never reachable via the tailscale0 interface.
+      # The only path to Ollama from off-box is through the Caddy proxy below,
+      # which enforces the shared-secret check Ollama itself has no hook for.
+      - OLLAMA_HOST=127.0.0.1:11434
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  # Single external entry point for the whole box — only port 11610 is
+  # available on this machine, so gpu-ocr-api and Ollama share it here,
+  # routed by path (see Caddyfile). Neither service needs its own port.
+  gpu-proxy:
+    image: caddy:2-alpine
+    network_mode: "service:tailscale"
+    depends_on: [tailscale, ollama, gpu-ocr-api]
+    environment:
+      - GPU_OCR_SHARED_SECRET=${GPU_OCR_SHARED_SECRET}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped
+
+  gpu-ocr-api:
+    image: ocr-gpu-api:latest
+    build: .
+    network_mode: "service:tailscale"
+    depends_on: [tailscale]
+    environment:
+      - GPU_OCR_SHARED_SECRET=${GPU_OCR_SHARED_SECRET}
+      - GPU_OCR_MAX_CONCURRENT_JOBS=${GPU_OCR_MAX_CONCURRENT_JOBS:-2}
+      - UNLIMITED_OCR_ALLOW_REMOTE_CODE=1
+      - UNLIMITED_OCR_MODEL_REVISION=${UNLIMITED_OCR_MODEL_REVISION:-main}
+      - HF_HOME=/app/hf_cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - hf_cache:/app/hf_cache
+    # No "ports:" entry — gpu-ocr-api is reachable ONLY through the
+    # tailscale0 interface inside the shared network namespace above.
+    restart: unless-stopped
+
+volumes:
+  tailscale-state:
+  ollama_data:
+  hf_cache:

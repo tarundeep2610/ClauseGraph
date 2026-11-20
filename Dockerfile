@@ -1,3 +1,10 @@
+FROM node:20-slim AS frontend-build
+WORKDIR /frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.11-slim
 
 # Force Python stdout/stderr to flush immediately so logs appear live in Docker logs
@@ -14,13 +21,22 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
+COPY config.py .
+COPY auth_core.py .
+COPY auth_deps.py .
+COPY auth_router.py .
+COPY role_utils.py .
 COPY database.py .
 COPY task_queue.py .
-COPY unlimited_ocr_engine.py .
-COPY static/ static/
+COPY gpu_ocr_client.py .
+COPY --from=frontend-build /frontend/dist ./frontend/dist
 
-# Pre-create data and HuggingFace cache directories
-RUN mkdir -p /app/data/uploads /root/.cache/huggingface/hub
+# unlimited_ocr_engine.py is intentionally NOT copied here — OCR model
+# inference runs on the GPU server (see gpu-ocr-service/). It's only needed
+# for local dev with OCR_LOCAL_ENGINE=true, which doesn't use this image.
+
+# Pre-create the data directory
+RUN mkdir -p /app/data/uploads
 
 EXPOSE 8000
 

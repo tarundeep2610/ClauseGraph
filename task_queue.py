@@ -7,6 +7,7 @@ import traceback
 import pypdfium2 as pdfium
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 import database
+from gpu_ocr_client import GPUServiceAuthError, GPUServiceError
 
 # Attempt to import unlimited_ocr_engine if available
 try:
@@ -169,7 +170,8 @@ async def process_ocr_job(job_id: str, run_ocr_func, run_unlimited_func, prompts
                     pil_img = ImageEnhance.Contrast(pil_img).enhance(1.8)
                     pil_img = pil_img.filter(ImageFilter.SHARPEN)
 
-                # Retry loop for OCR execution (up to 3 attempts)
+                # Retry loop for OCR execution (up to 3 attempts, except auth
+                # failures which are a config problem and never succeed on retry)
                 max_retries = 3
                 page_text = ""
                 page_status = "failed"
@@ -178,16 +180,21 @@ async def process_ocr_job(job_id: str, run_ocr_func, run_unlimited_func, prompts
                 for attempt in range(1, max_retries + 1):
                     try:
                         if engine == "unlimited":
-                            page_text = await asyncio.to_thread(
-                                run_unlimited_func, pil_img, prompt, ollama_timeout
-                            )
+                            page_text = await run_unlimited_func(pil_img, prompt, ollama_timeout)
                         else:
-                            page_text = await asyncio.to_thread(
-                                run_ocr_func, pil_img, prompt, tiling, ollama_timeout, ocr_options
-                            )
+                            page_text = await run_ocr_func(pil_img, prompt, tiling, ollama_timeout, ocr_options)
                         page_status = "success"
                         page_error = ""
                         break
+                    except GPUServiceAuthError as e:
+                        page_error = f"GPU service rejected authentication — check shared secret: {e}"
+                        print(f"[TaskQueue] Job {job_id} Page {page_num}: {page_error} (not retrying)")
+                        break
+                    except GPUServiceError as e:
+                        page_error = f"{type(e).__name__}: {e}"
+                        print(f"[TaskQueue] Job {job_id} Page {page_num} attempt {attempt}/{max_retries} failed: {page_error}")
+                        if attempt < max_retries:
+                            await asyncio.sleep(2 * attempt)
                     except Exception as e:
                         page_error = str(e)
                         print(f"[TaskQueue] Job {job_id} Page {page_num} attempt {attempt}/{max_retries} failed: {e}")
