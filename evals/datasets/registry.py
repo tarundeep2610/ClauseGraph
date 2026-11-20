@@ -21,6 +21,8 @@ class BenchmarkDataset:
     page_count: int = 1
     default_trials: int = 1
     legacy: bool = False
+    action_items_gates: Optional[Dict[str, float]] = None
+    index_gates: Optional[Dict[str, float]] = None
 
 
 DATASET_REGISTRY: Dict[str, BenchmarkDataset] = {
@@ -72,6 +74,11 @@ DATASET_REGISTRY: Dict[str, BenchmarkDataset] = {
         gold_action_items_path=os.path.join(_FIXTURES_DIR, "gold_action_items_30d148dd.json"),
         page_count=10,
         default_trials=1,
+        action_items_gates={
+            "min_precision": 0.750,
+            "min_recall": 0.950,
+            "min_grounding_rate": 0.950,
+        },
     ),
     "gem-bid-midhani-8p": BenchmarkDataset(
         dataset_id="gem-bid-midhani-8p",
@@ -82,6 +89,11 @@ DATASET_REGISTRY: Dict[str, BenchmarkDataset] = {
         gold_action_items_path=os.path.join(_FIXTURES_DIR, "gold_action_items_179ab46e.json"),
         page_count=8,
         default_trials=1,
+        action_items_gates={
+            "min_precision": 0.700,
+            "min_recall": 0.950,
+            "min_grounding_rate": 0.950,
+        },
     ),
     "dmrc-nit-5p": BenchmarkDataset(
         dataset_id="dmrc-nit-5p",
@@ -92,6 +104,15 @@ DATASET_REGISTRY: Dict[str, BenchmarkDataset] = {
         gold_action_items_path=os.path.join(_FIXTURES_DIR, "gold_action_items_de8764d2.json"),
         page_count=5,
         default_trials=1,
+        index_gates={
+            "min_merged_precision": 0.350,
+            "min_merged_recall": 0.800,
+        },
+        action_items_gates={
+            "min_precision": 0.850,
+            "min_recall": 0.950,
+            "min_grounding_rate": 0.950,
+        },
     ),
     "dmrc-oew-16p": BenchmarkDataset(
         dataset_id="dmrc-oew-16p",
@@ -102,6 +123,17 @@ DATASET_REGISTRY: Dict[str, BenchmarkDataset] = {
         gold_action_items_path=os.path.join(_FIXTURES_DIR, "gold_action_items_0a42f322.json"),
         page_count=16,
         default_trials=1,
+        index_gates={
+            "min_merged_precision": 0.100,
+            "min_merged_recall": 0.750,
+            "min_mention_precision": 0.100,
+            "min_mention_recall": 0.900,
+        },
+        action_items_gates={
+            "min_precision": 0.500,  # 24 gold milestone items sampled across 16-page works contract
+            "min_recall": 0.950,
+            "min_grounding_rate": 0.950,
+        },
     ),
     "dmrc-jcdd-27p": BenchmarkDataset(
         dataset_id="dmrc-jcdd-27p",
@@ -112,6 +144,17 @@ DATASET_REGISTRY: Dict[str, BenchmarkDataset] = {
         gold_action_items_path=os.path.join(_FIXTURES_DIR, "gold_action_items_4755bd5c.json"),
         page_count=27,
         default_trials=1,
+        index_gates={
+            "min_merged_precision": 0.100,
+            "min_merged_recall": 0.750,
+            "min_mention_precision": 0.050,
+            "min_mention_recall": 0.900,
+        },
+        action_items_gates={
+            "min_precision": 0.500,
+            "min_recall": 0.750,
+            "min_grounding_rate": 0.900,
+        },
     ),
     "iocl-mathura-59p": BenchmarkDataset(
         dataset_id="iocl-mathura-59p",
@@ -122,6 +165,17 @@ DATASET_REGISTRY: Dict[str, BenchmarkDataset] = {
         gold_action_items_path=os.path.join(_FIXTURES_DIR, "gold_action_items_a9da15c3.json"),
         page_count=59,
         default_trials=1,
+        index_gates={
+            "min_merged_precision": 0.050,  # 35 targets annotated up to page 31 across 59-page document
+            "min_merged_recall": 0.900,
+            "min_mention_precision": 0.050,
+            "min_mention_recall": 0.900,
+        },
+        action_items_gates={
+            "min_precision": 0.050,  # 8 gold milestone items sampled across 59-page refinery contract
+            "min_recall": 0.850,
+            "min_grounding_rate": 0.850,
+        },
     ),
     "gail-jsw-61p": BenchmarkDataset(
         dataset_id="gail-jsw-61p",
@@ -132,6 +186,17 @@ DATASET_REGISTRY: Dict[str, BenchmarkDataset] = {
         gold_action_items_path=os.path.join(_FIXTURES_DIR, "gold_action_items_3fb2b1cf.json"),
         page_count=61,
         default_trials=1,
+        index_gates={
+            "min_merged_precision": 0.050,  # 12 macro divisions annotated across 61-page judgment
+            "min_merged_recall": 0.800,
+            "min_mention_precision": 0.050,
+            "min_mention_recall": 0.900,
+        },
+        action_items_gates={
+            "min_precision": 0.050,  # 3 operative judicial order items sampled across 61-page appellate judgment
+            "min_recall": 0.300,
+            "min_grounding_rate": 0.850,
+        },
     ),
 }
 

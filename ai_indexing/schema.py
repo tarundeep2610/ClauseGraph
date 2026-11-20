@@ -485,6 +485,22 @@ def _action_item_dedupe_key(item: AIActionItem) -> tuple:
     return (item.page, item.item_type, item.item_text.casefold().strip())
 
 
+_REJECTION_CONSEQUENCE_RE = re.compile(
+    r"\b(?:"
+    r"shall\s+be\s+declared\s+as\s+ineligible|"
+    r"shall\s+be\s+summarily\s+rejected|"
+    r"shall\s+be\s+considered\s+ineligible|"
+    r"shall\s+not\s+be\s+accepted\s+under\s+any\s+circumstances|"
+    r"shall\s+not\s+be\s+entertained|"
+    r"liable\s+for\s+(?:outright\s+)?rejection|"
+    r"shall\s+be\s+rejected|"
+    r"will\s+be\s+rejected|"
+    r"lead\s+to\s+rejection"
+    r")\b",
+    re.I,
+)
+
+
 def normalize_action_item_chunk(
     chunk: AIActionItemChunk, expected_pages: List[int],
 ) -> "tuple[AIActionItemChunk, NormalizationReport]":
@@ -515,6 +531,8 @@ def normalize_action_item_chunk(
             # waste a grounding attempt downstream.
             report.dropped_empty += 1
             continue
+        if item.evidence_quote and _REJECTION_CONSEQUENCE_RE.search(item.evidence_quote):
+            item.item_type = "condition"
         dk = _action_item_dedupe_key(item)
         if dk in seen:
             report.dropped_duplicate += 1

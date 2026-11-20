@@ -97,7 +97,10 @@ from ai_indexing.guards import (
     is_bare_parameter_or_platform_disclaimer,
     is_alternative_security_instrument_duplicate,
     is_ungated_sow_feature_description,
+    is_statutory_policy_leak,
+    is_contractor_evaluation_scoring_matrix,
     is_litigation_argument_or_past_recital,
+    is_standalone_leaf_bullet,
 )
 from ai_indexing.harvesters import (
     harvest_action_items_from_text,
@@ -126,6 +129,9 @@ __all__ = [
     "is_bare_parameter_or_platform_disclaimer",
     "is_alternative_security_instrument_duplicate",
     "is_ungated_sow_feature_description",
+    "is_statutory_policy_leak",
+    "is_contractor_evaluation_scoring_matrix",
     "is_litigation_argument_or_past_recital",
+    "is_standalone_leaf_bullet",
     "harvest_action_items_from_text",
 ]

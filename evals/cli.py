@@ -19,8 +19,18 @@ import uuid
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
+
+try:
+    from dotenv import load_dotenv
+    if os.path.exists(".env.local-test"):
+        load_dotenv(".env.local-test", override=True)
+    elif os.path.exists(".env"):
+        load_dotenv(".env", override=True)
+except ImportError:
+    pass
 
 import database
 from evals.datasets.registry import get_benchmark_dataset, list_benchmark_datasets
@@ -61,7 +71,7 @@ async def _run_index(args: argparse.Namespace) -> int:
 
     # Evaluate gates on the mean scores across trials
     mean_scores = {k: v["mean"] for k, v in results.get("spread", {}).items()}
-    gate_res = evaluate_index_gates(mean_scores)
+    gate_res = evaluate_index_gates(mean_scores, gates=dataset.index_gates)
 
     if args.markdown:
         md = generate_markdown_report(results, dataset.name, gate_res.profile_name, gate_res.passed)
@@ -100,10 +110,25 @@ async def _run_action_items(args: argparse.Namespace) -> int:
         print(f"\n[SLICE MODE] Running targeted evaluation on Pages {args.page_from} to {args.page_to}")
 
     print(f"\n--- Running Action Items Benchmark: {dataset.name} ({trials} trial(s)) ---")
-    results = await runner.run(args.dataset, trials=trials, page_from=args.page_from, page_to=args.page_to)
+    results = await runner.run(
+        args.dataset,
+        trials=trials,
+        page_from=args.page_from,
+        page_to=args.page_to,
+        two_pass=args.two_pass,
+        chunk_pages=args.chunk_pages,
+        adaptive_chunking=args.adaptive_chunking,
+    )
+
+    print("\n" + "=" * 70)
+    print(f" ACTION ITEMS SUMMARY — {trials} Trial(s)")
+    print("=" * 70)
+    for metric, stats in results.get("spread", {}).items():
+        print(f"{metric.replace('_', ' ').title():25}: min={stats['min']:.3f}  mean={stats['mean']:.3f}  max={stats['max']:.3f}")
+    print("=" * 70)
 
     mean_scores = {k: v["mean"] for k, v in results.get("spread", {}).items()}
-    gate_res = evaluate_action_items_gates(mean_scores)
+    gate_res = evaluate_action_items_gates(mean_scores, gates=dataset.action_items_gates)
 
     save_json_artifact(
         run_id=str(uuid.uuid4()),

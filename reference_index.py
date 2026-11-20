@@ -32,16 +32,36 @@ import layout_format
 
 # ─── Vocabulary & pattern definitions ──────────────────────────────────────────
 
-_KEYWORD_ALTS = r"clause|section|sec\.?|article|art\.?|para(?:graph)?|annexure|schedule|appendix|page|ground"
+_KEYWORD_ALTS = r"clause|cl\.?|sub-clause|subclause|section|sec\.?|article|art\.?|para(?:graph)?|annexure|schedule|appendix|page|ground|sr\.?\s*no\.?|sl\.?\s*no\.?"
 
 CORE_RE = re.compile(
     rf"^\s*(?P<keyword>{_KEYWORD_ALTS})\b\.?\s+(?:no\.?\s*)?(?P<prefix>[A-Z]-?)?(?P<number>[ivxlcdm]+|\d+(?:\.\d+)*)\b",
     re.IGNORECASE,
 )
 
-MENTION_START_RE = re.compile(rf"\b(?:{_KEYWORD_ALTS})\b", re.IGNORECASE)
+_EXTENDED_KEYWORD_ALTS = rf"{_KEYWORD_ALTS}|nit|gcc|scc|itt"
+MENTION_START_RE = re.compile(rf"(?:\b(?:{_EXTENDED_KEYWORD_ALTS})\b|\bgiven\s*in)", re.IGNORECASE)
 MENTION_RE = re.compile(
     rf"\b(?P<keyword>{_KEYWORD_ALTS})\b\.?[\s-]*(?:no\.?\s*)?(?P<prefix>[A-Za-z]-?)?(?P<number>[ivxlcdmIVXLCDM]+|\d+(?:\.\d+)*)\b",
+    re.IGNORECASE,
+)
+
+COMMERCIAL_TENDER_MENTION_RE = re.compile(
+    r"\b(?:clause|sub-clause|cl\.|article|section|schedule)\s+"
+    r"(?:no\.?\s*)?(?P<number>[A-Za-z0-9.\(\)\-]+(?:\s*\([A-Za-z0-9]+\))*)\s+of\s+(?:the\s+)?"
+    r"(?P<doc>ITT|GCC|SCC|NIT|FOT|Agreement|Contract|Specifications|Tender Documents|Primary Agreement|\d{4}\s+Act)\b",
+    re.IGNORECASE,
+)
+
+EXTERNAL_PREFIX_MENTION_RE = re.compile(
+    r"\b(?P<doc>NIT|GCC|SCC|ITT)\s+(?:clause|cl\.|sub-clause)\s*(?:no\.?\s*)?"
+    r"(?P<number>[A-Za-z0-9.\(\)\-]+(?:\s*\([A-Za-z0-9]+\))*)\b",
+    re.IGNORECASE,
+)
+
+COMPOUND_POINT_MENTION_RE = re.compile(
+    r"(?:(?P<lead>\b(?:Sr\.?\s*No\.?|Clause)\s*|\bgiven\s*in\s*at\s*|\bgiven\s*in\s*))"
+    r"(?P<number>\d+(?:\.\d+)*(?:\s*\([A-Za-z0-9]+\))+)(?!\w)",
     re.IGNORECASE,
 )
 
@@ -281,12 +301,13 @@ MENTION_LOOKAHEAD_CHARS = 60
 EXTERNAL_LAW_FALLBACK_GUARD_FAMILIES = {"clause", "section", "article", "schedule", "appendix"}
 
 FAMILY_FALLBACKS: Dict[str, List[str]] = {
-    "clause": ["numheading"],
-    "section": ["numheading"],
-    "article": ["numheading"],
-    "schedule": ["numheading"],
-    "appendix": ["numheading"],
+    "clause": ["point", "numheading"],
+    "section": ["point", "numheading"],
+    "article": ["point", "numheading"],
+    "schedule": ["point", "numheading"],
+    "appendix": ["point", "numheading"],
     "para": ["point", "numheading"],
+    "point": ["clause", "section", "numheading"],
 }
 
 RANGE_CONTINUATION_RE = re.compile(
@@ -514,7 +535,9 @@ EXTERNAL_LAW_D_RE = re.compile(
 # "INDEX" is deliberately NOT in this list — see _WEAK_SUBDOC_TRIGGER_RE
 # below, which handles it as a conditional trigger instead.
 SUBDOC_TRIGGER_RE = re.compile(
-    r"(ANNEXURE|SCHEDULE|APPENDIX|GROUNDS\s+(?:OF|OR)\s+APPEAL|AFFIDAVIT|MEMO\s+OF\s+PARTIES|"
+    r"(NOTICE\s+INVITING\s+(?:E-)?TENDER|NOTICE\s+INVITING\s+(?:E-)?BID|TENDER\s+NOTICE|"
+    r"INVITATION\s+(?:FOR|TO)\s+BIDS?|INSTRUCTIONS\s+TO\s+(?:TENDERERS?|BIDDERS?)|"
+    r"ANNEXURE|SCHEDULE|APPENDIX|GROUNDS\s+(?:OF|OR)\s+APPEAL|AFFIDAVIT|MEMO\s+OF\s+PARTIES|"
     r"JUDGE?MENT|RESPECTFULLY\s+SHOWETH|IN\s+THE\s+(?:HIGH\s+)?COURT\s+OF|"
     r"IMPUGNED\s+(?:ORDER|JUDGE?MENT))",
     re.IGNORECASE,
@@ -644,6 +667,21 @@ FAMILIES: Dict[str, Dict[str, Any]] = {
 # Thin derived views — every existing call site keeps working unchanged.
 _HIERARCHY_RANK = {f: v["rank"] for f, v in FAMILIES.items() if v["rank"] is not None}
 _FAMILY_ALIASES = {alias: f for f, v in FAMILIES.items() for alias in v["aliases"]}
+
+_EXTENDED_FAMILY_ALIASES = {
+    "cl": "clause",
+    "sub-clause": "clause",
+    "subclause": "clause",
+    "sr no": "point",
+    "sr. no": "point",
+    "sl no": "point",
+    "sl. no": "point",
+}
+
+
+def resolve_family_alias(keyword: str) -> str:
+    cleaned = keyword.lower().rstrip(".")
+    return _FAMILY_ALIASES.get(cleaned, _EXTENDED_FAMILY_ALIASES.get(cleaned, keyword.lower()))
 
 # Numbered sub-document families — detected via CORE_RE like any other
 # target, so they push onto nested_stack via the ordinary _HIERARCHY_RANK
@@ -797,7 +835,7 @@ _PREFIX_ELIGIBLE_FAMILIES = {"annexure", "schedule", "appendix"}
 
 
 def reconcile_prefix_and_number(keyword: str, prefix: Optional[str], number_raw: str) -> Tuple[Optional[str], str]:
-    family = _FAMILY_ALIASES.get(keyword.lower().rstrip("."), keyword.lower())
+    family = resolve_family_alias(keyword)
     if prefix and family not in _PREFIX_ELIGIBLE_FAMILIES:
         return None, f"{prefix.rstrip('-')}{number_raw}"
     if prefix and not prefix.endswith("-") and _is_roman(prefix + number_raw):
@@ -814,7 +852,7 @@ def reconcile_prefix_and_number(keyword: str, prefix: Optional[str], number_raw:
 
 def normalize_key(keyword: str, prefix: Optional[str], number_raw: str, suffix: Optional[str] = None) -> str:
     prefix, number_raw = reconcile_prefix_and_number(keyword, prefix, number_raw)
-    family = _FAMILY_ALIASES.get(keyword.lower().rstrip("."), keyword.lower())
+    family = resolve_family_alias(keyword)
     if family in _PREFIX_ELIGIBLE_FAMILIES and _is_roman(number_raw):
         # Keep the roman numeral literal (not arabic-converted) for these
         # families — it's the document's own real numbering scheme
@@ -1330,6 +1368,21 @@ def detect_subdoc_trigger(
     label = " ".join(w.capitalize() for w in re.split(r"\s+", m.group(0).strip()))
     if weak:
         return label, True
+    # Running headers/footers repeating the currently active subdoc title
+    # must not reopen a new subdoc boundary.
+    if nested_stack:
+        has_pagination = bool(
+            re.search(r"\bpage\s+\d+(\s+of\s+\d+)?\b", block_text, re.IGNORECASE)
+            or (lookahead_texts and re.search(r"^\s*page\s+\d+", lookahead_texts[0], re.IGNORECASE))
+            or (lookahead_texts and PAGE_FOOTER_RE.search(lookahead_texts[0]))
+        )
+        if has_pagination:
+            slug = _slugify_subdoc_label(label)
+            for s in nested_stack:
+                if s.get("family") == "subdoc":
+                    existing_slug = _slugify_subdoc_label(s.get("label", ""))
+                    if slug and existing_slug and (slug == existing_slug or slug in existing_slug or existing_slug in slug):
+                        return None
     is_strong = not _QUALIFYING_WORD_BEFORE_TRIGGER_RE.match(block_text[:m.start()])
     return label, is_strong
 
@@ -1967,7 +2020,7 @@ def build_targets_for_page(
         lookahead_texts = tuple(
             _block_own_text(b) for b in blocks[block_idx + 1:block_idx + 1 + _CASE_CAPTION_LOOKAHEAD_BLOCKS]
         )
-        trigger_result = detect_subdoc_trigger(text, nested_stack, lookahead_texts)
+        trigger_result = None if block.get("type") == "table_cell" else detect_subdoc_trigger(text, nested_stack, lookahead_texts)
         if trigger_result:
             trigger_label, trigger_is_strong = trigger_result
             if not trigger_is_strong:
@@ -2049,7 +2102,7 @@ def build_targets_for_page(
 
         if core_m:
             keyword = core_m.group("keyword")
-            family = _FAMILY_ALIASES.get(keyword.lower().rstrip("."), keyword.lower())
+            family = resolve_family_alias(keyword)
             prefix, number_raw = reconcile_prefix_and_number(keyword, core_m.group("prefix"), core_m.group("number"))
             match_end = core_m.end()
             suffix = _match_subdoc_trailing_suffix(family, text[match_end:])
@@ -2785,6 +2838,13 @@ class TargetLookupIndex:
                 self.by_exact_key.setdefault(key, []).append(t)
                 ck = t.get("collapsed_key") or collapse_key_fallback(key)
                 self.by_collapsed_key.setdefault(ck, set()).add(key)
+                sk = t.get("scope_key") or ""
+                if ":" in key and sk and ":" in sk:
+                    p_num = sk.split("/")[-1].split(":")[-1]
+                    c_num = key.split(":")[-1]
+                    for fam in ("point", "clause"):
+                        comp_k = f"{fam}:{p_num}-{c_num}"
+                        self.by_exact_key.setdefault(comp_k, []).append(t)
 
     @classmethod
     def from_store_like(cls, data: Any) -> "TargetLookupIndex":
@@ -2804,12 +2864,26 @@ class TargetLookupIndex:
                         for c in cands:
                             ck = c.get("collapsed_key") or collapse_key_fallback(k)
                             idx.by_collapsed_key.setdefault(ck, set()).add(k)
+                            sk = c.get("scope_key") or ""
+                            if ":" in k and sk and ":" in sk:
+                                p_num = sk.split("/")[-1].split(":")[-1]
+                                c_num = k.split(":")[-1]
+                                for fam in ("point", "clause"):
+                                    comp_k = f"{fam}:{p_num}-{c_num}"
+                                    idx.by_exact_key.setdefault(comp_k, []).append(c)
             elif isinstance(first_val, list):
                 for k, cands in data.items():
                     idx.by_exact_key.setdefault(k, []).extend(cands)
                     for c in cands:
                         ck = c.get("collapsed_key") or collapse_key_fallback(k)
                         idx.by_collapsed_key.setdefault(ck, set()).add(k)
+                        sk = c.get("scope_key") or ""
+                        if ":" in k and sk and ":" in sk:
+                            p_num = sk.split("/")[-1].split(":")[-1]
+                            c_num = k.split(":")[-1]
+                            for fam in ("point", "clause"):
+                                comp_k = f"{fam}:{p_num}-{c_num}"
+                                idx.by_exact_key.setdefault(comp_k, []).append(c)
             return idx
         return cls([])
 
@@ -2817,7 +2891,37 @@ class TargetLookupIndex:
         return key in self.by_exact_key
 
     def resolve(self, key: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-        exact = self.by_exact_key.get(key, [])
+        exact = list(self.by_exact_key.get(key, []))
+        if not exact and key.count("-") >= 2:
+            base_key = key.rsplit("-", 1)[0]
+            exact = list(self.by_exact_key.get(base_key, []))
+            if not exact:
+                base_exact, _ = self.resolve(base_key)
+                if base_exact:
+                    exact = list(base_exact)
+
+        if not exact and "-" in key and ":" in key:
+            family, _, number = key.partition(":")
+            parts = number.split("-")
+            if len(parts) == 2 and parts[0] in ("clause", "point", "section", "article"):
+                for f in ("clause", "point", "section", "article"):
+                    c_matches = self.by_exact_key.get(f"{f}:{parts[1]}")
+                    if c_matches:
+                        exact = list(c_matches)
+                        break
+            elif len(parts) >= 2:
+                p_cand = parts[0]
+                c_cand = parts[1]
+                parent_exists = any(
+                    f"{f}:{p_cand}" in self.by_exact_key for f in ("point", "clause", "subdoc", "section")
+                )
+                if parent_exists:
+                    for f in (family, "point", "clause"):
+                        child_matches = self.by_exact_key.get(f"{f}:{c_cand}")
+                        if child_matches:
+                            exact = list(child_matches)
+                            break
+
         approximate: List[Dict[str, Any]] = []
 
         candidate_key = key if key in self.by_exact_key else None
@@ -2974,6 +3078,87 @@ def _scan_text_for_mentions(
             break
         match_index = pos + start_m.start()
         slice_text = text[match_index:]
+
+        # 1. Commercial Tender Mentions: e.g. "clause 1.2 of NIT", "clause C18.1.2 of ITT"
+        comm_m = COMMERCIAL_TENDER_MENTION_RE.match(slice_text) or EXTERNAL_PREFIX_MENTION_RE.match(slice_text)
+        if comm_m:
+            raw = comm_m.group(0)
+            doc = comm_m.group("doc").upper()
+            num = comm_m.group("number").strip()
+            num_clean = re.sub(r"[\s\(\)]+", "-", num).strip("-").lower()
+            clean_base = re.sub(r"-[a-z]$", "", num_clean)
+            if "ITT" in doc:
+                base = num_clean.split(".")[0] if "." in num_clean else num_clean
+                key = f"point:{base}"
+            elif "GCC" in doc:
+                key = f"point:gcc-{num_clean}"
+            elif "1996 ACT" in doc:
+                key = f"point:section-{num_clean}"
+            elif "AGREEMENT" in doc:
+                key = f"point:clause-{num_clean}"
+            else:
+                key = f"point:{clean_base}"
+
+            exact, approx = target_lookup.resolve(key)
+            if not exact and not approx and key != f"point:{num_clean}":
+                exact, approx = target_lookup.resolve(f"point:{num_clean}")
+
+            if exact:
+                resolution = "exact"
+                suppressed_reason = None
+            elif approx:
+                resolution = "approximate"
+                suppressed_reason = None
+            else:
+                resolution = "suppressed"
+                suppressed_reason = "unresolved"
+
+            out.append({
+                "occurrence_index": len(out),
+                "key": key,
+                "raw_text": raw,
+                "block_index": block_index,
+                "resolution": resolution,
+                "suppressed_reason": suppressed_reason,
+                "detection_source": "rule",
+                "detection_model": None,
+            })
+            pos = match_index + len(raw)
+            continue
+
+        # 2. Compound Point Mentions: e.g. "Sr. No. 1.3 (c)", "Clause 1.3(c) (7)", "given in1.3(c)"
+        comp_m = COMPOUND_POINT_MENTION_RE.match(slice_text)
+        if comp_m:
+            raw = comp_m.group(0)
+            lead = comp_m.group("lead") or ""
+            display_raw = comp_m.group("number") if "given in" in lead.lower() else raw
+            num = comp_m.group("number").strip()
+            num_clean = re.sub(r"[\s\(\)]+", "-", num).strip("-").lower()
+            key = f"point:{num_clean}"
+            exact, approx = target_lookup.resolve(key)
+            if exact:
+                resolution = "exact"
+                suppressed_reason = None
+            elif approx:
+                resolution = "approximate"
+                suppressed_reason = None
+            else:
+                resolution = "suppressed"
+                suppressed_reason = "unresolved"
+
+            out.append({
+                "occurrence_index": len(out),
+                "key": key,
+                "raw_text": display_raw,
+                "block_index": block_index,
+                "resolution": resolution,
+                "suppressed_reason": suppressed_reason,
+                "detection_source": "rule",
+                "detection_model": None,
+            })
+            pos = match_index + len(raw)
+            continue
+
         m = MENTION_RE.match(slice_text)
         if m:
             raw = m.group(0)
@@ -2982,7 +3167,7 @@ def _scan_text_for_mentions(
             number_raw = m.group("number")
             prefix, number = reconcile_prefix_and_number(keyword, prefix_raw, number_raw)
             key = normalize_key(keyword, prefix_raw, number_raw)
-            family = _FAMILY_ALIASES.get(keyword.lower().rstrip("."), keyword.lower())
+            family = resolve_family_alias(keyword)
             lookahead = slice_text[len(raw):len(raw) + MENTION_LOOKAHEAD_CHARS]
             before = text[max(0, match_index - 150):match_index]
 
@@ -4274,7 +4459,8 @@ def apply_heading_events_to_scope(
         if depth == 0 and len(nested_stack) >= 1:
             root_family = nested_stack[0].get("family")
             root_is_subdoc = root_family in ("subdoc", "annexure", "schedule", "appendix")
-            if root_is_subdoc and not is_subdoc_root_candidate(text, family, nested_stack[0].get("label")):
+            root_is_listing = _LISTING_CONTAINER_RE.search(nested_stack[0].get("label") or "") is not None
+            if root_is_subdoc and not root_is_listing and not is_subdoc_root_candidate(text, family, nested_stack[0].get("label")):
                 depth = 1
 
         # Major judicial section boundary clamping:

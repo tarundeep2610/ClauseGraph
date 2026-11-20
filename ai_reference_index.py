@@ -595,23 +595,12 @@ def _resolve_depth_for_heading(
     current_stack_len: int,
     carry_label_map: Optional[Dict[str, int]] = None,  # normalized carried-in label -> depth
     is_subdoc_root: bool = False,
+    heading_text: Optional[str] = None,
 ) -> Tuple[int, Optional[str]]:
     """Returns (depth_to_push_at, warning_reason_or_None). `depth` is this
     heading's own resulting depth once pushed (== number of ancestors kept
     on the stack before it). Resolution never looks at family/rank — see
-    reference_index.mint_key_for_heading's docstring for why that matters.
-
-    `carry_label_map` (normalized label -> depth, built from the SAME
-    `carry_context.open_containers` `carry_ref_map` comes from) is the
-    cross-chunk analogue of `chunk_heading_depths`'s same-chunk fuzzy
-    fallback — without it, a `parent_ref` naming a container opened in an
-    EARLIER chunk (not an exact ref_id match, and not in this chunk's own
-    `chunk_heading_depths`) fell straight to `ai_unresolved_parent_ref`
-    with no fuzzy attempt at all. Confirmed real bug: a chunk where the AI
-    correctly flagged 12 roman-numeral grounds as headings, all with
-    `parent_ref` naming "Grounds of Appeal" (opened in an earlier chunk) —
-    every single one hit this exact gap and fell back to an unparented
-    top-level section, even though the AI's own judgment was right."""
+    reference_index.mint_key_for_heading's docstring for why that matters."""
     if parent_ref:
         if parent_ref in carry_ref_map:
             return carry_ref_map[parent_ref] + 1, None
@@ -637,11 +626,40 @@ def _resolve_depth_for_heading(
         if best_carry_key is not None and best_carry_ratio >= _FUZZY_PARENT_CUTOFF:
             return carry_label_map[best_carry_key] + 1, "ai_fuzzy_carry_parent_ref"
 
-        depth = max(0, min(level - 1, current_stack_len))
-        return depth, "ai_unresolved_parent_ref"
+        # Numeric prefix matching: e.g. parent_ref "1.1" matches earlier heading "1.1 GENERAL"
+        m_num = reference_index._leading_reference_number(parent_ref)
+        if m_num:
+            num_clean = m_num.strip().rstrip(".")
+            for heading_key, depth in reversed(list(chunk_heading_depths.items())):
+                h_num = reference_index._leading_reference_number(heading_key)
+                if h_num and h_num.strip().rstrip(".") == num_clean:
+                    return depth + 1, None
+            for label_key, depth in reversed(list((carry_label_map or {}).items())):
+                l_num = reference_index._leading_reference_number(label_key)
+                if l_num and l_num.strip().rstrip(".") == num_clean:
+                    return depth + 1, None
 
+    # Backward-looking sequential ancestor resolution:
+    # If parent_ref was missing or unresolved, but heading itself has a hierarchical decimal
+    # (e.g. "1.2.1" has mathematical parent "1.2", or "2.3.4" has parent "2.3"):
+    if heading_text:
+        self_num = reference_index._leading_reference_number(heading_text)
+        if self_num and "." in self_num:
+            parts = self_num.strip().rstrip(".").split(".")
+            if len(parts) >= 2:
+                parent_prefix = ".".join(parts[:-1])
+                for heading_key, depth in reversed(list(chunk_heading_depths.items())):
+                    h_num = reference_index._leading_reference_number(heading_key)
+                    if h_num and h_num.strip().rstrip(".") == parent_prefix:
+                        return depth + 1, None
+                for label_key, depth in reversed(list((carry_label_map or {}).items())):
+                    l_num = reference_index._leading_reference_number(label_key)
+                    if l_num and l_num.strip().rstrip(".") == parent_prefix:
+                        return depth + 1, None
+
+    warn_str = "ai_unresolved_parent_ref" if parent_ref else None
     depth = max(0, min(level - 1, current_stack_len))
-    return depth, None
+    return depth, warn_str
 
 
 _SENTENCE_END_CHARS = reference_index._SENTENCE_END_CHARS
@@ -931,12 +949,15 @@ async def _ground_and_resolve_chunk(
     tracking a simulated stack depth so within-chunk parent references
     resolve against the same state apply_heading_events_to_scope will later
     reconstruct for real. Returns ({page_num: [event, ...]}, warning_counts)."""
-    min_page = min(page_blocks.keys()) if page_blocks else 0
-    if min_page > 2:
-        carry_context = ai_indexing.CarryContext(
-            open_containers=[c for c in carry_context.open_containers if c.get('label', '').strip().upper() not in ("INDEX", "TABLE OF CONTENTS")],
-            last_page_tail=carry_context.last_page_tail,
-        )
+    # An INDEX / TABLE OF CONTENTS is never carried over across chunk boundaries
+    carry_context = ai_indexing.CarryContext(
+        open_containers=[
+            c for c in carry_context.open_containers
+            if c.get('label', '').strip().upper() not in ("INDEX", "TABLE OF CONTENTS")
+            and not reference_index._LISTING_CONTAINER_RE.search(c.get('label', ''))
+        ],
+        last_page_tail=carry_context.last_page_tail,
+    )
 
     headings = _dedupe_same_page_headings(headings)
     headings, sequence_repeat_dropped_count = _drop_sequence_repeat_hallucinations(headings, page_blocks)
@@ -1008,6 +1029,7 @@ async def _ground_and_resolve_chunk(
             h.parent_ref, h.level, carry_ref_map, chunk_heading_depths, sim_stack_len,
             carry_label_map=carry_label_map,
             is_subdoc_root=is_subdoc_root,
+            heading_text=h.heading_text,
         )
         if _TEMP_DEBUG_RAW_HEADINGS:
             print(f"[RAW HEADING] text={h.heading_text[:50]!r} parent_ref={h.parent_ref!r} "
@@ -1374,6 +1396,8 @@ async def _ground_and_resolve_chunk(
                     continue
             elif not is_subdoc_root:
                 if not fp:
+                    continue
+                if ai_indexing.is_standalone_leaf_bullet(txt):
                     continue
                 if p_num == 1 and _COVER_LETTERHEAD_NOISE_RE.search(txt):
                     continue

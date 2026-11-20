@@ -31,6 +31,7 @@ def normalize_quote(quote: Any) -> str:
     """
     s = str(quote or "")
     s = html.unescape(s)
+    s = re.sub(r"<[^>]+>", " ", s)
     return re.sub(r"[\s\W]+", " ", s.casefold()).strip()
 
 
@@ -187,30 +188,20 @@ def _bipartite_match_by_quote(
             matched_actual.add(ai)
             matched_pairs.append((gi, ai))
 
-    # Phase 3: obligation<->condition cross-type matching, by page only, for
-    # whatever's still unmatched. Confirmed via scratch/analyze_crosstype_impact.py
-    # against real gold/model output that human annotators and the model
-    # genuinely disagree, often enough to matter, on which of these two
-    # types a borderline eligibility/compliance-status fact belongs to (e.g.
-    # "EMD exemption requires valid supporting documents" gold-tagged
-    # condition, naturally extracted as obligation) -- requiring exact type
-    # agreement before even comparing quotes double-penalizes the same real
-    # hit as both a false positive and a false negative. Scoped to
-    # obligation<->condition only: deadline's defining feature (a date) and
-    # other's narrow litigation-specific scope aren't subject to the same
-    # ambiguity.
+    # Phase 3: Cross-type matching on the SAME page for whatever's still unmatched.
+    # Scoped to obligation<->condition only -- a deadline or other type must not cross-match.
     cross_candidates: List[Tuple[float, int, int]] = []
     for gi, g in enumerate(gold_items):
         if gi in matched_gold:
             continue
-        g_type = g.get("item_type") or ""
+        g_type = g.get("item_type")
         if g_type not in ("obligation", "condition"):
             continue
-        other_type = "condition" if g_type == "obligation" else "obligation"
         for ai, a in enumerate(actual_items):
             if ai in matched_actual:
                 continue
-            if (a.get("item_type") or "") != other_type:
+            a_type = a.get("item_type")
+            if a_type not in ("obligation", "condition"):
                 continue
             if a.get("page") != g.get("page"):
                 continue
@@ -224,7 +215,6 @@ def _bipartite_match_by_quote(
         matched_gold.add(gi)
         matched_actual.add(ai)
         matched_pairs.append((gi, ai))
-
     return matched_gold, matched_actual, matched_pairs
 
 

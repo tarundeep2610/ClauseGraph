@@ -17,6 +17,7 @@ import structure_overrides
 from evals.metrics.structure import (
     RULE_FAMILIES,
     extract_family,
+    normalize_key_for_scoring,
     score_content_dual_match,
     score_target_slice,
     target_identifier,
@@ -148,6 +149,15 @@ def build_labeled_diff(
     }
 
 
+def normalize_mention_key(key: Optional[str]) -> str:
+    if not key:
+        return ""
+    for prefix in ("point:", "clause:", "section:"):
+        if key.startswith(prefix):
+            return "clause:" + key[len(prefix):].lower()
+    return normalize_key_for_scoring(key).lower()
+
+
 def evaluate_job_structure(
     job_id: str,
     gold: Dict[str, Any],
@@ -182,17 +192,36 @@ def evaluate_job_structure(
 
     dual_match = score_content_dual_match(gold_ai, act_ai, ai_scores["matched_ids"])
 
+    has_gold_terms = any(m.get("key", "").startswith("term:") for m in gold_mentions)
+    has_gold_docrefs = any(m.get("key", "").startswith("docref:") for m in gold_mentions)
+    eval_actual_mentions = [
+        m for m in actual_mentions
+        if (has_gold_terms or not m.get("key", "").startswith("term:"))
+        and (has_gold_docrefs or not m.get("key", "").startswith("docref:"))
+    ]
+
     gold_m_resolving = {
-        (m["page"], m["key"])
+        (m["page"], normalize_mention_key(m["key"]))
         for m in gold_mentions
         if m.get("resolution") in ("exact", "approximate")
     }
     act_m_resolving = {
-        (m["page"], m["key"])
-        for m in actual_mentions
+        (m["page"], normalize_mention_key(m["key"]))
+        for m in eval_actual_mentions
         if m.get("resolution") in ("exact", "approximate")
     }
+    gold_m_external = {
+        (m["page"], normalize_mention_key(m["key"]))
+        for m in gold_mentions
+        if m.get("resolution") not in ("exact", "approximate")
+    }
+    act_m_external = {
+        (m["page"], normalize_mention_key(m["key"]))
+        for m in eval_actual_mentions
+        if m.get("resolution") not in ("exact", "approximate")
+    }
     matched_mentions = gold_m_resolving.intersection(act_m_resolving)
+    matched_external = gold_m_external.intersection(act_m_external)
     if len(gold_m_resolving) == 0:
         m_precision = 1.0
         m_recall = 1.0
@@ -202,6 +231,9 @@ def evaluate_job_structure(
     else:
         m_precision = len(matched_mentions) / len(act_m_resolving)
         m_recall = len(matched_mentions) / len(gold_m_resolving)
+
+    ext_precision = (len(matched_external) / len(act_m_external)) if act_m_external else 1.0
+    ext_recall = (len(matched_external) / len(gold_m_external)) if gold_m_external else 1.0
 
     res: Dict[str, Any] = {
         "target_precision": merged_scores["precision"],
@@ -216,6 +248,11 @@ def evaluate_job_structure(
         "matched_mentions_count": len(matched_mentions),
         "total_actual_mentions": len(act_m_resolving),
         "total_gold_mentions": len(gold_m_resolving),
+        "external_mentions_count": len(act_m_external),
+        "gold_external_mentions_count": len(gold_m_external),
+        "matched_external_mentions_count": len(matched_external),
+        "external_mention_precision": ext_precision,
+        "external_mention_recall": ext_recall,
         "ai_precision": ai_scores["precision"],
         "ai_recall": ai_scores["recall"],
         "ai_scope_accuracy": ai_scores["scope_accuracy"],

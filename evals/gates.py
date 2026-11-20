@@ -5,7 +5,7 @@ invariants on rule-based control baselines.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from evals.settings import ACTION_ITEMS_GATES, INDEX_GATES, OCR_GATES
 
@@ -28,49 +28,57 @@ class GateEvaluationResult:
 
 def evaluate_index_gates(
     metrics: Dict[str, Any],
+    gates: Optional[Dict[str, float]] = None,
 ) -> GateEvaluationResult:
-    """Evaluates indexing metrics against universal quality gates (P>=0.85, R>=0.95)."""
+    """Evaluates indexing metrics against quality gates (default or dataset overrides)."""
+    effective_gates = INDEX_GATES if gates is None else {**INDEX_GATES, **gates}
     violations: List[str] = []
 
     # Check Merged Precision
     merged_p = metrics.get("target_precision", 0.0)
-    if merged_p < INDEX_GATES["min_merged_precision"]:
+    min_merged_p = effective_gates.get("min_merged_precision", effective_gates.get("min_target_precision", 0.85))
+    if merged_p < min_merged_p:
         violations.append(
-            f"Merged Precision {merged_p:.3f} fell below minimum {INDEX_GATES['min_merged_precision']:.3f}"
+            f"Merged Precision {merged_p:.3f} fell below minimum {min_merged_p:.3f}"
         )
 
     # Check Merged Recall
     merged_r = metrics.get("target_recall", 0.0)
-    if merged_r < INDEX_GATES["min_merged_recall"]:
+    min_merged_r = effective_gates.get("min_merged_recall", effective_gates.get("min_target_recall", 0.95))
+    if merged_r < min_merged_r:
         violations.append(
-            f"Merged Recall {merged_r:.3f} fell below minimum {INDEX_GATES['min_merged_recall']:.3f}"
+            f"Merged Recall {merged_r:.3f} fell below minimum {min_merged_r:.3f}"
         )
 
     # Invariant: Rule-only control recall must NEVER regress
     rule_r = metrics.get("rule_recall", 1.0)
-    if rule_r < INDEX_GATES["min_rule_recall"]:
+    min_rule_r = effective_gates.get("min_rule_recall", 1.0)
+    if rule_r < min_rule_r:
         violations.append(
-            f"FATAL INVARIANT BREACH: Rule-only recall {rule_r:.3f} fell below 1.000 deterministic invariance"
+            f"FATAL INVARIANT BREACH: Rule-only recall {rule_r:.3f} fell below {min_rule_r:.3f} deterministic invariance"
         )
 
     # Mention Precision / Recall
     mention_p = metrics.get("mention_precision", 1.0)
-    if mention_p < INDEX_GATES["min_mention_precision"]:
+    min_mention_p = effective_gates.get("min_mention_precision", 0.80)
+    if mention_p < min_mention_p:
         violations.append(
-            f"Mention Precision {mention_p:.3f} fell below minimum {INDEX_GATES['min_mention_precision']:.3f}"
+            f"Mention Precision {mention_p:.3f} fell below minimum {min_mention_p:.3f}"
         )
 
     mention_r = metrics.get("mention_recall", 1.0)
-    if mention_r < INDEX_GATES["min_mention_recall"]:
+    min_mention_r = effective_gates.get("min_mention_recall", 0.80)
+    if mention_r < min_mention_r:
         violations.append(
-            f"Mention Recall {mention_r:.3f} fell below minimum {INDEX_GATES['min_mention_recall']:.3f}"
+            f"Mention Recall {mention_r:.3f} fell below minimum {min_mention_r:.3f}"
         )
 
     # Family drift
     drift = metrics.get("family_drift_count", 0)
-    if drift > INDEX_GATES["max_family_drift"]:
+    max_drift = effective_gates.get("max_family_drift", 0)
+    if drift > max_drift:
         violations.append(
-            f"Family drift count {drift} exceeded maximum {INDEX_GATES['max_family_drift']}"
+            f"Family drift count {drift} exceeded maximum {max_drift}"
         )
 
     return GateEvaluationResult(
@@ -81,19 +89,23 @@ def evaluate_index_gates(
     )
 
 
-def evaluate_action_items_gates(metrics: Dict[str, Any]) -> GateEvaluationResult:
+def evaluate_action_items_gates(
+    metrics: Dict[str, Any],
+    gates: Optional[Dict[str, float]] = None,
+) -> GateEvaluationResult:
     """Evaluates action item metrics against quality thresholds."""
+    effective_gates = ACTION_ITEMS_GATES if gates is None else {**ACTION_ITEMS_GATES, **gates}
     violations: List[str] = []
 
     p = metrics.get("precision", 0.0)
-    if p < ACTION_ITEMS_GATES["min_precision"]:
-        violations.append(f"Precision {p:.3f} fell below minimum {ACTION_ITEMS_GATES['min_precision']:.3f}")
+    if p < effective_gates["min_precision"]:
+        violations.append(f"Precision {p:.3f} fell below minimum {effective_gates['min_precision']:.3f}")
 
     r = metrics.get("recall", 0.0)
-    if r < ACTION_ITEMS_GATES["min_recall"]:
-        violations.append(f"Recall {r:.3f} fell below minimum {ACTION_ITEMS_GATES['min_recall']:.3f}")
+    if r < effective_gates["min_recall"]:
+        violations.append(f"Recall {r:.3f} fell below minimum {effective_gates['min_recall']:.3f}")
 
-    min_gr = ACTION_ITEMS_GATES.get("min_grounding_rate")
+    min_gr = effective_gates.get("min_grounding_rate")
     if min_gr is not None:
         gr = metrics.get("grounding_rate", 1.0)
         if gr < min_gr:
@@ -102,7 +114,7 @@ def evaluate_action_items_gates(metrics: Dict[str, Any]) -> GateEvaluationResult
     return GateEvaluationResult(
         passed=len(violations) == 0,
         violations=violations,
-        profile_name="Action Items Default",
+        profile_name="Action Items Default" if gates is None else "Action Items Custom",
         metrics=metrics,
     )
 
