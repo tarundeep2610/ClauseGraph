@@ -1,0 +1,554 @@
+import uuid
+
+import pytest
+
+import database
+import main as main_module
+import reference_index
+
+
+def _job_with_pages(pages_text):
+    job_id = str(uuid.uuid4())
+    database.create_job(
+        job_id=job_id, filename="t.pdf", file_path="/tmp/x.pdf", file_type="pdf",
+        engine="unlimited", total_pages=len(pages_text),
+    )
+    for i, text in enumerate(pages_text, start=1):
+        database.upsert_page(job_id, i, status="success", text=text, confidence=0.95)
+    database.set_job_status(job_id, "completed")
+    return job_id
+
+
+@pytest.mark.asyncio
+async def test_reindex_job_builds_index_for_a_job_that_predates_the_feature():
+    # Simulates a job OCR'd before reference indexing existed: real page text,
+    # but zero rows in ocr_reference_targets and no reference_index_frontier progress.
+    job_id = _job_with_pages([
+        "Clause 4.2 The contractor shall deliver the goods within 30 days.",
+        "Clause 4.3 Penalty for delay is per Clause 4.2 above.",
+    ])
+    assert database.get_reference_targets_since(job_id, 0) == {}
+
+    await reference_index.reindex_job(job_id)
+
+    delta = database.get_reference_targets_since(job_id, 0)
+    assert set(delta.keys()) == {1, 2}
+    assert "clause:4.2" in delta[1]
+    assert "clause:4.3" in delta[2]
+
+
+@pytest.mark.asyncio
+async def test_reindex_is_a_noop_while_already_active_for_the_same_job():
+    job_id = _job_with_pages(["Clause 1 some text."])
+    assert reference_index.is_reindex_active(job_id) is False
+
+    reference_index._active_reindex_jobs.add(job_id)
+    try:
+        await reference_index.reindex_job(job_id)  # should return immediately, not touch anything
+        assert database.get_reference_targets_since(job_id, 0) == {}
+    finally:
+        reference_index._active_reindex_jobs.discard(job_id)
+
+    assert reference_index.is_reindex_active(job_id) is False
+
+
+@pytest.mark.asyncio
+async def test_reindex_resets_the_frontier_so_it_always_takes_the_in_order_path():
+    job_id = _job_with_pages(["Clause 1 first.", "Clause 2 second."])
+    database.set_reference_index_frontier(job_id, 5)  # stale/bogus value from a prior run
+
+    await reference_index.reindex_job(job_id)
+
+    assert database.get_reference_index_frontier(job_id) == 2
+    delta = database.get_reference_targets_since(job_id, 0)
+    assert not any(c["scope_provisional"] for cands in delta.values() for arr in cands.values() for c in arr)
+
+
+@pytest.mark.asyncio
+async def test_a_key_that_disappears_on_reindex_still_shows_up_as_a_changed_page():
+    # Regression test for the reference_index_touched_version fix: a page whose
+    # candidate count drops to zero must still appear in the next delta fetch,
+    # so an already-connected client actually clears its stale local copy.
+    job_id = _job_with_pages(["Clause 9 will be removed."])
+    await reference_index.reindex_job(job_id)
+    first_delta = database.get_reference_targets_since(job_id, 0)
+    assert "clause:9" in first_delta[1]
+    version_after_first = database.get_reference_index_version(job_id)
+
+    # Simulate the algorithm no longer detecting anything on this page.
+    database.upsert_page(job_id, 1, status="success", text="Nothing of interest here now.")
+    await reference_index.reindex_job(job_id)
+
+    second_delta = database.get_reference_targets_since(job_id, version_after_first)
+    assert 1 in second_delta
+    assert second_delta[1] == {}
+
+
+def test_reindex_endpoint_404s_for_missing_job(client, auth_headers):
+    resp = client.post("/api/jobs/does-not-exist/reindex-references", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+def test_reindex_endpoint_409s_while_job_is_processing(client, auth_headers):
+    job_id = _job_with_pages(["Clause 1 text."])
+    database.set_job_status(job_id, "processing")
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references", headers=auth_headers)
+    assert resp.status_code == 409
+
+
+def test_reindex_endpoint_409s_when_already_active(client, auth_headers):
+    job_id = _job_with_pages(["Clause 1 text."])
+    reference_index._active_reindex_jobs.add(job_id)
+    try:
+        resp = client.post(f"/api/jobs/{job_id}/reindex-references", headers=auth_headers)
+        assert resp.status_code == 409
+    finally:
+        reference_index._active_reindex_jobs.discard(job_id)
+
+
+def test_reindex_endpoint_starts_a_background_task_for_a_completed_job(client, auth_headers, monkeypatch):
+    job_id = _job_with_pages(["Clause 1 text."])
+    calls = []
+
+    async def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean", chunk_pages_override=None,
+                       review_rule_prior_override=None, overlap_pages_override=None):
+        calls.append((job_id_arg, force_mode, start_page))
+
+    monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "reindexing"
+
+
+# ─── POST .../references/build-mentions — the "Reference Links Only" rebuild
+# path (RebuildIndexModal.jsx), scoped to mentions only, never touching
+# structure detection. ───────────────────────────────────────────────────────
+
+def test_build_mentions_endpoint_404s_for_missing_job(client, auth_headers):
+    resp = client.post("/api/jobs/does-not-exist/references/build-mentions", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+def test_build_mentions_endpoint_400s_when_the_job_has_no_existing_index(client, auth_headers):
+    # The UI never offers "Reference Links Only" on a job with no index yet
+    # (see ViewerPanel.jsx's indexBuilt gate), but the endpoint itself must
+    # not silently produce a degraded result if ever called on one directly.
+    job_id = _job_with_pages(["Clause 1 text."])
+    assert database.get_reference_targets_for_job(job_id) == []
+
+    resp = client.post(f"/api/jobs/{job_id}/references/build-mentions", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "no existing index" in resp.json()["detail"].lower()
+
+
+def test_build_mentions_endpoint_409s_when_already_active(client, auth_headers):
+    job_id = _job_with_pages(["Clause 1 text."])
+    reference_index._active_reindex_jobs.add(job_id)
+    try:
+        resp = client.post(f"/api/jobs/{job_id}/references/build-mentions", headers=auth_headers)
+        assert resp.status_code == 409
+    finally:
+        reference_index._active_reindex_jobs.discard(job_id)
+
+
+@pytest.mark.asyncio
+async def test_build_mentions_endpoint_succeeds_and_leaves_structure_untouched_when_targets_already_exist(client, auth_headers):
+    job_id = _job_with_pages([
+        "Clause 4.2 The contractor shall deliver the goods within 30 days.",
+        "Clause 4.3 Penalty for delay is per Clause 4.2 above.",
+    ])
+    # Build a real index first, same as a full "Rebuild Index" would.
+    await reference_index.reindex_job(job_id)
+    targets_before = database.get_reference_targets_for_job(job_id)
+    assert targets_before  # real structural targets exist
+
+    resp = client.post(f"/api/jobs/{job_id}/references/build-mentions", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
+
+    # Structure/targets are exactly as they were — build-mentions never
+    # redetects them, only rebuilds ocr_reference_mentions from the existing set.
+    assert database.get_reference_targets_for_job(job_id) == targets_before
+
+
+@pytest.mark.asyncio
+async def test_build_mentions_endpoint_bumps_the_version_so_the_frontend_can_see_it_finished(client, auth_headers):
+    # Regression test for a real bug found via Playwright: build_mention_index_for_job
+    # used to read the CURRENT reference_index_version and stamp new mention
+    # rows with it unchanged, instead of bumping it — so the toolbar button
+    # (gated on reference_index_version advancing past its click-time
+    # snapshot, see AppShell.jsx's reindexState) got stuck on "Rebuilding…"
+    # forever, AND the incremental GET .../references?since_version= delta
+    # fetch (database.get_reference_mentions_since, filters on
+    # written_at_version > since_version) would never return the refreshed
+    # mentions either, since they were written at a version the client
+    # already had.
+    job_id = _job_with_pages([
+        "Clause 4.2 The contractor shall deliver the goods within 30 days.",
+        "Clause 4.3 Penalty for delay is per Clause 4.2 above.",
+    ])
+    await reference_index.reindex_job(job_id)
+    version_before = database.get_reference_index_version(job_id)
+
+    resp = client.post(f"/api/jobs/{job_id}/references/build-mentions", headers=auth_headers)
+    assert resp.status_code == 200
+    version_after = resp.json()["reference_index_version"]
+
+    assert version_after > version_before
+    assert database.get_reference_index_version(job_id) == version_after
+    # The delta fetch must actually surface the refreshed mentions to a
+    # client that already had version_before cached.
+    delta = database.get_reference_mentions_since(job_id, version_before)
+    assert 2 in delta  # page 2 has the "per Clause 4.2" mention
+
+
+def test_reindex_endpoint_stamps_index_built_at(client, auth_headers, monkeypatch):
+    """Studio redesign 'Zero Indexing Overhead by Default': index_built_at is
+    the frontend's signal to show citation badges/outline — it must be set by
+    this explicit action, and ONLY this action (never by ordinary OCR
+    processing's always-on per-page rule detector)."""
+    job_id = _job_with_pages(["Clause 1 text."])
+    assert database.get_job(job_id, include_pages=False)["index_built_at"] is None
+
+    async def _fake_reindex(*a, **k):
+        pass
+
+    monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references", headers=auth_headers)
+    assert resp.status_code == 200
+    assert database.get_job(job_id, include_pages=False)["index_built_at"] is not None
+
+
+def test_manual_rebuild_with_no_mode_uses_current_setting_not_the_jobs_frozen_one(
+    client, auth_headers, monkeypatch,
+):
+    """Regression: a manual "Rebuild Cross-References" click with no
+    explicit ?mode= is a standalone action, not part of an in-progress OCR
+    run — it must use the CURRENT enable_ai_indexing setting, not whatever
+    (if anything) was frozen into this job's own engine_params at creation
+    time. Confirmed bug: a job created before AI-indexing existed (so its
+    engine_params has no ai_indexing_enabled key at all) still picked "ai"
+    once the setting was turned on and a provider was configured, purely
+    from a plain rebuild click."""
+    job_id = _job_with_pages(["Clause 1 text."])  # engine_params has no ai_indexing_enabled key at all
+    calls = []
+
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean", chunk_pages_override=None,
+                       review_rule_prior_override=None, overlap_pages_override=None):
+        # Records the argument synchronously, at the moment main.py calls
+        # this to build the coroutine for asyncio.create_task() — NOT
+        # inside the coroutine body, which only runs whenever the event
+        # loop happens to get around to the scheduled task (a real race
+        # against the test's own assertion if relied on instead).
+        calls.append(force_mode)
+        async def _noop():
+            pass
+        return _noop()
+
+    monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
+    monkeypatch.setattr(main_module.ai_indexing, "describe_active_config", lambda: {"provider": "gemini"})
+
+    resp = client.post("/api/settings", json={"enable_ai_indexing": True}, headers=auth_headers)
+    assert resp.status_code == 200
+
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references", headers=auth_headers)
+    assert resp.status_code == 200
+    assert calls == ["ai"]
+
+
+def test_manual_rebuild_falls_back_to_rule_when_no_provider_configured(client, auth_headers, monkeypatch):
+    job_id = _job_with_pages(["Clause 1 text."])
+    calls = []
+
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean", chunk_pages_override=None,
+                       review_rule_prior_override=None, overlap_pages_override=None):
+        # Records the argument synchronously, at the moment main.py calls
+        # this to build the coroutine for asyncio.create_task() — NOT
+        # inside the coroutine body, which only runs whenever the event
+        # loop happens to get around to the scheduled task (a real race
+        # against the test's own assertion if relied on instead).
+        calls.append(force_mode)
+        async def _noop():
+            pass
+        return _noop()
+
+    monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
+    monkeypatch.setattr(main_module.ai_indexing, "describe_active_config", lambda: None)
+
+    resp = client.post("/api/settings", json={"enable_ai_indexing": True}, headers=auth_headers)
+    assert resp.status_code == 200
+
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references", headers=auth_headers)
+    assert resp.status_code == 200
+    assert calls == ["rule"]
+
+
+def test_explicit_mode_query_param_always_wins_over_current_setting(client, auth_headers, monkeypatch):
+    job_id = _job_with_pages(["Clause 1 text."])
+    calls = []
+
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean", chunk_pages_override=None,
+                       review_rule_prior_override=None, overlap_pages_override=None):
+        # Records the argument synchronously, at the moment main.py calls
+        # this to build the coroutine for asyncio.create_task() — NOT
+        # inside the coroutine body, which only runs whenever the event
+        # loop happens to get around to the scheduled task (a real race
+        # against the test's own assertion if relied on instead).
+        calls.append(force_mode)
+        async def _noop():
+            pass
+        return _noop()
+
+    monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
+    client.post("/api/settings", json={"enable_ai_indexing": False}, headers=auth_headers)
+
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references?mode=ai", headers=auth_headers)
+    assert resp.status_code == 200
+    assert calls == ["ai"]
+
+
+def test_manual_rebuild_with_no_mode_uses_current_chunk_pages_not_the_jobs_frozen_one(
+    client, auth_headers, monkeypatch,
+):
+    """Regression: the same frozen-engine_params bug test_manual_rebuild_
+    with_no_mode_uses_current_setting_not_the_jobs_frozen_one already covers
+    for enable_ai_indexing also applied to ai_index_chunk_pages — confirmed
+    bug: updating "Pages per AI call" in the settings panel had zero effect
+    on an existing job's manual rebuilds, because engine_params.
+    ai_index_chunk_pages was frozen at job-creation time and never
+    refreshed. job's own frozen value is absent entirely here (created
+    before the setting existed) to make sure a stale/missing frozen value
+    doesn't accidentally match the current setting by coincidence."""
+    job_id = _job_with_pages(["Clause 1 text."])  # engine_params has no ai_index_chunk_pages key at all
+    calls = []
+
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean", chunk_pages_override=None,
+                       review_rule_prior_override=None, overlap_pages_override=None):
+        calls.append(chunk_pages_override)
+        async def _noop():
+            pass
+        return _noop()
+
+    monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
+
+    resp = client.post("/api/settings", json={"ai_index_chunk_pages": 3}, headers=auth_headers)
+    assert resp.status_code == 200
+
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references", headers=auth_headers)
+    assert resp.status_code == 200
+    assert calls == [3]
+
+
+def test_explicit_mode_query_param_still_gets_the_current_chunk_pages_too(client, auth_headers, monkeypatch):
+    """The chunk-size refresh must apply even when ?mode= is given explicitly
+    — mode only picks the detector, it must not opt the request back into
+    the job's frozen chunk size."""
+    job_id = _job_with_pages(["Clause 1 text."])
+    calls = []
+
+    def _fake_reindex(job_id_arg, force_mode=None, start_page=None, text_source="clean", chunk_pages_override=None,
+                       review_rule_prior_override=None, overlap_pages_override=None):
+        calls.append(chunk_pages_override)
+        async def _noop():
+            pass
+        return _noop()
+
+    monkeypatch.setattr(reference_index, "reindex_job", _fake_reindex)
+
+    resp = client.post("/api/settings", json={"ai_index_chunk_pages": 7}, headers=auth_headers)
+    assert resp.status_code == 200
+
+    resp = client.post(f"/api/jobs/{job_id}/reindex-references?mode=ai", headers=auth_headers)
+    assert resp.status_code == 200
+    assert calls == [7]
+
+
+def test_job_details_response_surfaces_reindexing_flag(client, auth_headers):
+    job_id = _job_with_pages(["Clause 1 text."])
+    resp = client.get(f"/api/jobs/{job_id}", headers=auth_headers)
+    assert resp.json()["reference_index_reindexing"] is False
+
+    reference_index._active_reindex_jobs.add(job_id)
+    try:
+        resp = client.get(f"/api/jobs/{job_id}", headers=auth_headers)
+        assert resp.json()["reference_index_reindexing"] is True
+    finally:
+        reference_index._active_reindex_jobs.discard(job_id)
+
+
+@pytest.mark.asyncio
+async def test_docref_reindex_and_single_page_retry():
+    # 2 pages referencing REC-064: page 1 earliest, page 2 second
+    job_id = _job_with_pages([
+        "Technical Specification No. REC-064 is defined here.",
+        "As per Technical Specification No. REC-064 above.",
+    ])
+
+    await reference_index.reindex_job(job_id)
+
+    # Check targets: exactly one docref target on earliest page 1
+    targets = database.get_reference_targets_for_job(job_id)
+    docref_targets = [t for t in targets if t["key"] == "docref:rec064"]
+    assert len(docref_targets) == 1
+    assert docref_targets[0]["page"] == 1
+    assert docref_targets[0]["detection_source"] == "rule"
+
+    # Check mentions: page 1 has NO self-mention for docref:rec064
+    mentions_p1 = database.get_reference_mentions_since(job_id, -1).get(1, [])
+    assert not any(m["key"] == "docref:rec064" for m in mentions_p1)
+
+    # Page 2 has resolved mention for docref:rec064
+    mentions_p2 = database.get_reference_mentions_since(job_id, -1).get(2, [])
+    p2_docref = [m for m in mentions_p2 if m["key"] == "docref:rec064"]
+    assert len(p2_docref) == 1
+    assert p2_docref[0]["resolution"] == "exact"
+
+    # Single-page-retry on page 1 leaves docref target intact
+    total_pages = 2
+    await reference_index.update_reference_index_for_page(
+        job_id, 1, "Technical Specification No. REC-064 is defined here.", total_pages
+    )
+    targets_after_retry = database.get_reference_targets_for_job(job_id)
+    docref_targets_after = [t for t in targets_after_retry if t["key"] == "docref:rec064"]
+    assert len(docref_targets_after) == 1
+    assert docref_targets_after[0]["page"] == 1
+
+
+@pytest.mark.asyncio
+async def test_term_coverage_cap_drops_boilerplate_term_keeps_rare_one():
+    # 25-page job (>= TERM_MAX_PAGE_COVERAGE_MIN_JOB_SIZE): "Equipment" is
+    # hereinafter-defined on page 1 and bare-mentioned on 23 more pages
+    # (24/25 = 96% coverage, boilerplate) -- must be dropped entirely. "NIT"
+    # is defined once and mentioned on only 2 pages (12% coverage) -- must
+    # survive untouched by the cap.
+    pages_text = [
+        'The Supplier is herein after referred to as the "Equipment" which expression '
+        "shall include all plant and material. The Equipment and Notice Inviting Tender "
+        "(NIT) are deliverables."
+    ]
+    for _ in range(23):
+        pages_text.append("The Equipment shall be inspected on site.")
+    pages_text.append("As per the NIT, inspection is mandatory.")
+    assert len(pages_text) == 25
+
+    job_id = _job_with_pages(pages_text)
+    await reference_index.reindex_job(job_id)
+
+    targets = database.get_reference_targets_for_job(job_id)
+    keys = {t["key"] for t in targets}
+    assert "term:equipment" not in keys, "boilerplate term exceeding the coverage cap must be dropped"
+    assert "term:nit" in keys, "rare term under the coverage cap must survive"
+
+    all_mentions = database.get_reference_mentions_since(job_id, -1)
+    equipment_mentions = [
+        m for page_mentions in all_mentions.values() for m in page_mentions
+        if m["key"] == "term:equipment"
+    ]
+    assert equipment_mentions == [], "no mentions should be emitted for a dropped term either"
+
+
+@pytest.mark.asyncio
+async def test_term_coverage_cap_not_enforced_below_min_job_size():
+    # 5-page job (< TERM_MAX_PAGE_COVERAGE_MIN_JOB_SIZE): "Equipment" covers
+    # 100% of pages, which would exceed the 30% cap on a larger job, but on a
+    # short job the cap must not apply at all.
+    pages_text = [
+        'The Supplier is herein after referred to as the "Equipment" which expression '
+        "shall include all plant and material."
+    ]
+    for _ in range(4):
+        pages_text.append("The Equipment shall be inspected on site.")
+    assert len(pages_text) == 5
+
+    job_id = _job_with_pages(pages_text)
+    await reference_index.reindex_job(job_id)
+
+    targets = database.get_reference_targets_for_job(job_id)
+    keys = {t["key"] for t in targets}
+    assert "term:equipment" in keys, "cap must not apply below TERM_MAX_PAGE_COVERAGE_MIN_JOB_SIZE"
+
+
+@pytest.mark.asyncio
+async def test_term_toc_suppression_relocates_definition_to_real_occurrence():
+    # Page 1 is a front-matter INDEX naming a later section by its full name
+    # + abbreviation, exactly like a real tender document's own table of
+    # contents ("Section-V: General Conditions of Contract (GCC)"). The term
+    # must not define from the INDEX row -- it must relocate to its genuine
+    # first use, further in the document.
+    pages_text = [
+        "INDEX\n\nSection-V: General Conditions of Contract (GCC)",
+        "Filler page with no abbreviations at all.",
+        "Section-V: General Conditions of Contract (GCC) governs this clause.",
+    ]
+    job_id = _job_with_pages(pages_text)
+    await reference_index.reindex_job(job_id)
+
+    targets = database.get_reference_targets_for_job(job_id)
+    gcc = next((t for t in targets if t["key"] == "term:gcc"), None)
+    assert gcc is not None, "a genuine later occurrence must still define the term"
+    assert gcc["page"] == 3, "definition must anchor to the real occurrence, not the page-1 INDEX"
+
+    all_mentions = database.get_reference_mentions_since(job_id, -1)
+    page1_mentions = all_mentions.get(1, [])
+    assert not any(m["key"] == "term:gcc" for m in page1_mentions), \
+        "no bare mention should be emitted on the INDEX page either"
+
+
+@pytest.mark.asyncio
+async def test_term_toc_suppression_drops_term_with_no_real_occurrence():
+    # "(ITB)" only ever appears in the INDEX row itself, nowhere else in the
+    # document -- confirmed real case (Instructions To Bidders (ITB) in a
+    # tender document's own page-2 INDEX). Must produce no term at all.
+    pages_text = [
+        "INDEX\n\nSection-III: Instructions To Bidders (ITB)",
+        "Section-III: Instructions To Bidders governs the bid process.",
+    ]
+    job_id = _job_with_pages(pages_text)
+    await reference_index.reindex_job(job_id)
+
+    targets = database.get_reference_targets_for_job(job_id)
+    keys = {t["key"] for t in targets}
+    assert "term:itb" not in keys, "a term defined only inside the INDEX must not survive"
+
+
+@pytest.mark.asyncio
+async def test_term_non_toc_page_one_definition_still_captured():
+    # Negative test: a genuine definition on page 1 that is NOT inside an
+    # INDEX/TOC-marked page must still be captured normally -- the guard is
+    # keyed on the literal word INDEX/TABLE OF CONTENTS appearing on an
+    # early page, not on "page <= 2" alone.
+    pages_text = [
+        'The Supplier is herein after referred to as the "Equipment" which '
+        "expression shall include all plant and material.",
+        "The Equipment shall be inspected on site.",
+    ]
+    job_id = _job_with_pages(pages_text)
+    await reference_index.reindex_job(job_id)
+
+    targets = database.get_reference_targets_for_job(job_id)
+    equipment = next((t for t in targets if t["key"] == "term:equipment"), None)
+    assert equipment is not None
+    assert equipment["page"] == 1
+
+
+@pytest.mark.asyncio
+async def test_docref_toc_suppression_relocates_to_real_occurrence():
+    # Same leak, independent pass: build_docref_index_for_job shares
+    # _walk_blocks_from_tokens's table/HTML visibility, so a doc-ref-shaped
+    # code cited in a page-1 INDEX row ("Tender No. XYZ-9") must not anchor
+    # its baseline target to the INDEX page when the code genuinely repeats
+    # later in the document.
+    pages_text = [
+        "INDEX\n\nTender No. XYZ-9 Operations and Maintenance",
+        "Filler page with no document reference codes.",
+        "As per Tender No. XYZ-9, the scope includes operations.",
+        "Tender No. XYZ-9 shall remain valid for the contract period.",
+    ]
+    job_id = _job_with_pages(pages_text)
+    await reference_index.reindex_job(job_id)
+
+    targets = database.get_reference_targets_for_job(job_id)
+    docref = next((t for t in targets if t["key"].startswith("docref:") and "xyz9" in t["key"]), None)
+    assert docref is not None, "a code repeating on 2+ real pages must still become a target"
+    assert docref["page"] == 3, "baseline must anchor to the real occurrence, not the page-1 INDEX"
+

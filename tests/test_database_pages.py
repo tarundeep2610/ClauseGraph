@@ -96,6 +96,50 @@ def test_count_pages_by_status_and_refresh_job_page_counts():
     assert job["processed_pages"] == 3  # success + review + failed, not pending
 
 
+def test_get_page_strips_unlimited_ocr_timing_footer():
+    job_id = _job_id()
+    footer = "\n\n---\n*⏱️ **Unlimited-OCR Execution Time:** 1m 28.4s (88.4s)*"
+    database.upsert_page(job_id, 1, status="success", text=f"Real page content.{footer}", formatted_text=f"**Real page content.**{footer}")
+    page = database.get_page(job_id, 1)
+    assert "Execution Time" not in page["text"]
+    assert page["text"] == "Real page content."
+    assert "Execution Time" not in page["formatted_text"]
+    assert page["formatted_text"] == "**Real page content.**"
+
+
+def test_get_pages_strips_both_single_and_multi_page_footer_wordings():
+    job_id = _job_id()
+    single_footer = "\n\n---\n*⏱️ **Unlimited-OCR Execution Time:** 2.0s (2.0s)*"
+    multi_footer = "\n\n---\n*⏱️ **Unlimited-OCR Multi-Page Execution Time:** 5.0s (3 pages)*"
+    database.upsert_page(job_id, 1, status="success", text=f"Page one.{single_footer}")
+    database.upsert_page(job_id, 2, status="success", text=f"Page two.{multi_footer}")
+    pages = {p["page_num"]: p for p in database.get_pages(job_id)}
+    assert pages[1]["text"] == "Page one."
+    assert pages[2]["text"] == "Page two."
+
+
+def test_get_page_with_no_footer_is_returned_byte_for_byte_unchanged():
+    job_id = _job_id()
+    text = "Plain page text with no footer at all.\n\nSecond paragraph."
+    database.upsert_page(job_id, 1, status="success", text=text)
+    page = database.get_page(job_id, 1)
+    assert page["text"] == text
+
+
+def test_footer_stripping_is_read_time_only_the_stored_row_is_never_rewritten():
+    job_id = _job_id()
+    footer = "\n\n---\n*⏱️ **Unlimited-OCR Execution Time:** 1.0s (1.0s)*"
+    database.upsert_page(job_id, 1, status="success", text=f"Real content.{footer}")
+
+    stripped = database.get_page(job_id, 1)
+    assert "Execution Time" not in stripped["text"]
+
+    conn = database.get_db_connection()
+    row = conn.execute("SELECT text FROM ocr_pages WHERE job_id = ? AND page_num = 1", (job_id,)).fetchone()
+    conn.close()
+    assert "Execution Time" in row["text"], "the footer must still be in the stored row — stripping happens only on read, nothing is written back"
+
+
 def test_get_live_page_counts_reflects_live_state_without_writing():
     job_id = _job_id()
     database.upsert_page(job_id, 1, status="success")
@@ -184,3 +228,26 @@ def test_migration_backfills_legacy_pages_data_idempotently():
     database.init_db()  # second pass must not duplicate or raise
     pages_again = database.get_pages(job_id)
     assert len(pages_again) == 2
+
+
+def test_migration_backfills_formatted_text_idempotently():
+    job_id = _job_id()
+    raw = "<|det|>title [100, 10, 400, 40]<|/det|>3.3 TIME SCHEDULE"
+    database.upsert_page(
+        job_id, 1, status="success", text="3.3 TIME SCHEDULE",
+        confidence=95.0, needs_review=0, raw_ocr_text=raw, formatted_text="temp",
+    )
+    # Manually reset formatted_text to NULL via raw sqlite connection (bypassing get_db_connection/init_db)
+    raw_conn = sqlite3.connect(database.DB_PATH)
+    raw_conn.execute("UPDATE ocr_pages SET formatted_text = NULL WHERE job_id = ?", (job_id,))
+    raw_conn.commit()
+    row = raw_conn.execute("SELECT formatted_text FROM ocr_pages WHERE job_id = ?", (job_id,)).fetchone()
+    assert row[0] is None
+    raw_conn.close()
+
+    # Running init_db() must automatically backfill it from raw_ocr_text
+    database.init_db()
+    page_after = database.get_page(job_id, 1)
+    assert page_after["formatted_text"] == "## 3.3 TIME SCHEDULE"
+
+

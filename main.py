@@ -10,6 +10,7 @@ import math
 import collections
 import urllib.parse
 import asyncio
+from typing import Any, Dict, Optional
 from contextlib import asynccontextmanager
 import pypdfium2 as pdfium
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query, BackgroundTasks
@@ -22,15 +23,20 @@ from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 import config
 import database
 import task_queue
+import reference_index
+import structure_overrides
+import ai_indexing
+import ai_action_items
 import gpu_ocr_client
 import chunking
 import confidence
-import seam_stitching
-from auth_deps import Principal, UserRole, require_role
+import export_service
+from auth_deps import Principal, UserRole, require_role, require_job_access
 from auth_router import router as auth_router
 
 _require_admin = require_role([UserRole.ADMIN])
 _require_user = require_role([UserRole.ADMIN, UserRole.USER])
+_require_job_access = require_job_access
 
 # ─── Unlimited-OCR native engine ────────────────────────────────────────────
 try:
@@ -69,6 +75,7 @@ async def _lifespan(app: FastAPI):
             await _idle_watcher_task
         except asyncio.CancelledError:
             pass
+    await ai_indexing.aclose_all()
 
 
 app = FastAPI(
@@ -82,6 +89,15 @@ _FRONTEND_DIST_DIR = os.path.join(os.path.dirname(__file__), "frontend", "dist")
 _ASSETS_DIR = os.path.join(_FRONTEND_DIST_DIR, "assets")
 if os.path.isdir(_ASSETS_DIR):
     app.mount("/assets", StaticFiles(directory=_ASSETS_DIR), name="assets")
+
+# pdf.js's worker/wasm/cmaps/standard_fonts (copied into frontend/public/pdfjs
+# by scripts/copy-pdfjs-assets.mjs, then passed through verbatim into
+# dist/pdfjs by Vite's public-dir convention) - without this mount, a request
+# to /pdfjs/build/pdf.worker.mjs falls through to the SPA catch-all below and
+# gets index.html back instead of the actual worker module.
+_PDFJS_DIR = os.path.join(_FRONTEND_DIST_DIR, "pdfjs")
+if os.path.isdir(_PDFJS_DIR):
+    app.mount("/pdfjs", StaticFiles(directory=_PDFJS_DIR), name="pdfjs")
 
 app.include_router(auth_router)
 
@@ -109,11 +125,16 @@ app.add_middleware(_ActivityMiddleware)
 _CSP = (
     "default-src 'self'; "
     "script-src 'self'; "
-    "style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline'; "
-    "font-src https://cdnjs.cloudflare.com; "
+    # Inter (frontend/index.html) is loaded from Google Fonts the same way
+    # Font Awesome is loaded from cdnjs: the stylesheet comes from
+    # fonts.googleapis.com, the actual font files it @font-face's in from
+    # fonts.gstatic.com — both need an explicit allow or the browser silently
+    # drops the font and falls back to the next item in the font-family stack.
+    "style-src 'self' https://cdnjs.cloudflare.com https://fonts.googleapis.com 'unsafe-inline'; "
+    "font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
     "img-src 'self' data: blob:; "
     "frame-src 'self' blob:; "
-    "connect-src 'self'; "
+    "connect-src 'self' blob:; "
     "frame-ancestors 'none'; "
     "object-src 'none'; "
     "base-uri 'self'"
@@ -193,6 +214,11 @@ def _load_settings() -> dict:
     defaults = {
         "output_path": "", "idle_timeout_minutes": 15,
         "enable_unlimited_long_prompts": config.ENABLE_UNLIMITED_LONG_PROMPTS,
+        "enable_unlimited_grounding": config.ENABLE_UNLIMITED_GROUNDING,
+        "enable_ai_indexing": config.AI_INDEXING_ENABLED,
+        "ai_index_chunk_pages": config.AI_INDEX_CHUNK_PAGES,
+        "ai_index_review_rule_prior": config.AI_INDEX_REVIEW_RULE_PRIOR,
+        "ai_index_chunk_overlap_pages": config.AI_INDEX_CHUNK_OVERLAP_PAGES,
         "audit_sample_rate": config.OCR_AUDIT_SAMPLE_RATE,
         "audit_high_confidence_min": config.OCR_AUDIT_HIGH_CONFIDENCE_MIN,
         "audit_sample_cap_per_job": config.OCR_AUDIT_SAMPLE_CAP_PER_JOB,
@@ -306,7 +332,28 @@ async def run_ocr_for_image(pil_image, prompt: str, tiling: bool, timeout: int, 
     return await gpu_ocr_client.run_glm_ocr(pil_image, prompt, tiling, timeout, options)
 
 
-async def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeout: int, base_size: int = 1024, long_prompts_enabled: bool = False) -> str:
+async def run_unlimited_ocr_for_image(
+    pil_image: Image.Image, prompt: str, timeout: int, base_size: int = 1024,
+    long_prompts_enabled: bool = False, grounding_enabled: bool = False,
+) -> str:
+    text, _raw_text = await run_unlimited_ocr_for_image_with_raw(
+        pil_image, prompt, timeout, base_size=base_size,
+        long_prompts_enabled=long_prompts_enabled, grounding_enabled=grounding_enabled,
+    )
+    return text
+
+
+async def run_unlimited_ocr_for_image_with_raw(
+    pil_image: Image.Image, prompt: str, timeout: int, base_size: int = 1024,
+    long_prompts_enabled: bool = False, grounding_enabled: bool = False,
+) -> "tuple[str, str | None]":
+    """Same contract as run_unlimited_ocr_for_image(), but also returns the
+    model's raw, pre-clean_detection_tags() output (baidu/Unlimited-OCR
+    only — None for any path that never reaches real inference). Used by
+    _build_runners()' job-pipeline closure to feed reference_index.py's
+    layout-tag confidence signal (see the project plan); the ad-hoc
+    single-image OCR endpoint keeps calling the plain
+    run_unlimited_ocr_for_image() above, unaffected by this addition."""
     # GLM already receives the full prompt unmodified (proven safe in production).
     # Unlimited-OCR's own default is a short, fixed task-label rather than a sentence
     # of instructions, so its behavior under a long prompt is unproven — gated behind
@@ -318,14 +365,29 @@ async def run_unlimited_ocr_for_image(pil_image: Image.Image, prompt: str, timeo
     # from settings inside this function, or a PATCH mid-job would split one
     # document's pages across two different prompt behaviors.
     effective_prompt = prompt if (long_prompts_enabled or len(prompt) <= 80) else "document parsing."
+    # `grounding_enabled` switches Unlimited-OCR into its official "gundam"
+    # config (image_size=640, per-region crops) instead of prepending any
+    # prompt token — confirmed directly (see the project plan) that
+    # crop_mode=True/image_size=640 is what actually makes the model emit
+    # `<|det|>type [bbox]<|/det|>content` layout tags, and that the
+    # `<|grounding|>` special token itself does nothing useful here (an
+    # independent, merged fix in the Docling project found the same plain
+    # prompt already produces identical det-tag output, and that adding the
+    # grounding token only degrades transcription quality — matching what
+    # we observed too). Left off by default: this changes image
+    # preprocessing for every page, only validated on one real page so far.
+    # Same "resolved once, frozen per job" rule as long_prompts_enabled
+    # above.
     if config.OCR_LOCAL_ENGINE:
         # Dev-only fallback: run in-process on this machine without a GPU server.
         if not _UNLIMITED_OCR_AVAILABLE or unlimited_ocr_engine is None:
             raise Exception("unlimited_ocr_engine is not installed.")
         return await asyncio.to_thread(
-            unlimited_ocr_engine.run_ocr, pil_image, effective_prompt, base_size, timeout
+            unlimited_ocr_engine.run_ocr_with_raw, pil_image, effective_prompt, base_size, timeout, grounding_enabled
         )
-    return await gpu_ocr_client.run_unlimited_ocr(pil_image, effective_prompt, timeout, base_size=base_size)
+    return await gpu_ocr_client.run_unlimited_ocr_with_raw(
+        pil_image, effective_prompt, timeout, base_size=base_size, crop_mode=grounding_enabled
+    )
 
 
 def _build_runners(engine_params: dict):
@@ -346,9 +408,24 @@ def _build_runners(engine_params: dict):
 
     u_base = engine_params.get("unlimited_base_size", 1024)
     long_prompts_enabled = engine_params.get("long_prompts_enabled", False)
+    grounding_enabled = engine_params.get("grounding_enabled", False)
 
-    def _unlimited_runner(pil_image, prompt, timeout):
-        return run_unlimited_ocr_for_image(pil_image, prompt, timeout, base_size=u_base, long_prompts_enabled=long_prompts_enabled)
+    async def _unlimited_runner(pil_image, prompt, timeout, raw_capture=None):
+        # raw_capture (optional, a plain dict) is how task_queue.py recovers
+        # the model's raw pre-clean_detection_tags() output without changing
+        # this closure's own return type — it's called as
+        # run_unlimited_func(pil_img, prompt, timeout, raw_capture) from
+        # _run_single_page_with_retries, and every existing test fake for
+        # that call already tolerates an extra positional arg (*rest/
+        # *args, **kwargs), so this is additive, not a breaking signature
+        # change. Still returns a plain string, exactly as before.
+        text, raw_text = await run_unlimited_ocr_for_image_with_raw(
+            pil_image, prompt, timeout, base_size=u_base,
+            long_prompts_enabled=long_prompts_enabled, grounding_enabled=grounding_enabled,
+        )
+        if raw_capture is not None:
+            raw_capture["raw_text"] = raw_text
+        return text
 
     async def _unlimited_multi_runner(pil_images, prompt, timeout):
         return await gpu_ocr_client.run_unlimited_ocr_multi(pil_images, prompt, timeout)
@@ -377,6 +454,8 @@ def save_settings(body: dict, principal: Principal = Depends(_require_admin)):
             )
     allowed_keys = (
         "output_path", "idle_timeout_minutes", "enable_unlimited_long_prompts",
+        "enable_unlimited_grounding", "enable_ai_indexing", "ai_index_chunk_pages",
+        "ai_index_review_rule_prior", "ai_index_chunk_overlap_pages",
         "audit_sample_rate", "audit_high_confidence_min", "audit_sample_cap_per_job",
     )
     current.update({k: v for k, v in body.items() if k in allowed_keys})
@@ -526,8 +605,28 @@ async def submit_ocr_job(
         "glm_repeat_penalty": glm_repeat_penalty,
         "unlimited_base_size": unlimited_base_size,
         "long_prompts_enabled": bool(settings.get("enable_unlimited_long_prompts", config.ENABLE_UNLIMITED_LONG_PROMPTS)),
+        "grounding_enabled": bool(settings.get("enable_unlimited_grounding", config.ENABLE_UNLIMITED_GROUNDING)),
         "confidence_threshold": confidence_threshold,
     }
+    # AI-indexing settings, frozen the same way as everything above — a mid-run
+    # settings change must never split one document's structure across two
+    # incompatible detectors. The API key itself is NEVER frozen here (or
+    # stored anywhere): engine_params is a DB column returned wholesale by
+    # GET /api/jobs/{id}, so a plaintext key here would be a direct
+    # credential leak to every authenticated user. The worker reads it live,
+    # at the moment of each AI call, straight from config.AI_INDEX_API_KEY
+    # (see ai_indexing.resolve_active_config) — only the enabled flag and
+    # provider/model (both non-secret, for audit visibility) are frozen.
+    ai_indexing_wanted = bool(settings.get("enable_ai_indexing", config.AI_INDEXING_ENABLED))
+    ai_config_summary = ai_indexing.describe_active_config() if ai_indexing_wanted else None
+    engine_params.update({
+        "ai_indexing_enabled": ai_indexing_wanted and ai_config_summary is not None,
+        "ai_index_provider": (ai_config_summary or {}).get("provider"),
+        "ai_index_model": (ai_config_summary or {}).get("model"),
+        "ai_index_chunk_pages": int(settings.get("ai_index_chunk_pages", config.AI_INDEX_CHUNK_PAGES)),
+        "ai_index_review_rule_prior": bool(settings.get("ai_index_review_rule_prior", config.AI_INDEX_REVIEW_RULE_PRIOR)),
+        "ai_index_chunk_overlap_pages": int(settings.get("ai_index_chunk_overlap_pages", config.AI_INDEX_CHUNK_OVERLAP_PAGES)),
+    })
 
     # Register job in DB (store original filename for display, safe_filename is the on-disk name)
     database.create_job(
@@ -549,6 +648,7 @@ async def submit_ocr_job(
         batch_size=effective_batch_size,
         enable_overlap=enable_overlap,
         escalate_before_flagging=escalate_before_flagging,
+        owner_id=principal.subject,
     )
 
     _glm_runner, _unlimited_runner, _unlimited_multi_runner = _build_runners(engine_params)
@@ -576,8 +676,10 @@ async def submit_ocr_job(
 
 @app.get("/api/jobs")
 def list_ocr_jobs(limit: int = Query(50, ge=1, le=200), principal: Principal = Depends(_require_user)):
-    """Lists all past and current OCR jobs for the UI Document History Panel."""
-    return database.list_jobs(limit=limit)
+    """Lists OCR jobs for the UI Document History Panel — every job for an
+    admin (oversight), only the caller's own uploads for a `user`."""
+    owner_id = None if principal.role.lower() == UserRole.ADMIN.value else principal.subject
+    return database.list_jobs(limit=limit, owner_id=owner_id)
 
 @app.post("/api/jobs/stop-all")
 async def stop_all_ocr_jobs(principal: Principal = Depends(_require_admin)):
@@ -626,7 +728,7 @@ def get_ocr_job(
     page_from: int = Query(None, ge=1),
     page_to: int = Query(None, ge=1),
     accept_partial: bool = Query(False, description="Return base-pass results even if escalation is still pending"),
-    principal: Principal = Depends(_require_user)
+    principal: Principal = Depends(_require_job_access)
 ):
     """Retrieves full details, live progress, and extracted text for a specific job."""
     job = database.get_job(job_id, include_pages=False)
@@ -647,13 +749,658 @@ def get_ocr_job(
     job["chunks"] = chunking.compute_chunks(job["total_pages"], job.get("chunk_size") or config.OCR_CHUNK_SIZE)
     if job["status"] == "escalating" and not accept_partial:
         job["_escalation_pending"] = True
+    job["reference_index_reindexing"] = reference_index.is_reindex_active(job_id)
+    job["action_item_reindexing"] = ai_action_items.is_reindex_active(job_id)
     return job
+
+@app.post("/api/jobs/{job_id}/reindex-references")
+async def reindex_job_references(
+    job_id: str, mode: Optional[str] = None,
+    principal: Principal = Depends(_require_job_access),
+):
+    """Rebuilds the cross-reference index for a job from its already-stored
+    page text — for a job OCR'd before this feature existed (so it has zero
+    ocr_reference_targets rows), to pick up an algorithm change, or to pick
+    up a newly-enabled AI-indexing setting on a job whose own frozen
+    engine_params predates it (or never had it on).
+
+    `mode` (optional, "rule" or "ai") forces one detector for this rebuild
+    regardless of anything else — lets a reviewer A/B the two detectors on
+    one job. A manual rebuild is a standalone action (not part of an
+    in-progress OCR run), so — unlike the auto-trigger right after OCR
+    completes, which must stay tied to the job's own frozen engine_params
+    for run-to-run consistency — it always uses the CURRENT
+    enable_ai_indexing and ai_index_chunk_pages settings, not whatever was
+    frozen at this job's original creation time. This applies whether or
+    not `mode` was given explicitly — `mode` only picks the detector, it
+    doesn't opt back into the frozen chunk size.
+
+    There is deliberately no caller-facing choice between the raw/grounded
+    OCR capture and the plain cleaned text as indexing input — the AI path
+    picks automatically, per page (see ai_reference_index._page_text /
+    build_layout_annotated_text), so a job only ever has ONE reference
+    index, never two competing ones for the same page built from different
+    inputs."""
+    _check_rate_limit(principal.rate_limit_key)
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] in ("processing", "escalating"):
+        raise HTTPException(
+            status_code=409,
+            detail="Wait for the current OCR run to finish before rebuilding the cross-reference index.",
+        )
+    if reference_index.is_reindex_active(job_id):
+        raise HTTPException(status_code=409, detail="A reference index rebuild is already running for this job.")
+    if mode not in (None, "rule", "ai"):
+        raise HTTPException(status_code=400, detail="mode must be 'rule' or 'ai'.")
+
+    current_settings = _load_settings()
+    resolved_mode = mode
+    if resolved_mode is None:
+        ai_wanted = bool(current_settings.get("enable_ai_indexing", config.AI_INDEXING_ENABLED))
+        resolved_mode = "ai" if (ai_wanted and ai_indexing.describe_active_config() is not None) else "rule"
+    chunk_pages_override = current_settings.get("ai_index_chunk_pages")
+    # Both current (not frozen) settings, same reasoning as chunk_pages_override
+    # above — lets a reviewer A/B review-rule-prior and chunk-overlap on one
+    # job without creating a new one. `.get()` (not `or`) on purpose: both
+    # False and 0 are meaningful values a naive `or`-chain would discard.
+    review_rule_prior_override = current_settings.get("ai_index_review_rule_prior")
+    overlap_pages_override = current_settings.get("ai_index_chunk_overlap_pages")
+
+    # Stamped on request, not completion — this flag means "the user asked
+    # for this," not "the rebuild has finished" (the existing
+    # reference_index_reindexing / reindexing UI state already covers the
+    # in-flight window). See database.mark_index_built's docstring: this is
+    # the only place that ever sets it.
+    database.mark_index_built(job_id)
+    asyncio.create_task(reference_index.reindex_job(
+        job_id, force_mode=resolved_mode, chunk_pages_override=chunk_pages_override,
+        review_rule_prior_override=review_rule_prior_override,
+        overlap_pages_override=overlap_pages_override,
+    ))
+    return {"message": f"Reference index rebuild started for job {job_id}.", "status": "reindexing"}
+
+
+# ─── AI-indexing provider status (read-only — the API key itself lives only
+# in the server's AI_INDEX_API_KEY env var, never stored or returned here) ──
+
+@app.get("/api/ai-index/status")
+def ai_index_status_endpoint(principal: Principal = Depends(_require_admin)):
+    """Redacted view of the env-configured provider (or None if
+    AI_INDEX_API_KEY isn't set) — lets the settings UI show what's
+    configured without ever exposing the key itself."""
+    return {"config": ai_indexing.describe_active_config(), "providers": ai_indexing.list_providers()}
+
+
+@app.post("/api/ai-index/test")
+async def ai_index_test_endpoint(principal: Principal = Depends(_require_admin)):
+    """A real round-trip call over a synthetic health-check prompt — lets
+    an admin confirm AI_INDEX_API_KEY/PROVIDER/MODEL actually work before
+    relying on them for a real job."""
+    from ai_indexing.redact import redact_secrets
+    try:
+        resolved = ai_indexing.resolve_active_config()
+    except ai_indexing.AIConfigError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        provider = await ai_indexing.get_provider(resolved.provider_config)
+        return await provider.health()
+    except ai_indexing.AIConfigError as e:
+        raise HTTPException(status_code=400, detail=redact_secrets(str(e)))
+    except Exception as e:
+        return {"ok": False, "detail": redact_secrets(str(e))}
+
+@app.get("/api/jobs/{job_id}/scope-ranges")
+def get_job_scope_ranges(job_id: str, principal: Principal = Depends(_require_job_access)):
+    """Part B: for every container that was ever the active structural
+    ancestor on some page, the contiguous physical-page range(s) it spans —
+    derived from each page's persisted end_of_page_scope stack, cached per
+    job until reference_index_version changes. See
+    reference_index.compute_scope_ranges for the exact semantics (a range
+    means "pages where this node is the active ancestor," not "pages its
+    own heading text appears on")."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    ranges = reference_index.compute_scope_ranges(job_id, job["total_pages"])
+    # Merged at read time, every call — never inside compute_scope_ranges'
+    # own cache, so an override mutation (which always bumps
+    # reference_index_version, invalidating that cache too) is reflected
+    # immediately without needing its own separate cache-invalidation path.
+    ranges = structure_overrides.apply_to_scope_ranges(job_id, ranges)
+    # Also correct each range's scope_key for any drag-and-drop reparenting
+    # — without this, a moved node's ancestor chain here stays stale forever
+    # and the sidebar force-expands/misattributes focus to its old parent
+    # (see apply_parent_overrides_to_scope_ranges's own docstring).
+    ranges = structure_overrides.apply_parent_overrides_to_scope_ranges(job_id, ranges)
+    return {
+        "reference_index_version": database.get_reference_index_version(job_id),
+        "ranges": ranges,
+    }
+
+@app.get("/api/jobs/{job_id}/references")
+def get_job_references(
+    job_id: str,
+    since_version: int = Query(0, ge=0),
+    principal: Principal = Depends(_require_job_access),
+):
+    """Page-delta cross-reference index fetch: returns only the pages whose
+    candidate targets changed since since_version, each with its complete
+    current candidate set (a whole-page replacement, not a per-candidate diff).
+    A page:N self-reference is synthesized for any changed page lacking a
+    stored page:N row of its own — never persisted, computed here only."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    changed_pages = database.get_reference_targets_since(job_id, since_version)
+    for page_num, by_key in changed_pages.items():
+        if not any(k == f"page:{page_num}" for k in by_key):
+            page_row = database.get_page(job_id, page_num)
+            snippet = (page_row.get("text") or "")[:300] if page_row else ""
+            by_key[f"page:{page_num}"] = [{
+                "anchor_id": f"page-block-{page_num}",
+                "snippet": snippet,
+                "truncated": False,
+                "continues_on_page": None,
+                "scope_key": None,
+                "scope_label": f"This document (page {page_num})",
+                "scope_provisional": False,
+                "collapsed_key": f"page:{page_num}",
+                "fingerprint": "",
+                "scope_chain": [],
+                "own_label": None,
+            }]
+
+    # Runs AFTER the page:N self-reference synthesis above so overrides see
+    # (and don't break iteration over) that synthesized entry too — in
+    # practice overrides never need to touch a page:N row, this is purely
+    # about ordering safety.
+    changed_pages = structure_overrides.apply_to_references_delta(job_id, changed_pages)
+    changed_mentions = database.get_reference_mentions_since(job_id, since_version)
+
+    return {
+        "reference_index_version": database.get_reference_index_version(job_id),
+        "changed_pages": changed_pages,
+        "changed_mentions": changed_mentions,
+    }
+
+
+@app.post("/api/jobs/{job_id}/reindex-action-items")
+async def reindex_job_action_items(job_id: str, principal: Principal = Depends(_require_job_access)):
+    """Triggers the actionable-items extraction pass for a job — strictly
+    on-demand (same design as .../reindex-references), never run
+    automatically on OCR completion. A separate pass/table/version from
+    reindex-references: rebuilding one never touches the other."""
+    _check_rate_limit(principal.rate_limit_key)
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] in ("processing", "escalating"):
+        raise HTTPException(
+            status_code=409,
+            detail="Wait for the current OCR run to finish before extracting action items.",
+        )
+    if ai_action_items.is_reindex_active(job_id):
+        raise HTTPException(status_code=409, detail="An action-item extraction is already running for this job.")
+    # The two passes both call the same LLM provider; this codebase's own
+    # investigation log documents real throughput limits (slow local
+    # Ollama, rate-limited RokkaAI), so serializing them avoids doubling
+    # concurrent load for no benefit — nothing needs both rebuilt in the
+    # same instant.
+    if reference_index.is_reindex_active(job_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Wait for the current reference-index rebuild to finish before extracting action items.",
+        )
+    try:
+        ai_indexing.resolve_active_config()
+    except ai_indexing.AIConfigError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    current_settings = _load_settings()
+    chunk_pages_override = current_settings.get("ai_index_chunk_pages")
+    overlap_pages_override = current_settings.get("ai_index_chunk_overlap_pages")
+
+    database.mark_action_items_built(job_id)
+    asyncio.create_task(ai_action_items.reindex_action_items_for_job(
+        job_id, chunk_pages_override=chunk_pages_override,
+        overlap_pages_override=overlap_pages_override,
+    ))
+    return {"message": f"Action-item extraction started for job {job_id}.", "status": "running"}
+
+
+@app.get("/api/jobs/{job_id}/action-items")
+def get_job_action_items(
+    job_id: str,
+    since_version: int = Query(0, ge=0),
+    principal: Principal = Depends(_require_job_access),
+):
+    """Page-delta action-item fetch: returns only pages whose item list
+    changed since since_version, each page's COMPLETE current item list (a
+    whole-page replacement, not a per-item diff) — identical contract to
+    GET .../references."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    changed_pages = database.get_action_items_since(job_id, since_version)
+    return {
+        "action_item_index_version": database.get_action_item_index_version(job_id),
+        "changed_pages": changed_pages,
+    }
+
+
+@app.get("/api/jobs/{job_id}/references/rule-diff")
+def get_job_references_rule_diff(job_id: str, principal: Principal = Depends(_require_job_access)):
+    """Compares current active reference targets against stored rule-detection snapshot."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if reference_index.is_reindex_active(job_id):
+        raise HTTPException(status_code=409, detail="Reindex is currently in progress")
+
+    active_targets = database.get_reference_targets_for_job(job_id)
+    snapshots = database.get_all_page_rule_snapshots_for_job(job_id)
+
+    active_by_page: Dict[int, Dict[str, Dict[str, Any]]] = {}
+    for t in active_targets:
+        p = t["page"]
+        active_by_page.setdefault(p, {})[t["key"]] = t
+
+    pages_diff: Dict[int, Dict[str, int]] = {}
+    total_added = 0
+    total_removed = 0
+    total_rescoped = 0
+
+    all_pages = sorted(set(active_by_page.keys()) | set(snapshots.keys()))
+    for p in all_pages:
+        active_page = active_by_page.get(p, {})
+        snap = snapshots.get(p)
+        snap_cands = {c["key"]: c for c in snap.get("candidates", [])} if snap else {}
+
+        added = sum(1 for k in active_page if k not in snap_cands)
+        removed = sum(1 for k in snap_cands if k not in active_page)
+        rescoped = sum(
+            1 for k, act in active_page.items()
+            if k in snap_cands and act.get("scope_key") != snap_cands[k].get("scope_key")
+        )
+
+        total_added += added
+        total_removed += removed
+        total_rescoped += rescoped
+        pages_diff[p] = {
+            "added": added,
+            "removed": removed,
+            "rescoped": rescoped,
+        }
+
+    return {
+        "job_id": job_id,
+        "total_added": total_added,
+        "total_removed": total_removed,
+        "total_rescoped": total_rescoped,
+        "pages": pages_diff,
+    }
+
+
+@app.post("/api/jobs/{job_id}/references/revert-to-rule")
+async def revert_job_references_to_rule(job_id: str, principal: Principal = Depends(_require_job_access)):
+    """Reverts reference targets to the rule-detected baseline snapshot and rebuilds mentions."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if reference_index.is_reindex_active(job_id):
+        raise HTTPException(status_code=409, detail="Reindex is currently in progress")
+
+    snapshots = database.get_all_page_rule_snapshots_for_job(job_id)
+    if not snapshots:
+        # Pre-Phase-3 job without snapshot: re-run rule path
+        await reference_index.reindex_job(job_id, force_mode="rule")
+        return {
+            "status": "ok",
+            "fallback": "reindexed_rule_based",
+            "reference_index_version": database.get_reference_index_version(job_id),
+        }
+
+    # Restore from snapshots
+    for page in database.get_pages(job_id):
+        page_num = page["page_num"]
+        snap = snapshots.get(page_num)
+        if snap:
+            reference_index._persist_page_index(
+                job_id,
+                page_num,
+                page.get("text") or "",
+                snap.get("candidates", []),
+                snap.get("new_scope"),
+                provisional=False,
+                detection_source="rule",
+            )
+        else:
+            cands, new_scope = reference_index.build_targets_for_page(
+                page.get("text") or "",
+                seed_scope=None,
+                has_next_page=False,
+            )
+            reference_index._persist_page_index(
+                job_id,
+                page_num,
+                page.get("text") or "",
+                cands,
+                new_scope,
+                provisional=False,
+                detection_source="rule",
+            )
+
+    reference_index.build_mention_index_for_job(job_id)
+    return {
+        "status": "ok",
+        "fallback": None,
+        "reference_index_version": database.get_reference_index_version(job_id),
+    }
+
+
+@app.post("/api/jobs/{job_id}/references/build-mentions")
+def build_job_mentions(job_id: str, principal: Principal = Depends(_require_job_access)):
+    """Rebuilds reference-link mentions only, against whatever targets already
+    exist — the cheaper half of a full reindex, used when the document's
+    outline/structure hasn't changed and only the links need refreshing (see
+    RebuildIndexModal.jsx's "Reference Links Only" option). Never redetects
+    structure itself (that only happens via POST .../reindex-references)."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if reference_index.is_reindex_active(job_id):
+        raise HTTPException(status_code=409, detail="Reindex is currently in progress")
+    # Guards the contract explicitly rather than leaving it implicit: without
+    # any existing targets to link against, this would silently "succeed"
+    # while producing a degraded result (docref/term mentions only, nothing
+    # resolving to a heading/section/clause). The UI never offers this option
+    # on a job with no index yet, but the endpoint itself shouldn't rely on
+    # that frontend gate being the only thing preventing it.
+    if not database.get_reference_targets_for_job(job_id):
+        raise HTTPException(
+            status_code=400,
+            detail="No existing index to rebuild reference links from — build the full index first.",
+        )
+
+    reference_index.build_mention_index_for_job(job_id)
+    return {"status": "ok", "reference_index_version": database.get_reference_index_version(job_id)}
+
+
+# ─── Structure tree overrides (user add/edit/delete/reparent/reorder on top
+# of the auto-detected Structure tree — see structure_overrides.py's module
+# docstring for why these live in their own tables, never touched by
+# reindex_job, and therefore survive a "Rebuild Index & Reference Links"
+# click by construction). ───────────────────────────────────────────────────
+
+@app.post("/api/jobs/{job_id}/structure-items", status_code=201)
+def create_structure_item(job_id: str, body: dict, principal: Principal = Depends(_require_job_access)):
+    """Adds a user-created ("manual") node to the Structure tree."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    heading = body.get("heading")
+    start_page = body.get("start_page")
+    end_page = body.get("end_page")
+    if not heading or not isinstance(heading, str):
+        raise HTTPException(status_code=400, detail="heading is required")
+    if not isinstance(start_page, int) or isinstance(start_page, bool) or not isinstance(end_page, int) or isinstance(end_page, bool):
+        raise HTTPException(status_code=400, detail="start_page and end_page are required integers")
+    total_pages = job["total_pages"]
+    if start_page < 1:
+        raise HTTPException(status_code=400, detail="start_page must be >= 1")
+    if end_page < start_page:
+        raise HTTPException(status_code=400, detail="end_page must be >= start_page")
+    if end_page > total_pages:
+        raise HTTPException(status_code=400, detail=f"end_page exceeds job total_pages ({total_pages})")
+
+    item = structure_overrides.create_manual_item(
+        job_id, heading, start_page, end_page, created_by=principal.subject,
+    )
+    version = database.bump_reference_index_version(job_id)
+    database.touch_reference_index_pages(job_id, [start_page], version)
+    return item
+
+
+@app.patch("/api/jobs/{job_id}/structure-items/{item_key}")
+def update_structure_item(
+    job_id: str, item_key: str, body: dict,
+    page: Optional[int] = Query(None), occurrence_index: int = Query(0),
+    principal: Principal = Depends(_require_job_access),
+):
+    """Edits a structure item's heading and/or page range — either a
+    detected row (identified by key+page+occurrence_index, stored as an
+    override on top of the untouched ocr_reference_targets row) or a manual
+    item (identified by its manual_key alone)."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    heading = body.get("heading")
+    start_page = body.get("start_page")
+    end_page = body.get("end_page")
+    if heading is None and start_page is None and end_page is None:
+        raise HTTPException(status_code=400, detail="At least one of heading, start_page, end_page must be given")
+
+    is_manual = item_key.startswith("manual:")
+
+    if is_manual:
+        if page is not None:
+            raise HTTPException(status_code=400, detail="page must not be given for a manual item")
+        if start_page is not None and end_page is not None and end_page < start_page:
+            raise HTTPException(status_code=400, detail="end_page must be >= start_page")
+        updated = structure_overrides.update_manual_item(
+            job_id, item_key, heading=heading, start_page=start_page, end_page=end_page,
+        )
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Manual structure item not found")
+        version = database.bump_reference_index_version(job_id)
+        # A manual item's candidate is synthesized fresh from
+        # list_manual_items on every /references call (never persisted) —
+        # touching its (possibly new) start_page is the only signal a
+        # polling client needs to pick up the change.
+        database.touch_reference_index_pages(job_id, [updated["start_page"]], version)
+        return updated
+
+    if page is None:
+        raise HTTPException(status_code=400, detail="page is required to edit a detected structure item")
+
+    # A genuine range edit (either bound given) needs the container-tier
+    # checks below; a heading-only edit never does. Missing bounds default
+    # to the row's own single page — "the row's implied existing
+    # single-page-ness" from the spec.
+    wants_range = start_page is not None or end_page is not None
+    if wants_range:
+        effective_start = start_page if start_page is not None else page
+        effective_end = end_page if end_page is not None else page
+        if effective_end < effective_start:
+            raise HTTPException(status_code=400, detail="end_page must be >= start_page")
+
+        family = item_key.split(":", 1)[0] if ":" in item_key else item_key
+        family_known = family in reference_index.FAMILIES
+        rank = reference_index.FAMILIES.get(family, {}).get("rank") if family_known else None
+        if not family_known or rank is None:
+            # clause/para/ground/page (rank None), or a key whose family
+            # isn't in FAMILIES at all (e.g. an AI-minted numheading/
+            # letterheading key) — never a container, always a single page.
+            if effective_start != effective_end:
+                raise HTTPException(status_code=400, detail="this entry is a single page, not a range")
+        else:
+            matches = [
+                r for r in reference_index.compute_scope_ranges(job_id, job["total_pages"])
+                if r["key"] == item_key
+            ]
+            if len(matches) > 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "this section reopens elsewhere in the document; edit its heading only, "
+                        "or edit individual page occurrences instead"
+                    ),
+                )
+
+    structure_overrides.upsert_edit(
+        job_id, item_key, page, occurrence_index,
+        heading=heading, start_page=start_page, end_page=end_page, updated_by=principal.subject,
+    )
+
+    version = database.bump_reference_index_version(job_id)
+    touched = {page}
+    if start_page is not None and start_page != page:
+        touched.add(start_page)
+    if heading is not None:
+        # Rename propagation: every page nested under this key needs to be
+        # in the next delta too, or apply_to_references_delta's rename pass
+        # has nothing to rewrite for pages other than item_key's own page.
+        touched.update(structure_overrides.pages_referencing_key(job_id, item_key))
+    database.touch_reference_index_pages(job_id, list(touched), version)
+
+    return {
+        "key": item_key, "page": page, "occurrence_index": occurrence_index,
+        "heading_override": heading, "start_page_override": start_page, "end_page_override": end_page,
+    }
+
+
+@app.delete("/api/jobs/{job_id}/structure-items/{item_key}", status_code=204)
+def delete_structure_item(
+    job_id: str, item_key: str,
+    page: Optional[int] = Query(None), occurrence_index: int = Query(0),
+    principal: Principal = Depends(_require_job_access),
+):
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    is_manual = item_key.startswith("manual:")
+
+    if is_manual:
+        # Looked up BEFORE deleting: the manual item's own start_page is
+        # what needs touching so a polling client's next delta actually
+        # includes this page and notices the candidate is gone — after
+        # delete_manual_item runs, that page number no longer exists
+        # anywhere to read it back from.
+        existing = structure_overrides.get_manual_item(job_id, item_key)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Manual structure item not found")
+        structure_overrides.delete_manual_item(job_id, item_key)
+        version = database.bump_reference_index_version(job_id)
+        database.touch_reference_index_pages(job_id, [existing["start_page"]], version)
+        return Response(status_code=204)
+
+    if page is None:
+        raise HTTPException(status_code=400, detail="page is required to delete a detected structure item")
+
+    structure_overrides.tombstone(job_id, item_key, page, occurrence_index, updated_by=principal.subject)
+    version = database.bump_reference_index_version(job_id)
+    database.touch_reference_index_pages(job_id, [page], version)
+    return Response(status_code=204)
+
+
+@app.post("/api/jobs/{job_id}/structure-items/move")
+def move_structure_item(job_id: str, body: dict, principal: Principal = Depends(_require_job_access)):
+    """Reparents and/or reorders an item in the Structure tree. Never
+    touches any page's own detected candidates — only how the client nests
+    already-existing keys — so unlike every other mutation above, no
+    per-page reference_index_touched_version is stamped; bumping
+    reference_index_version alone is what invalidates the scope-ranges
+    cache and signals a change to polling clients.
+
+    Identity is (key, page, occurrence_index), not the bare key alone — the
+    same bare key can repeat in one document (e.g. two "point:5" occurrences
+    under different ancestors), and a bare-key identity silently misapplies
+    a move to whichever occurrence an index pass visits last. `page`/
+    `occurrence_index` default to the wildcard sentinel (-1) only for the
+    (legacy-shaped) root target, where no specific occurrence is meaningful."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    item_key = body.get("item_key")
+    item_page = body.get("item_page")
+    item_occurrence_index = body.get("item_occurrence_index")
+    new_parent_key = body.get("new_parent_key")
+    new_parent_page = body.get("new_parent_page")
+    new_parent_occurrence_index = body.get("new_parent_occurrence_index")
+    ordered_siblings = body.get("ordered_siblings")
+    if not item_key or item_page is None or item_occurrence_index is None or new_parent_key is None or ordered_siblings is None:
+        raise HTTPException(
+            status_code=400,
+            detail="item_key, item_page, item_occurrence_index, new_parent_key, and ordered_siblings are required",
+        )
+    # Root has no specific occurrence; any other parent must carry one, same
+    # as the item itself — a parent-side bare key would reintroduce the
+    # exact ambiguity this endpoint exists to remove.
+    if new_parent_key != "" and (new_parent_page is None or new_parent_occurrence_index is None):
+        raise HTTPException(
+            status_code=400, detail="new_parent_page and new_parent_occurrence_index are required unless new_parent_key is root",
+        )
+    if new_parent_key == "":
+        new_parent_page, new_parent_occurrence_index = -1, -1
+    if new_parent_key == item_key and new_parent_page == item_page and new_parent_occurrence_index == item_occurrence_index:
+        raise HTTPException(status_code=400, detail="new_parent_key must not equal item_key")
+
+    # Cycle check: walk "up" from new_parent via override-resolved parents
+    # only, falling back to root ("") for any (key, page, occurrence_index)
+    # with no override — a key that was never moved has no parent-override
+    # edge to traverse, so the walk terminates immediately at root for it.
+    # Only a chain of PRIOR moves can ever form a cycle, so this walk alone
+    # is sufficient without deriving anything from scope_chain.
+    cursor_key, cursor_page, cursor_occ = new_parent_key, new_parent_page, new_parent_occurrence_index
+    seen = set()
+    while cursor_key:
+        if cursor_key == item_key and cursor_page == item_page and cursor_occ == item_occurrence_index:
+            raise HTTPException(status_code=400, detail="cannot move an item under its own descendant")
+        identity = (cursor_key, cursor_page, cursor_occ)
+        if identity in seen:
+            break  # defensive: would mean a cycle already existed in stored data
+        seen.add(identity)
+        cursor_key, cursor_page, cursor_occ = structure_overrides.resolve_effective_parent(
+            job_id, cursor_key, cursor_page, cursor_occ, "",
+        )
+
+    structure_overrides.set_parent(
+        job_id, item_key, item_page, item_occurrence_index,
+        new_parent_key, new_parent_page, new_parent_occurrence_index,
+    )
+    ordered_items = [
+        (s["item_key"], s["item_page"], s["item_occurrence_index"]) for s in ordered_siblings
+    ]
+    structure_overrides.set_sibling_order(job_id, new_parent_key, new_parent_page, new_parent_occurrence_index, ordered_items)
+    database.bump_reference_index_version(job_id)
+
+    return {
+        "item_key": item_key, "item_page": item_page, "item_occurrence_index": item_occurrence_index,
+        "new_parent_key": new_parent_key, "new_parent_page": new_parent_page,
+        "new_parent_occurrence_index": new_parent_occurrence_index, "ordered_siblings": ordered_siblings,
+    }
+
+
+@app.get("/api/jobs/{job_id}/structure-hierarchy-overrides")
+def get_structure_hierarchy_overrides(job_id: str, principal: Principal = Depends(_require_job_access)):
+    """Plain passthrough of the parent/sort override tables — no merge
+    logic, the frontend applies these on top of the natural scope_chain-
+    derived tree itself. Returned as flat row lists, not pre-grouped maps —
+    the frontend already computes each node's own (key, page,
+    occurrence_index) while building the tree, so there's no need to encode
+    a matching compound-identity scheme in both Python and JS."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {
+        "reference_index_version": database.get_reference_index_version(job_id),
+        "parents": structure_overrides.get_parent_overrides(job_id),
+        "order": structure_overrides.get_sort_overrides(job_id),
+    }
+
 
 @app.get("/api/jobs/{job_id}/file")
 def get_job_uploaded_file(
     job_id: str,
     download: bool = Query(False, description="Set to true to force file download"),
-    principal: Principal = Depends(_require_user)
+    principal: Principal = Depends(_require_job_access)
 ):
     """Serves the original uploaded PDF or image file for preview or downloading."""
     job = database.get_job(job_id)
@@ -670,12 +1417,48 @@ def get_job_uploaded_file(
         headers={"Content-Disposition": _content_disposition(disposition, filename)}
     )
 
+@app.get("/api/jobs/{job_id}/file/pages")
+def get_job_file_page_range(
+    job_id: str,
+    start: int = Query(..., ge=1),
+    end: int = Query(..., ge=1),
+    principal: Principal = Depends(_require_job_access),
+):
+    """Part C3: extracts a contiguous page range from the original uploaded
+    PDF into a small standalone PDF — the "chunk" the Structure sidebar
+    fetches instead of the whole (possibly 900+ page) document when a
+    reader jumps to a specific reference."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job or not os.path.exists(job['file_path']):
+        raise HTTPException(status_code=404, detail="File not found")
+    if job['file_type'] != 'pdf':
+        raise HTTPException(status_code=400, detail="Page-range extraction is only supported for PDF jobs")
+    if end < start:
+        raise HTTPException(status_code=400, detail="end must be >= start")
+
+    src = pdfium.PdfDocument(job['file_path'])
+    if end > len(src):
+        raise HTTPException(status_code=400, detail=f"end exceeds document length ({len(src)} pages)")
+
+    out = pdfium.PdfDocument.new()
+    out.import_pages(src, list(range(start - 1, end)))
+    buf = io.BytesIO()
+    out.save(buf)
+    buf.seek(0)
+
+    base_name = os.path.splitext(job['filename'])[0]
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": _content_disposition("inline", f"{base_name}-p{start}-{end}.pdf")}
+    )
+
 @app.get("/api/jobs/{job_id}/download-result")
 def download_ocr_result(
     job_id: str,
     include: str = Query("all", pattern="^(all|clean|review)$", description="'all' (with review banners), 'clean' (flagged pages omitted), or 'review' (only flagged pages)"),
     clean_tables: bool = Query(False, description="Merge detected table continuations into one table for structured-data consumers, dropping page anchors at the seam"),
-    principal: Principal = Depends(_require_user)
+    principal: Principal = Depends(_require_job_access)
 ):
     """Downloads the extracted OCR result text as a formatted Markdown (.md) document."""
     job = database.get_job(job_id, include_pages=False)
@@ -683,48 +1466,12 @@ def download_ocr_result(
         raise HTTPException(status_code=404, detail="Job not found")
 
     pages = database.get_pages(job_id)
-    filename = job['filename']
-    base_name = os.path.splitext(filename)[0]
+    base_name = os.path.splitext(job['filename'])[0]
 
-    flagged = [p for p in pages if p.get('needs_review')]
-    if include == "clean":
-        pages = [p for p in pages if not p.get('needs_review')]
-    elif include == "review":
-        pages = flagged
-
-    header_lines = [
-        f"# OCR Extraction Report: {filename}",
-        f"- **Engine**: {job['engine'].upper()}",
-        f"- **Pages**: {job['total_pages']}",
-        f"- **Status**: {job['status'].upper()}",
-        f"- **Created At**: {job['created_at']}",
-    ]
-    if job['status'] == 'escalating':
-        header_lines.append("- **⚠️ Note**: escalation is still in progress for some pages — this snapshot may improve once it finishes.")
-    if include == "all" and flagged:
-        header_lines.append(f"\n## Review Summary ({len(flagged)} page(s) flagged)\n")
-        for p in flagged:
-            header_lines.append(f"- Page {p['page_num']}: confidence {round((p.get('confidence') or 0) * 100)}% — {p.get('review_reason') or 'flagged'}")
-
-    # Stitching follows the job's own overlap setting — single-page mode never has
-    # overlap so it never stitches; batch mode stitches only when it opted in.
-    stitch = job.get('processing_mode') == 'batch' and bool(job.get('enable_overlap', True))
-
-    export_pages = [{"page": p["page_num"], "text": p.get("text", "")} for p in pages]
-    body = seam_stitching.render_export(export_pages, clean_tables=clean_tables, stitch=stitch)
-
-    if include == "all":
-        # Banner each flagged page's own block so it's never silently blended in.
-        for p in flagged:
-            marker = f"## Page {p['page_num']}\n\n"
-            banner = (
-                f"## Page {p['page_num']}\n\n> ⚠️ **NEEDS HUMAN REVIEW** — confidence "
-                f"{round((p.get('confidence') or 0) * 100)}% ({p.get('review_reason') or 'flagged'}). "
-                f"This transcript may be incomplete.\n\n"
-            )
-            body = body.replace(marker, banner, 1)
-
-    markdown_content = "\n".join(header_lines) + "\n\n---\n\n" + body
+    # Content/banner logic now lives in export_service.build_markdown, shared
+    # with the multi-format GET .../export endpoint below so .md/.docx/.pdf
+    # can never drift out of sync with each other.
+    markdown_content = export_service.build_markdown(job, pages, include=include, clean_tables=clean_tables)
     out_filename = f"{base_name}_ocr_result.md"
 
     return Response(
@@ -733,8 +1480,49 @@ def download_ocr_result(
         headers={"Content-Disposition": _content_disposition("attachment", out_filename)}
     )
 
+@app.get("/api/jobs/{job_id}/export")
+def export_job_document(
+    job_id: str,
+    format: str = Query(..., pattern="^(md|docx|pdf)$", description="'md', 'docx', or 'pdf'"),
+    scope: str = Query("full", pattern="^(full|page|range)$", description="'full' document, a single 'page' (needs page_num), or a custom 'range' (needs page_range)"),
+    page_num: Optional[int] = Query(None, ge=1, description="Required when scope=page"),
+    page_range: Optional[str] = Query(None, description="Required when scope=range, e.g. '1-5,12,19-24'"),
+    include: str = Query("all", pattern="^(all|clean|review)$"),
+    clean_tables: bool = Query(False),
+    include_metadata: bool = Query(True, description="Include the report header (engine/pages/status) and review-summary banners"),
+    principal: Principal = Depends(_require_job_access),
+):
+    """Multi-format export (Markdown / Word / PDF) with page-scope selection —
+    the Studio redesign's `[Export Document ▾]` action. Renders through the
+    exact same Markdown content as GET .../download-result (see
+    export_service.build_markdown), so every format is guaranteed identical
+    in substance; only the container format differs."""
+    job = database.get_job(job_id, include_pages=False)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    pages = database.get_pages(job_id)
+    base_name = os.path.splitext(job['filename'])[0]
+
+    try:
+        data, content_type, ext = export_service.export_document(
+            job, pages, fmt=format, scope=scope, page_num=page_num, page_range=page_range,
+            include=include, clean_tables=clean_tables, include_metadata=include_metadata,
+        )
+    except export_service.ExportError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    scope_suffix = f"_p{page_num}" if scope == "page" else (f"_range" if scope == "range" else "")
+    out_filename = f"{base_name}_ocr_result{scope_suffix}.{ext}"
+
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Content-Disposition": _content_disposition("attachment", out_filename)}
+    )
+
 @app.post("/api/jobs/{job_id}/pause")
-def pause_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
+def pause_ocr_job(job_id: str, principal: Principal = Depends(_require_job_access)):
     """Pause a running OCR job after its current page completes."""
     job = database.get_job(job_id)
     if not job:
@@ -745,7 +1533,7 @@ def pause_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
     return {"message": f"Job {job_id} will pause after the current page.", "status": "pausing"}
 
 @app.post("/api/jobs/{job_id}/retry")
-async def retry_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
+async def retry_ocr_job(job_id: str, principal: Principal = Depends(_require_job_access)):
     """Retries or resumes a failed or stuck OCR job."""
     _check_rate_limit(principal.rate_limit_key)
     job = database.get_job(job_id)
@@ -772,7 +1560,7 @@ async def retry_ocr_job(job_id: str, principal: Principal = Depends(_require_use
 # ─── Human review queue & manual per-page retry ───────────────────────────────
 
 @app.get("/api/jobs/{job_id}/review-pages")
-def get_job_review_pages(job_id: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), principal: Principal = Depends(_require_user)):
+def get_job_review_pages(job_id: str, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), principal: Principal = Depends(_require_job_access)):
     """Flagged pages for one job, ordered by confidence ascending (worst first)."""
     if not database.get_job(job_id, include_pages=False):
         raise HTTPException(status_code=404, detail="Job not found")
@@ -785,7 +1573,8 @@ def get_review_queue(limit: int = Query(50, ge=1, le=200), offset: int = Query(0
     pages are intentionally indistinguishable here from genuine low-confidence
     flags (see the confidence-calibration design notes) — review_reason is never
     surfaced as 'audit_sample' to this endpoint's caller for that reason."""
-    pages = database.list_review_pages(limit=limit, offset=offset)
+    owner_id = None if principal.role.lower() == UserRole.ADMIN.value else principal.subject
+    pages = database.list_review_pages(limit=limit, offset=offset, owner_id=owner_id)
     for p in pages:
         _annotate_page_confidence(p)
         if p.get("review_reason") == "audit_sample":
@@ -793,7 +1582,7 @@ def get_review_queue(limit: int = Query(50, ge=1, le=200), offset: int = Query(0
     return {"pages": pages}
 
 @app.get("/api/jobs/{job_id}/pages/{page_num}/attempts")
-def get_page_attempts(job_id: str, page_num: int, principal: Principal = Depends(_require_user)):
+def get_page_attempts(job_id: str, page_num: int, principal: Principal = Depends(_require_job_access)):
     if not database.get_job(job_id, include_pages=False):
         raise HTTPException(status_code=404, detail="Job not found")
     return {"attempts": database.get_page_attempts(job_id, page_num)}
@@ -802,7 +1591,7 @@ def get_page_attempts(job_id: str, page_num: int, principal: Principal = Depends
 async def retry_ocr_page(
     job_id: str, page_num: int,
     escalate: bool = Query(False, description="true = try the other engine instead of the same one"),
-    principal: Principal = Depends(_require_user)
+    principal: Principal = Depends(_require_admin)
 ):
     """Manual per-page retry — same engine by default, or the other engine with
     ?escalate=true. Safe to call on an already-completed job (only this page's row
@@ -831,7 +1620,7 @@ async def retry_ocr_page(
 async def retry_job_pages(
     job_id: str,
     scope: str = Query(..., pattern="^(all|failed|review)$", description="'all' = every page, 'failed' = only hard-failed pages, 'review' = only low-confidence/needs-review pages"),
-    principal: Principal = Depends(_require_user)
+    principal: Principal = Depends(_require_admin)
 ):
     """Bulk manual retry - re-runs the selected pages at escalation quality
     (max scale + tiling + 1.5x timeout, keeping whichever result scores
@@ -863,7 +1652,7 @@ async def retry_job_pages(
     return {"message": f"Bulk retry ({scope}) started for job {job_id}.", "status": "escalating"}
 
 @app.post("/api/jobs/{job_id}/pages/{page_num}/confirm-correct")
-def confirm_page_correct(job_id: str, page_num: int, principal: Principal = Depends(_require_user)):
+def confirm_page_correct(job_id: str, page_num: int, principal: Principal = Depends(_require_job_access)):
     """Fast 'nothing wrong here' close-out for a review-queue item — no reason
     required, so a reviewer who finds nothing wrong can close it out immediately,
     exactly as fast as if they'd known in advance it was fine."""
@@ -874,8 +1663,33 @@ def confirm_page_correct(job_id: str, page_num: int, principal: Principal = Depe
     database.refresh_job_page_counts(job_id)
     return _annotate_page_confidence(database.get_page(job_id, page_num))
 
+@app.patch("/api/jobs/{job_id}/pages/{page_num}/text")
+def update_page_text(job_id: str, page_num: int, body: dict, principal: Principal = Depends(_require_job_access)):
+    """Saves a manual edit from the WYSIWYG editor (debounced autosave on the
+    frontend) — available to both roles, since direct in-place proofreading is
+    the general user's primary review action per the Studio redesign (only
+    GPU re-extraction/'Rerun' is admin-gated, not ordinary text correction).
+
+    Writes the same Markdown string to both `text` and `formatted_text`: once
+    a human has edited a page, that edit IS the page's content regardless of
+    which field a reader prefers (ViewerPanel's own fallback is
+    `formatted_text || text`), and every other consumer (reference indexing,
+    structure detection, exports) should see the edit too."""
+    text = body.get("text")
+    if text is None or not isinstance(text, str):
+        raise HTTPException(status_code=400, detail="'text' (string) is required")
+    page = database.get_page(job_id, page_num)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    database.upsert_page(job_id, page_num, text=text, formatted_text=text)
+    # A manual edit can add/remove/alter cross-reference mentions on this
+    # page — bump the version so the existing reindex-staleness machinery
+    # (the same one structure-item CRUD already uses) picks it up.
+    database.bump_reference_index_version(job_id)
+    return _annotate_page_confidence(database.get_page(job_id, page_num))
+
 @app.delete("/api/jobs/{job_id}")
-async def delete_ocr_job(job_id: str, principal: Principal = Depends(_require_user)):
+async def delete_ocr_job(job_id: str, principal: Principal = Depends(_require_job_access)):
     """Deletes an OCR job and removes its associated uploaded file from disk."""
     if task_queue.is_job_active(job_id):
         task_queue.cancel_job(job_id)
@@ -974,8 +1788,13 @@ async def ocr_single_page(
 
     try:
         if engine == "unlimited":
-            _legacy_long_prompts = bool(_load_settings().get("enable_unlimited_long_prompts", config.ENABLE_UNLIMITED_LONG_PROMPTS))
-            raw_text = await run_unlimited_ocr_for_image(pil_image, prompt, OCR_TIMEOUT, long_prompts_enabled=_legacy_long_prompts)
+            _legacy_settings = _load_settings()
+            _legacy_long_prompts = bool(_legacy_settings.get("enable_unlimited_long_prompts", config.ENABLE_UNLIMITED_LONG_PROMPTS))
+            _legacy_grounding_enabled = bool(_legacy_settings.get("enable_unlimited_grounding", config.ENABLE_UNLIMITED_GROUNDING))
+            raw_text = await run_unlimited_ocr_for_image(
+                pil_image, prompt, OCR_TIMEOUT,
+                long_prompts_enabled=_legacy_long_prompts, grounding_enabled=_legacy_grounding_enabled,
+            )
         else:
             raw_text = await run_ocr_for_image(pil_image, prompt, tiling, OCR_TIMEOUT, ocr_options)
             if is_captcha:

@@ -37,5 +37,5 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "==> Both stacks are up."
-Write-Host "    CPU app:     http://localhost:12006/"
+Write-Host "    CPU app:     http://localhost:12016/"
 Write-Host "    GPU service: http://localhost:11610/health  (model loads lazily on first OCR request - may take a while on CPU)"

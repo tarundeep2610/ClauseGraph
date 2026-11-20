@@ -92,9 +92,125 @@ OCR_AUDIT_CROSS_ENGINE_ENABLED = os.environ.get("OCR_AUDIT_CROSS_ENGINE_ENABLED"
 # main.py's settings mechanism. This constant is only the fallback default. ────
 ENABLE_UNLIMITED_LONG_PROMPTS = os.environ.get("ENABLE_UNLIMITED_LONG_PROMPTS", "false").strip().lower() == "true"
 
+# ─── Unlimited-OCR grounding gate — despite the name (kept for setting-key/
+# DB compatibility with the setting this was first built as), this does NOT
+# prepend a `<|grounding|>` prompt token. Confirmed directly against the
+# model (see the project plan) that the token does nothing useful here —
+# an independent, merged fix in the Docling project found the same plain
+# prompt already produces identical `<|det|>` output, and that adding the
+# token only degrades transcription quality (matching what was observed
+# here too). What this flag actually controls: switching Unlimited-OCR
+# from its "base" config (image_size=base_size, one global view, no
+# per-region output) to its official "gundam" config (image_size=640,
+# per-region crops) — confirmed, via a corrected direct test, to be what
+# actually makes the model emit real `<|det|>type [bbox]<|/det|>content`
+# layout tags (the exact shape reference_index.py's `_DET_TAG_RE`/
+# `parse_layout_blocks()` already parse):
+#   <|det|>header [612, 29, 905, 61]<|/det|>AmneXureA-1
+#   <|det|>text [383, 223, 792, 243]<|/det|>CONTRACT AGREEMENT BETWEEN
+# Getting this into `raw_ocr_text` also required a second, independent fix
+# in unlimited_ocr_engine.py's run_ocr_with_raw() (both copies): the
+# model's own save_results=True output file is already stripped of tags by
+# the vendor's own infer() before it's written — the tags only ever exist
+# in the raw generation stream, which is now what raw_text is sourced from.
+# On by default: gated the same way as ENABLE_UNLIMITED_LONG_PROMPTS above —
+# runtime-overridable via app_settings; this constant is only the fallback
+# default. Originally opt-in-only (gundam mode changes image preprocessing
+# for every page and was measured at 2-4x slower per page at the time) — a
+# real-job measurement on the current GPU service (18.1s/page) found gundam
+# mode far cheaper than that, so the per-job checkbox now defaults to on,
+# with per-job opt-out still available for anyone who wants the faster
+# single-pass mode for a specific job.
+ENABLE_UNLIMITED_GROUNDING = os.environ.get("ENABLE_UNLIMITED_GROUNDING", "true").strip().lower() == "true"
+
 # ─── DB durability/performance ─────────────────────────────────────────────────
 OCR_DB_BUSY_TIMEOUT_MS = int(os.environ.get("OCR_DB_BUSY_TIMEOUT_MS", "5000"))
 OCR_WAL_CHECKPOINT_EVERY_N_PAGES = int(os.environ.get("OCR_WAL_CHECKPOINT_EVERY_N_PAGES", "50"))
 
 # ─── Pause drain ───────────────────────────────────────────────────────────────
 OCR_PAUSE_DRAIN_TIMEOUT_SECONDS = int(os.environ.get("OCR_PAUSE_DRAIN_TIMEOUT_SECONDS", "900"))
+
+# ─── AI-assisted document-structure indexing — runtime-overridable via
+# app_settings (ai_indexing_enabled); this is only the fallback default, same
+# pattern as ENABLE_UNLIMITED_GROUNDING above. See ai_indexing/ package and
+# ai_reference_index.py.
+#
+# The provider API key is deliberately NEVER stored anywhere (no DB table,
+# no encryption at rest) — read live from this env var only, same as every
+# other secret in this project (GPU_OCR_SHARED_SECRET, TS_AUTHKEY, ...).
+# AI_INDEX_PROVIDER/MODEL/BASE_URL are one shared config for the whole
+# deployment, not a per-user/per-job credential store. ────────────────────────
+AI_INDEXING_ENABLED = os.environ.get("AI_INDEXING_ENABLED", "false").strip().lower() == "true"
+AI_INDEX_PROVIDER = os.environ.get("AI_INDEX_PROVIDER", "gemini")
+AI_INDEX_MODEL = os.environ.get("AI_INDEX_MODEL", "gemini-2.5-flash")
+AI_INDEX_BASE_URL = os.environ.get("AI_INDEX_BASE_URL", "")
+AI_INDEX_API_KEY = os.environ.get("AI_INDEX_API_KEY", "")
+# Optional extra HTTP headers for the openai_compatible provider's client,
+# as a JSON object string — e.g. '{"x-gpu-ocr-key": "..."}' to reach an
+# Ollama instance sitting behind this project's own gated Caddy /ollama/*
+# route (see gpu_ocr_client.py's identical header for the GLM-OCR engine's
+# own calls to the same box). Empty/unset for every deployment that talks
+# to a provider directly — this changes nothing unless explicitly set.
+AI_INDEX_EXTRA_HEADERS_JSON = os.environ.get("AI_INDEX_EXTRA_HEADERS_JSON", "")
+
+# Was 5. Measured (AI_INDEXING_CHUNK_SIZE_MEASUREMENT.md, qwen3:8b via
+# rokkaai, 5 trials at chunk_pages=3 vs. 5 at chunk_pages=10 and 4 valid at
+# chunk_pages=5, review_rule_prior=off, overlap=0, on the 17-page gold
+# fixture): chunk_pages=3 had the best mean precision (0.781 vs 0.700/0.666)
+# and recall (0.754 vs 0.696/0.710), and was the only size with zero
+# family-drift incidents across every trial (chunk_pages=10 produced one
+# FamilyDrift=8 episode). Trial-to-trial variance at every size tested is
+# real and substantial (chunk3 alone ranged 0.651-0.837 precision across 5
+# trials) — this is the known non-deterministic-recall problem, not unique
+# to this setting. Costs ~3.3x more AI calls than chunk_pages=10 for the
+# same document; accepted given the accuracy/stability difference.
+# Re-measure before changing again, especially on a different model.
+AI_INDEX_CHUNK_PAGES = int(os.environ.get("AI_INDEX_CHUNK_PAGES", "3"))
+# Was 2. Measured (AI_INDEXING_REVIEW_OVERLAP_MEASUREMENT.md, qwen3:8b via
+# rokkaai, 3 trials/arm on the 17-page gold fixture): overlap 0/1/2 scored
+# within the same band on precision/recall/scope-accuracy — no measurable
+# accuracy benefit from overlap — while overlap 2 costs ~28-39% more chunks
+# than 0 on a larger document. Changed to 0 since there's no accuracy reason
+# left to pay that cost. Re-measure before changing again.
+AI_INDEX_CHUNK_OVERLAP_PAGES = int(os.environ.get("AI_INDEX_CHUNK_OVERLAP_PAGES", "0"))
+AI_INDEX_CHUNK_CHARS_MAX = int(os.environ.get("AI_INDEX_CHUNK_CHARS_MAX", "60000"))
+AI_INDEX_ADAPTIVE_CHUNKING = os.environ.get("AI_INDEX_ADAPTIVE_CHUNKING", "true").strip().lower() == "true"
+# Default ON as of 2026-10-27: a live A/B on tender-135p pages 84-126 (the
+# documented AS-IS-catalogue false-positive zone) showed two-pass cutting
+# action-item false positives from 69 to 26 (-62%) with zero recall cost
+# (gold=0 in that zone either way). A job's own engine_params.ai_index_two_pass,
+# when explicitly set, still overrides this default for either pipeline.
+AI_INDEX_TWO_PASS = os.environ.get("AI_INDEX_TWO_PASS", "true").strip().lower() == "true"
+# How many neighboring pages (each direction, within the same chunk) to
+# search when grounding an AI-reported heading whose claimed start_page
+# doesn't actually contain matching text — see
+# ai_reference_index._locate_heading_in_chunk.
+AI_INDEX_GROUND_PAGE_WINDOW = int(os.environ.get("AI_INDEX_GROUND_PAGE_WINDOW", "3"))
+if AI_INDEX_CHUNK_PAGES < 1:
+    raise RuntimeError("AI_INDEX_CHUNK_PAGES must be >= 1.")
+
+AI_INDEX_MAX_HEADINGS_PER_CHUNK = int(os.environ.get("AI_INDEX_MAX_HEADINGS_PER_CHUNK", "200"))
+# Sibling cap for the actionable-items pass (ai_action_items.py) — a separate
+# constant, not a reuse of the heading cap above, since a dense contract page
+# can legitimately report many more discrete obligations than headings.
+AI_ACTION_ITEM_MAX_PER_CHUNK = int(os.environ.get("AI_ACTION_ITEM_MAX_PER_CHUNK", "300"))
+AI_INDEX_CONSECUTIVE_FAILURE_LIMIT = int(os.environ.get("AI_INDEX_CONSECUTIVE_FAILURE_LIMIT", "3"))
+
+AI_INDEX_REQUEST_TIMEOUT_SECONDS = float(os.environ.get("AI_INDEX_REQUEST_TIMEOUT_SECONDS", "180"))
+AI_INDEX_MAX_TRANSPORT_RETRIES = int(os.environ.get("AI_INDEX_MAX_TRANSPORT_RETRIES", "3"))
+AI_INDEX_MAX_OUTPUT_TOKENS = int(os.environ.get("AI_INDEX_MAX_OUTPUT_TOKENS", "8192"))
+AI_INDEX_TEMPERATURE = float(os.environ.get("AI_INDEX_TEMPERATURE", "0.0"))
+# Proactive pacer between chunk dispatches, independent of the per-call
+# transport retry above — avoids a predictable 429 cascade on a long
+# sequential run against a rate-limited provider tier, rather than relying on
+# retries alone to absorb it.
+AI_INDEX_MIN_CHUNK_INTERVAL_SECONDS = float(os.environ.get("AI_INDEX_MIN_CHUNK_INTERVAL_SECONDS", "1.0"))
+
+AI_GEMINI_BASE_URL = os.environ.get(
+    "AI_GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
+AI_ROKKAAI_POLL_INTERVAL_SECONDS = float(os.environ.get("AI_ROKKAAI_POLL_INTERVAL_SECONDS", "3"))
+AI_ROKKAAI_POLL_TIMEOUT_SECONDS = float(os.environ.get("AI_ROKKAAI_POLL_TIMEOUT_SECONDS", "600"))
+
+AI_INDEX_REVIEW_RULE_PRIOR = os.environ.get("AI_INDEX_REVIEW_RULE_PRIOR", "false").strip().lower() == "true"
+AI_INDEX_REVIEW_PRIOR_CHARS_MAX = int(os.environ.get("AI_INDEX_REVIEW_PRIOR_CHARS_MAX", "10000"))
+AI_INDEX_REVIEW_MAX_PRIOR_ROWS = int(os.environ.get("AI_INDEX_REVIEW_MAX_PRIOR_ROWS", "150"))

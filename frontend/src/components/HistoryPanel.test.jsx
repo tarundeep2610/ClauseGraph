@@ -39,4 +39,13 @@ describe('HistoryPanel', () => {
     expect(cards[0].querySelector('.btn-warn')).toBeInTheDocument(); // pause on the processing job
     expect(cards[1].querySelector('.btn-warn')).not.toBeInTheDocument();
   });
+
+  it('does not render an Engine column or eye icon button in actions', () => {
+    const jobs = [
+      { job_id: '1', filename: 'a.pdf', status: 'completed', total_pages: 3, processed_pages: 3, engine: 'unlimited', created_at: new Date().toISOString() },
+    ];
+    render(<HistoryPanel jobs={jobs} activeJobId={null} {...baseHandlers} />);
+    expect(screen.queryByText('Engine')).not.toBeInTheDocument();
+    expect(document.querySelector('.fa-eye')).not.toBeInTheDocument();
+  });
 });

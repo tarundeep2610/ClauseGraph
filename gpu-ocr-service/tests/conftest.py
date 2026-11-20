@@ -33,6 +33,17 @@ class _FakeUnlimitedEngine:
             raise effect
         return effect
 
+    def run_ocr_with_raw(self, pil_image, prompt, base_size, timeout, crop_mode=False):
+        """Additive counterpart the real module exposes alongside run_ocr()
+        (see unlimited_ocr_engine.run_ocr_with_raw) — gpu-ocr-service/main.py
+        calls this one for the single-page path. Routes through self.run_ocr
+        so a test that overrides that method (e.g. to simulate slow/blocking
+        inference) is honored here too; raw_result is None by default since
+        no test currently asserts on it. crop_mode is accepted (matching the
+        real signature) but not otherwise used by this fake."""
+        text = self.run_ocr(pil_image, prompt, base_size, timeout)
+        return text, None
+
     def cancel_current_work(self):
         self.cancel_calls += 1
 

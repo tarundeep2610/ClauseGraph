@@ -47,6 +47,37 @@ def _reset_task_queue_async_primitives():
     task_queue._render_lock = asyncio.Lock()
 
 
+@pytest.fixture(autouse=True)
+def _reset_reference_index_async_primitives():
+    """Same per-event-loop-binding issue as above, for reference_index.py's
+    module-level per-job asyncio.Lock cache."""
+    import reference_index
+    reference_index._frontier_locks = {}
+    reference_index._active_reindex_jobs = set()
+    reference_index._scope_ranges_cache = {}
+
+
+@pytest.fixture(autouse=True)
+def _reset_action_item_active_jobs():
+    """Same in-flight-tracking set as reference_index._active_reindex_jobs
+    above, for the separate actionable-items pass — reset so a test that
+    crashes mid-"active" state can't leak into an unrelated later test."""
+    import ai_action_items
+    ai_action_items._active_action_item_jobs = set()
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limit_buckets():
+    """main._rate_buckets is a module-level dict keyed by rate_limit_key
+    (effectively per-user), accumulating submission timestamps across the
+    whole test session since nothing ever clears it. Tests share the same
+    dev admin/user tokens (see admin_token/user_token above), so without this
+    reset, enough rate-limited calls across unrelated test files eventually
+    tips a later, unrelated test over RATE_LIMIT_MAX and it starts getting
+    429s instead of the status code it actually meant to test."""
+    main_module._rate_buckets = {}
+
+
 @pytest.fixture()
 def client():
     with TestClient(main_module.app) as c:
@@ -73,6 +104,14 @@ def admin_token():
 @pytest.fixture()
 def user_token():
     return _make_dev_token("dev-user-001", ["user"])
+
+
+@pytest.fixture()
+def other_user_token():
+    """A second, distinct non-admin user — for ownership tests, where
+    `user_token` (dev-user-001) and this one (dev-user-002) must each see
+    only their own jobs, never each other's."""
+    return _make_dev_token("dev-user-002", ["user"])
 
 
 @pytest.fixture()

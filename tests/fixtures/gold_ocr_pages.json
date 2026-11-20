@@ -1,0 +1,92 @@
+{
+  "description": "Curated 10-page benchmark set for OCR transcription accuracy (CER/WER) and table structure similarity",
+  "pages": [
+    {
+      "page": 1,
+      "source_job_id": "108ba949-bb7b-4f29-b582-ce4f4a44631b",
+      "category": "clean_legal",
+      "ground_truth_text": "37\n\nIn the High Court of Punjab and Haryana at Chandigarh\n\nF.A.O. (Comm.Arb.) 23 2019\n\nMEMO OF PARTIES\n\nHaryana Vidyut Prasaran Nigam Ltd., Shakti Bhawan, Sector-6, Panchkula through its Executive Engineer (Arbitration).\n\n... Appellant\n\nVersus\n\n1. M/s GE T&D India Ltd. (formerly known as M/s Alstom T&D India Ltd.), registered office at A-7, Sector-65, Noida-201301 (U.P.) through its authorized signatory.\n\n2. Justice K.C. Gupta (Retd.), Arbitrator, House No. 544, Sector-18B, Chandigarh.\n\n... Respondents",
+      "ground_truth_tables": []
+    },
+    {
+      "page": 2,
+      "source_job_id": "108ba949-bb7b-4f29-b582-ce4f4a44631b",
+      "category": "clean_legal",
+      "ground_truth_text": "IN THE COURT OF ALKA MALIK, ADDITIONAL DISTRICT JUDGE- CUM-PRESIDING JUDGE, SPECIAL COMMERCIAL COURT AT GURUGRAM\n\nCivil Misc. Application No. 121 of 2017\nDate of Institution: 18.05.2017\nDate of Decision: 26.04.2019\n\nHaryana Vidyut Prasaran Nigam Limited (HVPNL) through its Executive Engineer...\n...Petitioner\n\nVersus\n\nM/s GE T&D India Limited...\n...Respondent\n\nJUDGMENT\n\n1. By this common judgment, I shall dispose of the petition filed by petitioner under Section 34 of the Arbitration and Conciliation Act, 1996.",
+      "ground_truth_tables": []
+    },
+    {
+      "page": 3,
+      "source_job_id": "108ba949-bb7b-4f29-b582-ce4f4a44631b",
+      "category": "clean_legal",
+      "ground_truth_text": "FACTS\n\n2. Petitioner invited tenders on 26.09.2007 for supply, erection and commissioning of 220 KV Sub-Station at Gurugram. Respondent submitted bid and was awarded contract vide LOI dated 29.07.2008.\n\n3. The Arbitral Award has been challenged by the petitioner interalia on following grounds:\n(A) The learned Arbitrator failed to appreciate that the delay was attributable solely to the contractor.\n(B) The claim for price variation was barred by limitation under the contract terms.\n(C) Liquidated damages were rightly levied in terms of Clause 14.",
+      "ground_truth_tables": []
+    },
+    {
+      "page": 4,
+      "source_job_id": "89cfa529-2390-464c-9c3e-2446ef68c588",
+      "category": "dense_table",
+      "ground_truth_text": "| Item No. | Description of Equipment | Qty (Nos) | Unit Ex-Works Price (INR) | Total F.O.R. Price (INR) |\n| :--- | :--- | :---: | :---: | :---: |\n| 1.01 | 220 KV Circuit Breaker (SF6) | 4 | 1,250,000.00 | 5,000,000.00 |\n| 1.02 | 220 KV Current Transformer | 12 | 185,000.00 | 2,220,000.00 |\n| 1.03 | 220 KV Potential Transformer | 6 | 210,000.00 | 1,260,000.00 |\n| 1.04 | Wave Trap (Pedestal Mounted) | 2 | 340,000.00 | 680,000.00 |\n| 1.05 | Isolator with Earth Switch | 8 | 410,000.00 | 3,280,000.00 |",
+      "ground_truth_tables": [
+        [
+          ["Item No.", "Description of Equipment", "Qty (Nos)", "Unit Ex-Works Price (INR)", "Total F.O.R. Price (INR)"],
+          ["1.01", "220 KV Circuit Breaker (SF6)", "4", "1,250,000.00", "5,000,000.00"],
+          ["1.02", "220 KV Current Transformer", "12", "185,000.00", "2,220,000.00"],
+          ["1.03", "220 KV Potential Transformer", "6", "210,000.00", "1,260,000.00"],
+          ["1.04", "Wave Trap (Pedestal Mounted)", "2", "340,000.00", "680,000.00"],
+          ["1.05", "Isolator with Earth Switch", "8", "410,000.00", "3,280,000.00"]
+        ]
+      ]
+    },
+    {
+      "page": 5,
+      "source_job_id": "89cfa529-2390-464c-9c3e-2446ef68c588",
+      "category": "dense_table",
+      "ground_truth_text": "SCHEDULE-3A: PRICE BREAKUP FOR CIVIL WORKS\n\n| Ref | Activity | Estimated Qty | Unit | Rate (Rs.) | Amount (Rs.) |\n| 1.1 | Earthwork in excavation | 1500 | Cu.M | 240.00 | 360,000.00 |\n| 1.2 | Reinforced cement concrete M-25 | 450 | Cu.M | 6,800.00 | 3,060,000.00 |\n| 1.3 | Structural steel fabrication | 35 | M.T. | 72,000.00 | 2,520,000.00 |\n| 1.4 | Brick masonry in cement mortar 1:4 | 220 | Cu.M | 4,500.00 | 990,000.00 |",
+      "ground_truth_tables": [
+        [
+          ["Ref", "Activity", "Estimated Qty", "Unit", "Rate (Rs.)", "Amount (Rs.)"],
+          ["1.1", "Earthwork in excavation", "1500", "Cu.M", "240.00", "360,000.00"],
+          ["1.2", "Reinforced cement concrete M-25", "450", "Cu.M", "6,800.00", "3,060,000.00"],
+          ["1.3", "Structural steel fabrication", "35", "M.T.", "72,000.00", "2,520,000.00"],
+          ["1.4", "Brick masonry in cement mortar 1:4", "220", "Cu.M", "4,500.00", "990,000.00"]
+        ]
+      ]
+    },
+    {
+      "page": 6,
+      "source_job_id": "bb417471-561c-4029-bb21-3bdcf74e7dcb",
+      "category": "degraded_scan",
+      "ground_truth_text": "ANNEXURE A-1\n\nAGREEMENT NO. CE/TS-II/2008-09\n\nTHIS AGREEMENT made this 14th day of August, 2008 between Haryana Vidyut Prasaran Nigam Limited (hereinafter called 'the Purchaser') of the one part and M/s Alstom T&D India Limited (hereinafter called 'the Contractor') of the other part.\n\nWHEREAS the Purchaser is desirous that certain transmission line works should be executed, viz. Erection and Testing of 220 KV Double Circuit Tower Line...",
+      "ground_truth_tables": []
+    },
+    {
+      "page": 7,
+      "source_job_id": "bb417471-561c-4029-bb21-3bdcf74e7dcb",
+      "category": "degraded_scan",
+      "ground_truth_text": "AFFIDAVIT\n\nI, Sandeep Kumar, Executive Engineer, HVPNL, Panchkula do hereby solemnly affirm and declare as under:\n\n1. That I am the authorized representative of the appellant in the above titled appeal and am fully conversant with the facts of the case.\n\n2. That the accompanying appeal under Section 37 of the Arbitration Act has been drafted under my instructions and the contents thereof are true and correct.",
+      "ground_truth_tables": []
+    },
+    {
+      "page": 8,
+      "source_job_id": "89cfa529-2390-464c-9c3e-2446ef68c588",
+      "category": "mixed_layout",
+      "ground_truth_text": "SECTION-III: TECHNICAL SPECIFICATIONS\n\n1.0 GENERAL INSTRUCTIONS\n\n1.1 The equipment supplied shall comply with the latest edition of IEC standards.\n1.2 The bidder must furnish certified type test reports conducted within the last 5 years from an accredited laboratory.\n\n2.0 INSPECTION AND TESTING\n\n2.1 Notice for inspection shall be given at least 15 days in advance.\n2.2 Dispatch clearance will be issued only upon successful testing.",
+      "ground_truth_tables": []
+    },
+    {
+      "page": 9,
+      "source_job_id": "89cfa529-2390-464c-9c3e-2446ef68c588",
+      "category": "mixed_layout",
+      "ground_truth_text": "ANNEXURE-C: TENDER SUBMISSION CHECKLIST\n\n* Earnest Money Deposit (EMD) of INR 500,000/- enclosed in Envelope A.\n* Technical Bid containing unpriced schedule in Envelope B.\n* Price Bid in prescribed format in Envelope C.\n* Valid GST registration certificate and PAN copy attached.\n* Power of Attorney in favor of authorized signatory.",
+      "ground_truth_tables": []
+    },
+    {
+      "page": 10,
+      "source_job_id": "108ba949-bb7b-4f29-b582-ce4f4a44631b",
+      "category": "clean_legal",
+      "ground_truth_text": "CONCLUSION\n\n18. In view of the discussion above, the petitioner has failed to establish any patent illegality or violation of public policy in the impugned Arbitral Award.\n\n19. The petition under Section 34 of the Arbitration and Conciliation Act, 1996 being devoid of merits is hereby dismissed with no order as to costs. File be consigned to record room.\n\nPronounced in open court.\n(Alka Malik)\nAdditional District Judge,\nGurugram, 26.04.2019",
+      "ground_truth_tables": []
+    }
+  ]
+}

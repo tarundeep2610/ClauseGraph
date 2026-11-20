@@ -4,6 +4,7 @@ from typing import Callable
 from fastapi import Depends, HTTPException, Header, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+import database
 from auth_core import Principal, verify_token, verify_api_key
 
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -60,6 +61,26 @@ async def require_admin_jwt_only(principal: Principal = Depends(get_current_prin
     """
     if principal.kind != "jwt" or principal.role != UserRole.ADMIN.value:
         raise HTTPException(status_code=403, detail="Admin login required for this action.")
+    return principal
+
+
+async def require_job_access(job_id: str, principal: Principal = Depends(get_current_principal)) -> Principal:
+    """Per-job route guard: `admin` may access any job; `user` may access
+    only a job they own (`owner_id == principal.subject`). A job with no
+    owner_id (uploaded before this column existed) is treated as admin-only —
+    never exposed to a `user` by accident. Returns 404 rather than 403 for an
+    owned-by-someone-else job, so a `user` can't distinguish "not yours" from
+    "doesn't exist" by probing job ids."""
+    if principal.role.lower() not in (UserRole.ADMIN.value, UserRole.USER.value):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Access restricted. Required roles: {sorted({UserRole.ADMIN.value, UserRole.USER.value})}",
+        )
+    if principal.role.lower() == UserRole.ADMIN.value:
+        return principal
+    job = database.get_job(job_id, include_pages=False)
+    if job is None or job.get("owner_id") != principal.subject:
+        raise HTTPException(status_code=404, detail="Job not found")
     return principal
 
 

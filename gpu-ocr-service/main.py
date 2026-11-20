@@ -22,7 +22,7 @@ except ImportError:
     _UNLIMITED_OCR_AVAILABLE = False
     print("[GPU-OCR] unlimited_ocr_engine failed to import.", file=sys.stderr)
 
-_jobs: dict = {}  # job_id -> {"status", "result", "error", "created_at"}
+_jobs: dict = {}  # job_id -> {"status", "result", "raw_result", "error", "created_at"}
 _job_tasks: dict = {}  # job_id -> asyncio.Task, so cancel-all can stop anything not yet running
 _inference_semaphore = asyncio.Semaphore(config.GPU_OCR_MAX_CONCURRENT_JOBS)
 
@@ -48,6 +48,11 @@ class SubmitJobPayload(BaseModel):
     prompt: str | None = None
     base_size: int = 1024
     timeout: int = 600
+    # Switches Unlimited-OCR into its "gundam" config (image_size=640,
+    # per-region crops) instead of "base" — confirmed (see the project
+    # plan) to be what actually makes the model emit <|det|> layout tags.
+    # Single-image only; infer_multi() (image_b64s) has no crop_mode.
+    crop_mode: bool = False
 
 
 @app.get("/health")
@@ -88,17 +93,21 @@ async def _run_job(job_id: str, payload: SubmitJobPayload):
                     payload.prompt,
                     payload.timeout,
                 )
+                _jobs[job_id]["status"] = "done"
+                _jobs[job_id]["result"] = result
             else:
                 pil_image = _decode_image(payload.image_b64)
-                result = await asyncio.to_thread(
-                    unlimited_ocr_engine.run_ocr,
+                result, raw_result = await asyncio.to_thread(
+                    unlimited_ocr_engine.run_ocr_with_raw,
                     pil_image,
                     payload.prompt,
                     payload.base_size,
                     payload.timeout,
+                    payload.crop_mode,
                 )
-            _jobs[job_id]["status"] = "done"
-            _jobs[job_id]["result"] = result
+                _jobs[job_id]["status"] = "done"
+                _jobs[job_id]["result"] = result
+                _jobs[job_id]["raw_result"] = raw_result
     except asyncio.CancelledError:
         _jobs[job_id]["status"] = "cancelled"
         raise
@@ -119,7 +128,7 @@ async def submit_job(payload: SubmitJobPayload):
         raise HTTPException(status_code=400, detail="Provide either image_b64 or image_b64s.")
 
     job_id = str(uuid.uuid4())
-    _jobs[job_id] = {"status": "pending", "result": None, "error": None, "created_at": time.time()}
+    _jobs[job_id] = {"status": "pending", "result": None, "raw_result": None, "error": None, "created_at": time.time()}
     _job_tasks[job_id] = asyncio.create_task(_run_job(job_id, payload))
     return {"job_id": job_id}
 
@@ -129,7 +138,10 @@ async def get_job(job_id: str):
     job = _jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
-    return {"status": job["status"], "result": job["result"], "error": job["error"]}
+    return {
+        "status": job["status"], "result": job["result"],
+        "raw_result": job.get("raw_result"), "error": job["error"],
+    }
 
 
 @app.delete("/api/v1/jobs/{job_id}", dependencies=[Depends(verify_shared_secret)])

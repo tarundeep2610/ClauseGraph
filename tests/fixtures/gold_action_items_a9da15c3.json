@@ -1,0 +1,102 @@
+{
+  "job_id": "a9da15c3-eb89-44f8-aabc-d8b49b28b543",
+  "total_pages": 59,
+  "action_items": [
+    {
+      "page": 2,
+      "item_type": "condition",
+      "item_text": "Tendering can be abandoned without assigning any reason with no compensation paid for contractor efforts",
+      "evidence_quote": "a) Bidders to note that “Tendering can be abandoned without assigning any reason. No compensation will be paid for the efforts made by the contractor.”",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Owner",
+      "confidence": "high",
+      "occurrence_index": 0
+    },
+    {
+      "page": 2,
+      "item_type": "condition",
+      "item_text": "Validity of quoted rates shall be 04 (Four) months from scheduled or extended due date of opening of tender",
+      "evidence_quote": "a) Bidder to note that “Unless and until specified elsewhere validity of the quoted rates shall be 04 (Four) months from the scheduled or extended due date of opening of tender”",
+      "date_text": "04 (Four) months",
+      "date_iso": null,
+      "anchor_event": "scheduled or extended due date of opening of tender",
+      "responsible_party": "Bidder",
+      "confidence": "high",
+      "occurrence_index": 0
+    },
+    {
+      "page": 2,
+      "item_type": "condition",
+      "item_text": "If validity of bid is not as per tender document then bid shall be rejected",
+      "evidence_quote": "b) Bidder to note that \"if validity of bid is not as per tender document, then their bid shall be rejected.\"",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high",
+      "occurrence_index": 0
+    },
+    {
+      "page": 4,
+      "item_type": "obligation",
+      "item_text": "In case of tie at L-1 position all L-1 bidders shall submit discount bid in terms of percentage discount in sealed envelope",
+      "evidence_quote": "a. In case of tie between two or more bidders at L-1 position, all the L-1 bidders shall be asked to submit discount bid in terms of percentage discount over previous quoted amount in a sealed envelope.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high",
+      "occurrence_index": 0
+    },
+    {
+      "page": 7,
+      "item_type": "condition",
+      "item_text": "Tenders for which EMD Instruments are received after due date and time shall be rejected outright",
+      "evidence_quote": "2.1 Tenders for which EMD Instruments are received after the due date and time shall be rejected outright.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high",
+      "occurrence_index": 0
+    },
+    {
+      "page": 11,
+      "item_type": "obligation",
+      "item_text": "For experience purpose the Work Order with completion date within last Seven years shall be considered",
+      "evidence_quote": "d. For experience purpose (1/2/3 Work Order) the Work Order with completion date within last Seven (07) years (irrespective of work order issue date and date of commencement) unless stated elsewhere shall be considered.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high",
+      "occurrence_index": 0
+    },
+    {
+      "page": 12,
+      "item_type": "obligation",
+      "item_text": "Bidders have to upload audited balance sheet along with profit and loss account of last 3 financial years",
+      "evidence_quote": "a) For fulfilling the experience criteria for Annual Turnover (ATO) Bidders have to upload the audited balance sheet along with profit and loss account of last 03 (Three) financial year for meeting Annual ",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high",
+      "occurrence_index": 0
+    },
+    {
+      "page": 28,
+      "item_type": "obligation",
+      "item_text": "For dewatering from open pit use of portable electrical submersible pump is prohibited",
+      "evidence_quote": "B. For dewatering from open pit, use of portable electrical submersible pump is prohibited",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high",
+      "occurrence_index": 0
+    }
+  ]
+}

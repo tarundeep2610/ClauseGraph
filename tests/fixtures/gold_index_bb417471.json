@@ -1,0 +1,5177 @@
+{
+  "job_id": "e109ea42-cb55-4f5c-b156-eb0593ac9916",
+  "source_job_id": "e109ea42-cb55-4f5c-b156-eb0593ac9916",
+  "total_pages": 100,
+  "targets": [
+    {
+      "page": 1,
+      "key": "subdoc:index",
+      "occurrence_index": 0,
+      "label": "INDEX",
+      "scope_key": ""
+    },
+    {
+      "page": 4,
+      "key": "page:2",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 5,
+      "key": "page:3",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 6,
+      "key": "page:4",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 7,
+      "key": "page:5",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 7,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. That the appellant is filing the accompanying appeal",
+      "scope_key": "subdoc:respectfully-showeth"
+    },
+    {
+      "page": 7,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. That for proper and just decision of the appeal",
+      "scope_key": "subdoc:respectfully-showeth"
+    },
+    {
+      "page": 7,
+      "key": "subdoc:respectfully-showeth",
+      "occurrence_index": 0,
+      "label": "RESPECTFULLY SHOWETH",
+      "scope_key": ""
+    },
+    {
+      "page": 8,
+      "key": "page:6",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 8,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. That the appellant is filing the accompanying appeal",
+      "scope_key": "subdoc:affidavit-of-ishwar-chand-balan-aged"
+    },
+    {
+      "page": 8,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. That for proper and just decision of the appeal",
+      "scope_key": "subdoc:affidavit-of-ishwar-chand-balan-aged"
+    },
+    {
+      "page": 8,
+      "key": "subdoc:affidavit-of-ishwar-chand-balan-aged",
+      "occurrence_index": 0,
+      "label": "Affidavit of Ishwar Chand Balan aged 46 years",
+      "scope_key": ""
+    },
+    {
+      "page": 8,
+      "key": "subdoc:verification",
+      "occurrence_index": 0,
+      "label": "Verification",
+      "scope_key": "subdoc:affidavit-of-ishwar-chand-balan-aged"
+    },
+    {
+      "page": 9,
+      "key": "page:7",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 9,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. That the appellant is Haryana Vidyut Prasarn Nigam Limited",
+      "scope_key": "subdoc:respectfully-showeth-2"
+    },
+    {
+      "page": 9,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. That the Ld. Arbitral Tribunal comprising of respondent no. 2 to 4",
+      "scope_key": "subdoc:respectfully-showeth-2"
+    },
+    {
+      "page": 9,
+      "key": "point:3",
+      "occurrence_index": 0,
+      "label": "3. That for the sake of brevity appellant is not repeating the grounds",
+      "scope_key": "subdoc:respectfully-showeth-2"
+    },
+    {
+      "page": 9,
+      "key": "subdoc:respectfully-showeth-2",
+      "occurrence_index": 0,
+      "label": "Respectfully Showeth",
+      "scope_key": ""
+    },
+    {
+      "page": 10,
+      "key": "page:8",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 10,
+      "key": "point:4",
+      "occurrence_index": 0,
+      "label": "4. That the present appeal is likely to be succeeded on the grounds taken therei",
+      "scope_key": "subdoc:respectfully-showeth-2"
+    },
+    {
+      "page": 10,
+      "key": "point:5",
+      "occurrence_index": 0,
+      "label": "5. That the Ld. Trial Court has based its finding on the basis of factually inco",
+      "scope_key": "subdoc:respectfully-showeth-2"
+    },
+    {
+      "page": 10,
+      "key": "point:6",
+      "occurrence_index": 0,
+      "label": "6. That the appellant has very good prime facie case in its favour",
+      "scope_key": "subdoc:respectfully-showeth-2"
+    },
+    {
+      "page": 10,
+      "key": "point:7",
+      "occurrence_index": 0,
+      "label": "7. That if the operation of award dated 19.02.2017",
+      "scope_key": "subdoc:respectfully-showeth-2"
+    },
+    {
+      "page": 11,
+      "key": "page:9",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 11,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. That the appellant is Haryana Vidyut Prasarn Nigam Limited having its head of",
+      "scope_key": "subdoc:respectfully-showeth-2/subdoc:i-the-above-named-deponent-do"
+    },
+    {
+      "page": 11,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. That the Ld. Arbitral Tribunal comprising of respondent no. 2 to 4 delivered ",
+      "scope_key": "subdoc:respectfully-showeth-2/subdoc:i-the-above-named-deponent-do"
+    },
+    {
+      "page": 11,
+      "key": "point:3",
+      "occurrence_index": 0,
+      "label": "3. That for the sake of brevity appellant is not repeating the grounds of appeal",
+      "scope_key": "subdoc:respectfully-showeth-2/subdoc:i-the-above-named-deponent-do"
+    },
+    {
+      "page": 11,
+      "key": "subdoc:i-the-above-named-deponent-do",
+      "occurrence_index": 0,
+      "label": "I, the above named deponent do hereby solemnly affirm and st",
+      "scope_key": "subdoc:respectfully-showeth-2"
+    },
+    {
+      "page": 12,
+      "key": "page:10",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 12,
+      "key": "point:4",
+      "occurrence_index": 0,
+      "label": "4. That the present appeal is likely to be succeeded on the grounds taken therei",
+      "scope_key": "subdoc:respectfully-showeth-2/subdoc:i-the-above-named-deponent-do"
+    },
+    {
+      "page": 12,
+      "key": "point:5",
+      "occurrence_index": 0,
+      "label": "5. That the Ld. Trial Court has based its finding on the basis of factually inco",
+      "scope_key": "subdoc:respectfully-showeth-2/subdoc:i-the-above-named-deponent-do"
+    },
+    {
+      "page": 12,
+      "key": "point:6",
+      "occurrence_index": 0,
+      "label": "6. That the appellant has very good prime facie case in its favour and the balan",
+      "scope_key": "subdoc:respectfully-showeth-2/subdoc:i-the-above-named-deponent-do"
+    },
+    {
+      "page": 12,
+      "key": "point:7",
+      "occurrence_index": 0,
+      "label": "7. That if the operation of award dated 19.02.2017 and additional award dated 11",
+      "scope_key": "subdoc:respectfully-showeth-2/subdoc:i-the-above-named-deponent-do"
+    },
+    {
+      "page": 12,
+      "key": "subdoc:verification-2",
+      "occurrence_index": 0,
+      "label": "Verification",
+      "scope_key": "subdoc:respectfully-showeth-2/subdoc:i-the-above-named-deponent-do"
+    },
+    {
+      "page": 13,
+      "key": "subdoc:opening-sheet-for-civil-appeals",
+      "occurrence_index": 0,
+      "label": "OPENING SHEET FOR CIVIL APPEALS",
+      "scope_key": "subdoc:respectfully-showeth-2"
+    },
+    {
+      "page": 14,
+      "key": "docref:ch90rec064xenprojects",
+      "occurrence_index": 0,
+      "label": "memo No. CH-90/REC-064/XEN (Projects)",
+      "scope_key": ""
+    },
+    {
+      "page": 14,
+      "key": "docref:hdp1484rec064xenprojects",
+      "occurrence_index": 0,
+      "label": "memo No. HDP-1484/REC-064/XEN (Projects)",
+      "scope_key": ""
+    },
+    {
+      "page": 14,
+      "key": "docref:rec064",
+      "occurrence_index": 0,
+      "label": "tender enquiry No. REC-064",
+      "scope_key": ""
+    },
+    {
+      "page": 14,
+      "key": "ground:1",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal"
+    },
+    {
+      "page": 14,
+      "key": "ground:2",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal"
+    },
+    {
+      "page": 14,
+      "key": "page:12",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 14,
+      "key": "subdoc:grounds-of-appeal",
+      "occurrence_index": 0,
+      "label": "GROUNDS OF APPEAL",
+      "scope_key": ""
+    },
+    {
+      "page": 14,
+      "key": "term:loa",
+      "occurrence_index": 0,
+      "label": "The appellant issued Letter of Acceptance (LOA, for short)",
+      "scope_key": ""
+    },
+    {
+      "page": 14,
+      "key": "term:po",
+      "occurrence_index": 0,
+      "label": "Purchase Order (PO, for short)",
+      "scope_key": ""
+    },
+    {
+      "page": 15,
+      "key": "ground:3",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal"
+    },
+    {
+      "page": 15,
+      "key": "ground:4",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal"
+    },
+    {
+      "page": 15,
+      "key": "page:13",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 16,
+      "key": "ground:5",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal"
+    },
+    {
+      "page": 16,
+      "key": "ground:6",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal"
+    },
+    {
+      "page": 16,
+      "key": "page:14",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 17,
+      "key": "ground:7",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal"
+    },
+    {
+      "page": 17,
+      "key": "ground:8",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal"
+    },
+    {
+      "page": 17,
+      "key": "page:15",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 18,
+      "key": "ground:10",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal"
+    },
+    {
+      "page": 18,
+      "key": "ground:9",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal"
+    },
+    {
+      "page": 18,
+      "key": "page:16",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 19,
+      "key": "ground:i",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/ground:10"
+    },
+    {
+      "page": 19,
+      "key": "ground:ii",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/ground:10"
+    },
+    {
+      "page": 19,
+      "key": "ground:iii",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/ground:10"
+    },
+    {
+      "page": 20,
+      "key": "ground:iv",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/ground:10"
+    },
+    {
+      "page": 20,
+      "key": "ground:v",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/ground:10"
+    },
+    {
+      "page": 20,
+      "key": "ground:vi",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/ground:10"
+    },
+    {
+      "page": 20,
+      "key": "page:18",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 21,
+      "key": "ground:vii",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/ground:10"
+    },
+    {
+      "page": 22,
+      "key": "page:20",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 23,
+      "key": "ground:ix",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/ground:10"
+    },
+    {
+      "page": 23,
+      "key": "ground:viii",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/ground:10"
+    },
+    {
+      "page": 24,
+      "key": "ground:x",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/ground:10"
+    },
+    {
+      "page": 24,
+      "key": "page:22",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 25,
+      "key": "ground:xi",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/ground:10"
+    },
+    {
+      "page": 25,
+      "key": "numheading:9.0",
+      "occurrence_index": 0,
+      "label": "9.0 Local/ Site conditions",
+      "scope_key": "subdoc:grounds-of-appeal"
+    },
+    {
+      "page": 25,
+      "key": "numheading:9.1",
+      "occurrence_index": 0,
+      "label": "9.1 It will be imperative on each Bidder to fully inform himself of all locals/s",
+      "scope_key": "subdoc:grounds-of-appeal"
+    },
+    {
+      "page": 25,
+      "key": "page:23",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 26,
+      "key": "numheading:9.2",
+      "occurrence_index": 0,
+      "label": "9.2 It must be understood and agreed that such factors have properly been invest",
+      "scope_key": "subdoc:grounds-of-appeal"
+    },
+    {
+      "page": 26,
+      "key": "page:24",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 27,
+      "key": "ground:xii",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/numheading:9.2"
+    },
+    {
+      "page": 27,
+      "key": "page:25",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 28,
+      "key": "ground:xiii",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/numheading:9.2"
+    },
+    {
+      "page": 28,
+      "key": "page:26",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 29,
+      "key": "ground:xiv",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/numheading:9.2"
+    },
+    {
+      "page": 29,
+      "key": "page:27",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 30,
+      "key": "ground:xv",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/numheading:9.2"
+    },
+    {
+      "page": 30,
+      "key": "page:28",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 31,
+      "key": "page:29",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 32,
+      "key": "ground:xvi",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/numheading:9.2"
+    },
+    {
+      "page": 32,
+      "key": "page:30",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 33,
+      "key": "ground:xvii",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/numheading:9.2"
+    },
+    {
+      "page": 33,
+      "key": "page:31",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 34,
+      "key": "ground:xviii",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/numheading:9.2"
+    },
+    {
+      "page": 34,
+      "key": "page:32",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 35,
+      "key": "ground:xix",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/numheading:9.2"
+    },
+    {
+      "page": 35,
+      "key": "ground:xx",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/numheading:9.2"
+    },
+    {
+      "page": 35,
+      "key": "page:33",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 36,
+      "key": "ground:xxi",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/numheading:9.2"
+    },
+    {
+      "page": 36,
+      "key": "ground:xxii",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/numheading:9.2"
+    },
+    {
+      "page": 36,
+      "key": "page:34",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 36,
+      "key": "term:pbg",
+      "occurrence_index": 0,
+      "label": "Performance Bank Guarantee (PBG)",
+      "scope_key": ""
+    },
+    {
+      "page": 37,
+      "key": "ground:11",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:grounds-of-appeal/numheading:9.2"
+    },
+    {
+      "page": 37,
+      "key": "page:35",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 38,
+      "key": "ground:1",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:affidavit-of-ishwar-chand-balan"
+    },
+    {
+      "page": 38,
+      "key": "ground:2",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:affidavit-of-ishwar-chand-balan"
+    },
+    {
+      "page": 38,
+      "key": "ground:3",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": "subdoc:affidavit-of-ishwar-chand-balan"
+    },
+    {
+      "page": 38,
+      "key": "page:36",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 38,
+      "key": "subdoc:affidavit-of-ishwar-chand-balan",
+      "occurrence_index": 0,
+      "label": "AFFIDAVIT OF ISHWAR CHAND BALAN",
+      "scope_key": ""
+    },
+    {
+      "page": 38,
+      "key": "subdoc:i-the-above-named-deponent-do-2",
+      "occurrence_index": 0,
+      "label": "I, the above named deponent do hereby solemnly affirm and st (2)",
+      "scope_key": "subdoc:affidavit-of-ishwar-chand-balan"
+    },
+    {
+      "page": 38,
+      "key": "subdoc:verification-3",
+      "occurrence_index": 0,
+      "label": "Verification",
+      "scope_key": "subdoc:affidavit-of-ishwar-chand-balan"
+    },
+    {
+      "page": 39,
+      "key": "page:37",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 39,
+      "key": "subdoc:memo-of-parties",
+      "occurrence_index": 0,
+      "label": "MEMO OF PARTIES",
+      "scope_key": ""
+    },
+    {
+      "page": 40,
+      "key": "subdoc:judgment",
+      "occurrence_index": 0,
+      "label": "JUDGMENT",
+      "scope_key": ""
+    },
+    {
+      "page": 40,
+      "key": "term:arbitration act",
+      "occurrence_index": 0,
+      "label": "hereinafter referred to as the Arbitration Act)",
+      "scope_key": ""
+    },
+    {
+      "page": 41,
+      "key": "page:39",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 41,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. Petitioner invited tenders on 26.09.2007",
+      "scope_key": "subdoc:judgment/subdoc:facts"
+    },
+    {
+      "page": 41,
+      "key": "subdoc:facts",
+      "occurrence_index": 0,
+      "label": "FACTS",
+      "scope_key": "subdoc:judgment"
+    },
+    {
+      "page": 41,
+      "key": "subdoc:petitioner-s-version",
+      "occurrence_index": 0,
+      "label": "Petitioner's version",
+      "scope_key": "subdoc:judgment"
+    },
+    {
+      "page": 42,
+      "key": "page:40",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 42,
+      "key": "point:3",
+      "occurrence_index": 0,
+      "label": "3. The Arbitral Award has been challenged by the petitioner interalia on followi",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award"
+    },
+    {
+      "page": 42,
+      "key": "point:a",
+      "occurrence_index": 0,
+      "label": "(A) That the award is based on no evidence is erroneous",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 42,
+      "key": "point:b",
+      "occurrence_index": 0,
+      "label": "(B) The Arbitral Tribunal has erred in ignoring the material documents",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 42,
+      "key": "point:c",
+      "occurrence_index": 0,
+      "label": "(C) The Arbitral Tribunal has erroneously held respondent No.1 liable for LD",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 42,
+      "key": "point:d",
+      "occurrence_index": 0,
+      "label": "(D) Arbitral Tribunal has erroneously condoned the grave lapse",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 42,
+      "key": "point:e",
+      "occurrence_index": 0,
+      "label": "(E) The Arbitral Tribunal did not take into account the nature and importance of",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 42,
+      "key": "subdoc:challenge-to-the-arbitral-award",
+      "occurrence_index": 0,
+      "label": "Challenge to the Arbitral Award.",
+      "scope_key": "subdoc:judgment"
+    },
+    {
+      "page": 43,
+      "key": "page:41",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 43,
+      "key": "point:f",
+      "occurrence_index": 0,
+      "label": "(F) The Arbitral Tribunal erred in observing that the delay was attributable",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 43,
+      "key": "point:g",
+      "occurrence_index": 0,
+      "label": "(G) The Arbitral Tribunal has also overlooked that as per schedule of civil cons",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 43,
+      "key": "point:h",
+      "occurrence_index": 0,
+      "label": "(H) The Arbitral Tribunal has also wrongly held that final GELO",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 43,
+      "key": "point:i",
+      "occurrence_index": 0,
+      "label": "(I) The Arbitral Tribunal also erred in holding that respondent No.1 was entitle",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 43,
+      "key": "point:j",
+      "occurrence_index": 0,
+      "label": "(J) It is further urged that the Arbitral Tribunal erred in holding",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 44,
+      "key": "page:42",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 44,
+      "key": "point:4",
+      "occurrence_index": 0,
+      "label": "4. Petition is resisted on behalf of respondent no.1 interalia with",
+      "scope_key": "subdoc:judgment/subdoc:respondent-s-case"
+    },
+    {
+      "page": 44,
+      "key": "point:k",
+      "occurrence_index": 0,
+      "label": "(K) In evaluating delay in approval of 400/220 KV CTs drawing",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 44,
+      "key": "point:l",
+      "occurrence_index": 0,
+      "label": "(L) The Arbitral Tribunal has wrongly held that delay in commissioning",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 44,
+      "key": "point:m",
+      "occurrence_index": 0,
+      "label": "(M) The Arbitral Tribunal has erroneously held that the respondent no.2 is entit",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 44,
+      "key": "point:n",
+      "occurrence_index": 0,
+      "label": "(N). Similarly, refund of Rs.26,58,714/- against future AC Kiosks",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 44,
+      "key": "point:o",
+      "occurrence_index": 0,
+      "label": "(O) It is further urged that the Arbitral Tribunal has wrongly allowed refund",
+      "scope_key": "subdoc:judgment/subdoc:challenge-to-the-arbitral-award/point:3"
+    },
+    {
+      "page": 44,
+      "key": "subdoc:respondent-s-case",
+      "occurrence_index": 0,
+      "label": "Respondent's case",
+      "scope_key": "subdoc:judgment"
+    },
+    {
+      "page": 45,
+      "key": "point:5",
+      "occurrence_index": 0,
+      "label": "5. It has been further urged on merits that in fact present petition is false",
+      "scope_key": "subdoc:judgment/subdoc:respondent-s-case"
+    },
+    {
+      "page": 45,
+      "key": "point:6",
+      "occurrence_index": 0,
+      "label": "6. It is further urged that the objections raised qua GELO is misconceived",
+      "scope_key": "subdoc:judgment/subdoc:respondent-s-case"
+    },
+    {
+      "page": 45,
+      "key": "point:7",
+      "occurrence_index": 0,
+      "label": "7. Similarly, as far as other objections raised by the petitioner are concerned",
+      "scope_key": "subdoc:judgment/subdoc:respondent-s-case"
+    },
+    {
+      "page": 46,
+      "key": "page:44",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 46,
+      "key": "point:10",
+      "occurrence_index": 0,
+      "label": "10. It has been argued by learned counsel for petitioner that in fact the work i",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-petitioner"
+    },
+    {
+      "page": 46,
+      "key": "point:8",
+      "occurrence_index": 0,
+      "label": "8. Rejoinder controverting each and every fact of the reply",
+      "scope_key": "subdoc:judgment/subdoc:respondent-s-case"
+    },
+    {
+      "page": 46,
+      "key": "point:9",
+      "occurrence_index": 0,
+      "label": "9. Arguments have been advanced by Ms. Sonia Madan Advocate",
+      "scope_key": "subdoc:judgment/subdoc:respondent-s-case"
+    },
+    {
+      "page": 46,
+      "key": "subdoc:submissions-of-petitioner",
+      "occurrence_index": 0,
+      "label": "Submissions of petitioner",
+      "scope_key": "subdoc:judgment"
+    },
+    {
+      "page": 47,
+      "key": "page:45",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 47,
+      "key": "point:11",
+      "occurrence_index": 0,
+      "label": "11. It has been further argued that the computation of delay under various heads",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-petitioner"
+    },
+    {
+      "page": 47,
+      "key": "point:i",
+      "occurrence_index": 0,
+      "label": "(i) Issue of General Electrical Layout (GELO) drawings;",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-petitioner/point:10"
+    },
+    {
+      "page": 47,
+      "key": "point:ii",
+      "occurrence_index": 0,
+      "label": "(ii) Non-availability of front clearance leading to delay in civil works",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-petitioner/point:10"
+    },
+    {
+      "page": 47,
+      "key": "point:iii",
+      "occurrence_index": 0,
+      "label": "(iii) Approval of Formation Ground Level (FGL);",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-petitioner/point:10"
+    },
+    {
+      "page": 47,
+      "key": "point:iv",
+      "occurrence_index": 0,
+      "label": "(iv) Approval of major design drawings and equipment drawings.",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-petitioner/point:10"
+    },
+    {
+      "page": 47,
+      "key": "point:v",
+      "occurrence_index": 0,
+      "label": "(v) Availability of power supply;",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-petitioner/point:10"
+    },
+    {
+      "page": 47,
+      "key": "point:vi",
+      "occurrence_index": 0,
+      "label": "(vi) Inspection of material & issue of dispatch instructions; and",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-petitioner/point:10"
+    },
+    {
+      "page": 47,
+      "key": "point:vii",
+      "occurrence_index": 0,
+      "label": "(vii) Non-issue of Material Receipt Certificates (MRC).",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-petitioner/point:10"
+    },
+    {
+      "page": 47,
+      "key": "term:crb",
+      "occurrence_index": 0,
+      "label": "Control Room Building (CRB)",
+      "scope_key": ""
+    },
+    {
+      "page": 47,
+      "key": "term:fgl",
+      "occurrence_index": 0,
+      "label": "Approval of Formation Ground Level (FGL)",
+      "scope_key": ""
+    },
+    {
+      "page": 47,
+      "key": "term:mrc",
+      "occurrence_index": 0,
+      "label": "Non-issue of Material Receipt Certificates (MRC)",
+      "scope_key": ""
+    },
+    {
+      "page": 48,
+      "key": "page:46",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 48,
+      "key": "point:12",
+      "occurrence_index": 0,
+      "label": "12. It is further argued that the delay in front clearance of site",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-petitioner"
+    },
+    {
+      "page": 48,
+      "key": "point:13",
+      "occurrence_index": 0,
+      "label": "13. It is further argued by learned counsel for petitioner that Arbitral Tribuna",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-petitioner"
+    },
+    {
+      "page": 48,
+      "key": "point:14",
+      "occurrence_index": 0,
+      "label": "14. It is further argued by learned counsel for petitioner that the Arbitral Tri",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-petitioner"
+    },
+    {
+      "page": 48,
+      "key": "point:15",
+      "occurrence_index": 0,
+      "label": "15. It has been lastly urged that the Arbitral Tribunal has passed",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-petitioner"
+    },
+    {
+      "page": 49,
+      "key": "point:16",
+      "occurrence_index": 0,
+      "label": "16. It has been argued by learned counsel for the respondent",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-respondent"
+    },
+    {
+      "page": 49,
+      "key": "point:17",
+      "occurrence_index": 0,
+      "label": "17. To substantiate these arguments, learned counsel for the respondent has reli",
+      "scope_key": "subdoc:judgment/subdoc:submissions-of-respondent"
+    },
+    {
+      "page": 49,
+      "key": "subdoc:submissions-of-respondent",
+      "occurrence_index": 0,
+      "label": "Submissions of respondent",
+      "scope_key": "subdoc:judgment"
+    },
+    {
+      "page": 50,
+      "key": "page:48",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 50,
+      "key": "point:18",
+      "occurrence_index": 0,
+      "label": "18. From the facts and circumstances of the case in hand",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 50,
+      "key": "point:19",
+      "occurrence_index": 0,
+      "label": "19. The dispute as raised vide this petition can be summarized under following h",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 50,
+      "key": "subdoc:conclusion",
+      "occurrence_index": 0,
+      "label": "Conclusion",
+      "scope_key": "subdoc:judgment"
+    },
+    {
+      "page": 51,
+      "key": "page:49",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 51,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. Delay in issuing the GELO.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/point:19"
+    },
+    {
+      "page": 51,
+      "key": "point:2",
+      "occurrence_index": 0,
+      "label": "2. Delay in front clearance of site.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/point:19"
+    },
+    {
+      "page": 51,
+      "key": "point:20",
+      "occurrence_index": 0,
+      "label": "20. From perusal of the challenge made in this petition under section 34",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 51,
+      "key": "point:21",
+      "occurrence_index": 0,
+      "label": "21. For example on delay in issuing the GELO, the petitioner has claimed",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 51,
+      "key": "point:22",
+      "occurrence_index": 0,
+      "label": "22. Whereas the Arbitral Tribunal after hearing the rival submissions has observ",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 51,
+      "key": "point:3",
+      "occurrence_index": 0,
+      "label": "3. Delay in approval of equipment drawings.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/point:19"
+    },
+    {
+      "page": 51,
+      "key": "point:4",
+      "occurrence_index": 0,
+      "label": "4. Delay in availability of power at site.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/point:19"
+    },
+    {
+      "page": 51,
+      "key": "point:5",
+      "occurrence_index": 0,
+      "label": "5. Award of amounts under various heads detailed as under:-",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/point:19"
+    },
+    {
+      "page": 51,
+      "key": "point:i",
+      "occurrence_index": 0,
+      "label": "(i) Award of Rs.43,46,080 on account of PLCC items.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/point:19/point:5"
+    },
+    {
+      "page": 51,
+      "key": "point:ii",
+      "occurrence_index": 0,
+      "label": "(ii) Award of Rs.26,58,714/- on account of non-supply of complete AC kiosks.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/point:19/point:5"
+    },
+    {
+      "page": 51,
+      "key": "point:iii",
+      "occurrence_index": 0,
+      "label": "(iii) Award of Rs.1,07,18,800/- on account of non-commissioning of BCUs.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/point:19/point:5"
+    },
+    {
+      "page": 51,
+      "key": "point:iv",
+      "occurrence_index": 0,
+      "label": "(iv) Award of Rs.76,00,000/- on account of miscellaneous recovery.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/point:19/point:5"
+    },
+    {
+      "page": 51,
+      "key": "point:v",
+      "occurrence_index": 0,
+      "label": "(v) Award of Rs.64,73,754/- for additional work.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/point:19/point:5"
+    },
+    {
+      "page": 51,
+      "key": "point:vi",
+      "occurrence_index": 0,
+      "label": "(vi) Award of Rs.1,48,09,280/- on account of performance bank guarantee.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/point:19/point:5"
+    },
+    {
+      "page": 51,
+      "key": "point:vii",
+      "occurrence_index": 0,
+      "label": "(vii) Award of interest at the rate of 8.5% per annum.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/point:19/point:5"
+    },
+    {
+      "page": 52,
+      "key": "page:50",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 52,
+      "key": "point:23",
+      "occurrence_index": 0,
+      "label": "23. The Arbitral Tribunal further observed on the basis of the entire terms of c",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 52,
+      "key": "point:24",
+      "occurrence_index": 0,
+      "label": "24. It shall be absolutely relevant to mention here that in the objection petiti",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 52,
+      "key": "point:25",
+      "occurrence_index": 0,
+      "label": "25. Furthermore, it shall be absolutely relevant to mention here that the scope",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 53,
+      "key": "page:51",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 53,
+      "key": "point:26",
+      "occurrence_index": 0,
+      "label": "26. Reference in this regard may be made to P.R. Shah, Shares and Stock Brokers",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 53,
+      "key": "point:27",
+      "occurrence_index": 0,
+      "label": "27. In a recent decision in case National Highway Authority of India",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 53,
+      "key": "point:28",
+      "occurrence_index": 0,
+      "label": "28. In Associate Builders vs. Delhi Development Authority",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 54,
+      "key": "page:52",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 54,
+      "key": "point:29",
+      "occurrence_index": 0,
+      "label": "29 In M/s Navodaya Mass Entertainment Ltd. vs. M/s J.M.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 54,
+      "key": "point:30",
+      "occurrence_index": 0,
+      "label": "30. Coming to the other points as raised in this objection",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 55,
+      "key": "page:53",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 55,
+      "key": "point:31",
+      "occurrence_index": 0,
+      "label": "31. What can be inferred is that in fact, this objection petition has been draft",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 56,
+      "key": "page:54",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 56,
+      "key": "point:32",
+      "occurrence_index": 0,
+      "label": "32. As per Section 34(2)(b)(ii) of Arbitration & Conciliation Act, 1996",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 56,
+      "key": "point:33",
+      "occurrence_index": 0,
+      "label": "33. The question now comes - \"how the word 'Public Policy' can be interpreted?",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies/subdoc:iii-it-is-in-conflict-with"
+    },
+    {
+      "page": 56,
+      "key": "point:34",
+      "occurrence_index": 0,
+      "label": "34. Apex Court has given a very wide and liberal interpretation of this word",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies/subdoc:iii-it-is-in-conflict-with"
+    },
+    {
+      "page": 56,
+      "key": "subdoc:explanation-1-ii-and-iii-clarifies",
+      "occurrence_index": 0,
+      "label": "Explanation 1(ii) and (iii) clarifies it further by detailin",
+      "scope_key": "subdoc:judgment/subdoc:conclusion"
+    },
+    {
+      "page": 56,
+      "key": "subdoc:ii-it-is-in-contravention-with",
+      "occurrence_index": 0,
+      "label": "(ii) it is in contravention with fundamental policy of India",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies"
+    },
+    {
+      "page": 56,
+      "key": "subdoc:iii-it-is-in-conflict-with",
+      "occurrence_index": 0,
+      "label": "(iii) it is in conflict with the most basic notions of moral",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies"
+    },
+    {
+      "page": 57,
+      "key": "point:35",
+      "occurrence_index": 0,
+      "label": "35. Apex court of the land in a recent judgment M.P. Power Generation Co. Ltd.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies/subdoc:iii-it-is-in-conflict-with"
+    },
+    {
+      "page": 57,
+      "key": "point:36",
+      "occurrence_index": 0,
+      "label": "36. In Associate Builders's case (cited supra) Apex court of the land has held",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies/subdoc:iii-it-is-in-conflict-with"
+    },
+    {
+      "page": 57,
+      "key": "point:a",
+      "occurrence_index": 0,
+      "label": "a) The Court under Section 34 (2) of the Act does not act as a court of appeal",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies/subdoc:iii-it-is-in-conflict-with/point:36"
+    },
+    {
+      "page": 57,
+      "key": "point:b",
+      "occurrence_index": 0,
+      "label": "b) A possible view by the arbitrator on facts has necessarily to pass muster",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies/subdoc:iii-it-is-in-conflict-with/point:36"
+    },
+    {
+      "page": 57,
+      "key": "point:c",
+      "occurrence_index": 0,
+      "label": "c) Insufficiency of evidence can not be a ground for interference by the Court",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies/subdoc:iii-it-is-in-conflict-with/point:36"
+    },
+    {
+      "page": 57,
+      "key": "point:d",
+      "occurrence_index": 0,
+      "label": "d) An award can be set aside only if it shocks the conscience of the court.",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies/subdoc:iii-it-is-in-conflict-with/point:36"
+    },
+    {
+      "page": 57,
+      "key": "point:e",
+      "occurrence_index": 0,
+      "label": "e) Illegality must go to the root of the matter and can not be of a trivial na",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies/subdoc:iii-it-is-in-conflict-with/point:36"
+    },
+    {
+      "page": 58,
+      "key": "page:56",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 58,
+      "key": "point:37",
+      "occurrence_index": 0,
+      "label": "37. Apex court of the land in HRD Corporation (Marcus Oil and Chemical Divisio",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies/subdoc:iii-it-is-in-conflict-with"
+    },
+    {
+      "page": 59,
+      "key": "page:57",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 59,
+      "key": "point:38",
+      "occurrence_index": 0,
+      "label": "38. It can be thus fairly concluded from the above discussion that challenge t",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies/subdoc:iii-it-is-in-conflict-with"
+    },
+    {
+      "page": 59,
+      "key": "point:39",
+      "occurrence_index": 0,
+      "label": "39. Consequently, the objection petition is hereby dismissed with costs",
+      "scope_key": "subdoc:judgment/subdoc:conclusion/subdoc:explanation-1-ii-and-iii-clarifies/subdoc:iii-it-is-in-conflict-with"
+    },
+    {
+      "page": 60,
+      "key": "page:58",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 60,
+      "key": "subdoc:memo-of-costs",
+      "occurrence_index": 0,
+      "label": "Memo of Costs",
+      "scope_key": "subdoc:judgment"
+    },
+    {
+      "page": 61,
+      "key": "annexure:a-1",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": ""
+    },
+    {
+      "page": 61,
+      "key": "subdoc:contract-agreement-between",
+      "occurrence_index": 0,
+      "label": "CONTRACT AGREEMENT BETWEEN",
+      "scope_key": "annexure:a-1"
+    },
+    {
+      "page": 62,
+      "key": "page:60",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 62,
+      "key": "subdoc:index-2",
+      "occurrence_index": 0,
+      "label": "INDEX",
+      "scope_key": "annexure:a-1"
+    },
+    {
+      "page": 63,
+      "key": "docref:e1070151",
+      "occurrence_index": 0,
+      "label": "proposal No. EI070151",
+      "scope_key": ""
+    },
+    {
+      "page": 63,
+      "key": "numheading:1.1",
+      "occurrence_index": 0,
+      "label": "1.1 Award of contract",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/subdoc:ngw-therefore-this-deed-witnesseth-as"
+    },
+    {
+      "page": 63,
+      "key": "page:61",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 63,
+      "key": "point:1",
+      "occurrence_index": 0,
+      "label": "1. Article",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/subdoc:ngw-therefore-this-deed-witnesseth-as"
+    },
+    {
+      "page": 63,
+      "key": "subdoc:contract-agreement",
+      "occurrence_index": 0,
+      "label": "CONTRACT AGREEMENT",
+      "scope_key": "annexure:a-1"
+    },
+    {
+      "page": 63,
+      "key": "subdoc:ngw-therefore-this-deed-witnesseth-as",
+      "occurrence_index": 0,
+      "label": "NGW: THEREFORE THIS DEED WITNESSETH AS UNDER",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement"
+    },
+    {
+      "page": 63,
+      "key": "term:contractor",
+      "occurrence_index": 0,
+      "label": "here in after referred to as the \"contractor\" which expression",
+      "scope_key": ""
+    },
+    {
+      "page": 63,
+      "key": "term:owner",
+      "occurrence_index": 0,
+      "label": "here in after referred to as \"owner\" or \"HVPNL\" which expression",
+      "scope_key": ""
+    },
+    {
+      "page": 64,
+      "key": "docref:ch35rec064xenprojects",
+      "occurrence_index": 0,
+      "label": "letter No. Ch-35/REC-064/Xen(Projects)",
+      "scope_key": ""
+    },
+    {
+      "page": 64,
+      "key": "docref:ch91rec064xenprojects",
+      "occurrence_index": 0,
+      "label": "letter of award No. Ch-91/REC-064/Xen(Projects)",
+      "scope_key": ""
+    },
+    {
+      "page": 64,
+      "key": "docref:e107015101",
+      "occurrence_index": 0,
+      "label": "letter No. E1070151/01",
+      "scope_key": ""
+    },
+    {
+      "page": 64,
+      "key": "numheading:2.0",
+      "occurrence_index": 0,
+      "label": "2.0 CONTRACT DOCUMENTS",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement"
+    },
+    {
+      "page": 64,
+      "key": "numheading:3.0",
+      "occurrence_index": 0,
+      "label": "3.0 CONDITIONS AND COVENANTS",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement"
+    },
+    {
+      "page": 64,
+      "key": "page:62",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 64,
+      "key": "point:i",
+      "occurrence_index": 0,
+      "label": "i) HVPNL bidding document No. REC-064 consisting of Notice Inviting Tender",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:2.0"
+    },
+    {
+      "page": 64,
+      "key": "point:ii",
+      "occurrence_index": 0,
+      "label": "ii) HVPN Technical Specification No. REC-064.",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:2.0"
+    },
+    {
+      "page": 64,
+      "key": "point:iii",
+      "occurrence_index": 0,
+      "label": "iii) M/s Areva T&D India Ltd. proposal No. E1070151 dated 27.11.2007",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:2.0"
+    },
+    {
+      "page": 64,
+      "key": "point:iv",
+      "occurrence_index": 0,
+      "label": "iv) HVPN letter No. Ch-35/REC-064/Xen(Projects) dated 11.12.2007",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:2.0"
+    },
+    {
+      "page": 64,
+      "key": "point:v",
+      "occurrence_index": 0,
+      "label": "v) Agreed Minutes of the meeting held on 27.12.2007 between HVPN",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:2.0"
+    },
+    {
+      "page": 64,
+      "key": "point:vi",
+      "occurrence_index": 0,
+      "label": "vi) HVPN's letter of award No. Ch-91/REC-064/Xen(Projects) dated 08.04.2008",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:2.0"
+    },
+    {
+      "page": 64,
+      "key": "term:contract documents",
+      "occurrence_index": 0,
+      "label": "herein after referred to as \"Contract Documents\".",
+      "scope_key": ""
+    },
+    {
+      "page": 64,
+      "key": "term:ecc",
+      "occurrence_index": 0,
+      "label": "Erection Conditions of Contract (ECC)",
+      "scope_key": ""
+    },
+    {
+      "page": 64,
+      "key": "term:gcc",
+      "occurrence_index": 0,
+      "label": "General Conditions of contract (GCC)",
+      "scope_key": ""
+    },
+    {
+      "page": 64,
+      "key": "term:itb",
+      "occurrence_index": 0,
+      "label": "Instruction to Bidders (ITB)",
+      "scope_key": ""
+    },
+    {
+      "page": 64,
+      "key": "term:nit",
+      "occurrence_index": 0,
+      "label": "Notice Inviting Tender (NIT)",
+      "scope_key": ""
+    },
+    {
+      "page": 64,
+      "key": "term:scc",
+      "occurrence_index": 0,
+      "label": "Special Conditions of Contract (SCC)",
+      "scope_key": ""
+    },
+    {
+      "page": 65,
+      "key": "numheading:3.3",
+      "occurrence_index": 0,
+      "label": "3.3 TIME SCHEDULE",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:3.0"
+    },
+    {
+      "page": 65,
+      "key": "numheading:3.4",
+      "occurrence_index": 0,
+      "label": "3.4 QUALITY PLANS",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:3.0"
+    },
+    {
+      "page": 65,
+      "key": "page:63",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 66,
+      "key": "numheading:4.0",
+      "occurrence_index": 0,
+      "label": "4.0 SETTLEMENT OF DISPUTES",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement"
+    },
+    {
+      "page": 66,
+      "key": "numheading:4.1",
+      "occurrence_index": 0,
+      "label": "4.1 NOTICE OF DEFAULT",
+      "scope_key": "annexure:a-1/subdoc:contract-agreement/numheading:4.0"
+    },
+    {
+      "page": 66,
+      "key": "page:64",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 67,
+      "key": "page:65",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 68,
+      "key": "page:66",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 68,
+      "key": "subdoc:bank-guarantee-for-contract-performance",
+      "occurrence_index": 0,
+      "label": "BANK GUARANTEE FOR \u23ce CONTRACT PERFORMANCE",
+      "scope_key": "subdoc:judgment"
+    },
+    {
+      "page": 69,
+      "key": "page:67",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 69,
+      "key": "term:citibank n",
+      "occurrence_index": 0,
+      "label": "hereinafter referred to as \"Citibank N.",
+      "scope_key": ""
+    },
+    {
+      "page": 70,
+      "key": "page:68",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 71,
+      "key": "page:69",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 71,
+      "key": "subdoc:price-schedule",
+      "occurrence_index": 0,
+      "label": "Price Schedule",
+      "scope_key": ""
+    },
+    {
+      "page": 71,
+      "key": "subdoc:prices",
+      "occurrence_index": 0,
+      "label": "Prices",
+      "scope_key": "subdoc:work-schedule"
+    },
+    {
+      "page": 71,
+      "key": "subdoc:work-schedule",
+      "occurrence_index": 0,
+      "label": "Work Schedule",
+      "scope_key": ""
+    },
+    {
+      "page": 73,
+      "key": "page:71",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 74,
+      "key": "page:72",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 75,
+      "key": "page:23",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 76,
+      "key": "page:274",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 77,
+      "key": "page:75",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 79,
+      "key": "page:77",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 80,
+      "key": "page:78",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 81,
+      "key": "page:49",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 82,
+      "key": "page:80",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 82,
+      "key": "term:ied",
+      "occurrence_index": 0,
+      "label": "Intelligent electronics device (IED)",
+      "scope_key": ""
+    },
+    {
+      "page": 83,
+      "key": "page:81",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 84,
+      "key": "page:82",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 86,
+      "key": "point:a",
+      "occurrence_index": 0,
+      "label": "a) Submission of an unconditional and irrevocable Bank Guarantee",
+      "scope_key": "subdoc:price-schedule/subdoc:payment-terms"
+    },
+    {
+      "page": 86,
+      "key": "point:b",
+      "occurrence_index": 0,
+      "label": "b) Submit scion of an unconditional and irrevocable Performance Bank G",
+      "scope_key": "subdoc:price-schedule/subdoc:payment-terms"
+    },
+    {
+      "page": 86,
+      "key": "point:c",
+      "occurrence_index": 0,
+      "label": "c) Submission of an undertaking that they will mobilize construction g",
+      "scope_key": "subdoc:price-schedule/subdoc:payment-terms"
+    },
+    {
+      "page": 86,
+      "key": "point:d",
+      "occurrence_index": 0,
+      "label": "d) The advance shall bear an interest rate equal to PLR of SBI",
+      "scope_key": "subdoc:price-schedule/subdoc:payment-terms"
+    },
+    {
+      "page": 86,
+      "key": "point:i",
+      "occurrence_index": 0,
+      "label": "i) Interest bearing Mobilisation advance: Interest bearing mobilisatio",
+      "scope_key": "subdoc:price-schedule/subdoc:payment-terms"
+    },
+    {
+      "page": 86,
+      "key": "subdoc:payment-terms",
+      "occurrence_index": 0,
+      "label": "Payment Terms: -",
+      "scope_key": "subdoc:price-schedule"
+    },
+    {
+      "page": 86,
+      "key": "subdoc:stage-penalty",
+      "occurrence_index": 0,
+      "label": "Stage Penalty",
+      "scope_key": "subdoc:price-schedule"
+    },
+    {
+      "page": 86,
+      "key": "subdoc:taxes-duties",
+      "occurrence_index": 0,
+      "label": "Taxes & Duties",
+      "scope_key": "subdoc:price-schedule"
+    },
+    {
+      "page": 87,
+      "key": "page:85",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 87,
+      "key": "point:e",
+      "occurrence_index": 0,
+      "label": "e) The amount of advance will be recovered @ 20 % of the value",
+      "scope_key": "subdoc:price-schedule/subdoc:payment-terms"
+    },
+    {
+      "page": 87,
+      "key": "point:f",
+      "occurrence_index": 0,
+      "label": "f) The payment of mobilisation, advance is optional.",
+      "scope_key": "subdoc:price-schedule/subdoc:payment-terms"
+    },
+    {
+      "page": 87,
+      "key": "point:ii",
+      "occurrence_index": 0,
+      "label": "ii) Payment for supply of equipment including mandatory spares",
+      "scope_key": "subdoc:price-schedule/subdoc:payment-terms"
+    },
+    {
+      "page": 87,
+      "key": "point:iii",
+      "occurrence_index": 0,
+      "label": "iii) Balance per cent (10%) of the Ex-works price along with taxes",
+      "scope_key": "subdoc:price-schedule/subdoc:payment-terms"
+    },
+    {
+      "page": 87,
+      "key": "point:iv",
+      "occurrence_index": 0,
+      "label": "iv) In land transportation and insurance charges",
+      "scope_key": "subdoc:price-schedule/subdoc:payment-terms"
+    },
+    {
+      "page": 87,
+      "key": "point:v",
+      "occurrence_index": 0,
+      "label": "v) Payment of lot items will be paid on completion of the lot activity",
+      "scope_key": "subdoc:price-schedule/subdoc:payment-terms"
+    },
+    {
+      "page": 88,
+      "key": "page:86",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 88,
+      "key": "subdoc:contract-agreement-2",
+      "occurrence_index": 0,
+      "label": "Contract Agreement",
+      "scope_key": ""
+    },
+    {
+      "page": 88,
+      "key": "subdoc:contractor-s-liability",
+      "occurrence_index": 0,
+      "label": "Contractor's Liability",
+      "scope_key": "subdoc:price-schedule"
+    },
+    {
+      "page": 88,
+      "key": "subdoc:force-majeure",
+      "occurrence_index": 0,
+      "label": "Force Majeure",
+      "scope_key": "subdoc:contract-agreement-2"
+    },
+    {
+      "page": 88,
+      "key": "subdoc:guarantee",
+      "occurrence_index": 0,
+      "label": "Guarantee",
+      "scope_key": "subdoc:contract-agreement-2"
+    },
+    {
+      "page": 88,
+      "key": "subdoc:inspection-and-testing",
+      "occurrence_index": 0,
+      "label": "Inspection and Testing",
+      "scope_key": "subdoc:contract-agreement-2"
+    },
+    {
+      "page": 88,
+      "key": "subdoc:insurance",
+      "occurrence_index": 0,
+      "label": "Insurance",
+      "scope_key": "subdoc:price-schedule"
+    },
+    {
+      "page": 88,
+      "key": "subdoc:liquidated-damages-for-losses-of-66",
+      "occurrence_index": 0,
+      "label": "Liquidated Damages for losses of 66 kV Capacitor Banks: -",
+      "scope_key": "subdoc:price-schedule"
+    },
+    {
+      "page": 88,
+      "key": "subdoc:packing",
+      "occurrence_index": 0,
+      "label": "Packing",
+      "scope_key": "subdoc:contract-agreement-2"
+    },
+    {
+      "page": 88,
+      "key": "subdoc:performance-security",
+      "occurrence_index": 0,
+      "label": "Performance security",
+      "scope_key": "subdoc:price-schedule"
+    },
+    {
+      "page": 88,
+      "key": "subdoc:special-tools-and-tackles",
+      "occurrence_index": 0,
+      "label": "Special tools and tackles",
+      "scope_key": "subdoc:contract-agreement-2"
+    },
+    {
+      "page": 89,
+      "key": "subdoc:makes-of-equipment",
+      "occurrence_index": 0,
+      "label": "Makes of equipment",
+      "scope_key": "subdoc:contract-agreement-2"
+    },
+    {
+      "page": 89,
+      "key": "subdoc:quanitiy-variations",
+      "occurrence_index": 0,
+      "label": "Quanitiy Variations",
+      "scope_key": "subdoc:contract-agreement-2"
+    },
+    {
+      "page": 90,
+      "key": "page:88",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 90,
+      "key": "subdoc:despatch-of-material",
+      "occurrence_index": 0,
+      "label": "Despatch of Material",
+      "scope_key": "subdoc:contract-agreement-2"
+    },
+    {
+      "page": 90,
+      "key": "subdoc:technical",
+      "occurrence_index": 0,
+      "label": "Technical",
+      "scope_key": "subdoc:contract-agreement-2"
+    },
+    {
+      "page": 90,
+      "key": "subdoc:type-test-certificates",
+      "occurrence_index": 0,
+      "label": "Type test Certificates",
+      "scope_key": "subdoc:contract-agreement-2"
+    },
+    {
+      "page": 92,
+      "key": "page:90",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 92,
+      "key": "subdoc:subject",
+      "occurrence_index": 0,
+      "label": "SUBJECT",
+      "scope_key": "subdoc:contract-agreement-2"
+    },
+    {
+      "page": 93,
+      "key": "page:91",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 94,
+      "key": "page:92",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 94,
+      "key": "subdoc:schedule-1a",
+      "occurrence_index": 0,
+      "label": "SCHEDULE-1A",
+      "scope_key": "subdoc:specification-no-rec-064"
+    },
+    {
+      "page": 94,
+      "key": "subdoc:specification-no-rec-064",
+      "occurrence_index": 0,
+      "label": "Specification No.: REC-064",
+      "scope_key": ""
+    },
+    {
+      "page": 95,
+      "key": "page:93",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 95,
+      "key": "subdoc:schedule-2a",
+      "occurrence_index": 0,
+      "label": "SCHEDULE-2A",
+      "scope_key": "subdoc:specification-no-rec-064"
+    },
+    {
+      "page": 96,
+      "key": "page:94",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 98,
+      "key": "page:95",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 99,
+      "key": "page:964",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    },
+    {
+      "page": 100,
+      "key": "page:96",
+      "occurrence_index": 0,
+      "label": null,
+      "scope_key": null
+    }
+  ],
+  "mentions": [
+    {
+      "page": 1,
+      "occurrence_index": 0,
+      "key": "annexure:a-1",
+      "raw_text": "Annexure A-1",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 1,
+      "occurrence_index": 1,
+      "key": "annexure:a-2",
+      "raw_text": "Annexure A-2",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 1,
+      "occurrence_index": 2,
+      "key": "annexure:a-3",
+      "raw_text": "Annexure A-3",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 1,
+      "occurrence_index": 3,
+      "key": "annexure:a-4",
+      "raw_text": "Annexure A-4",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 2,
+      "occurrence_index": 0,
+      "key": "annexure:a-5",
+      "raw_text": "Annexure A-5",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 0,
+      "key": "section:151",
+      "raw_text": "section 151",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 1,
+      "key": "annexure:a-1",
+      "raw_text": "Annexure A-1",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 7,
+      "occurrence_index": 2,
+      "key": "annexure:a-2",
+      "raw_text": "Annexure A-2",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 3,
+      "key": "annexure:a-3",
+      "raw_text": "Annexure A-3",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 4,
+      "key": "annexure:a-4",
+      "raw_text": "Annexure A-4",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 5,
+      "key": "annexure:a-5",
+      "raw_text": "Annexure A-5",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 6,
+      "key": "section:34",
+      "raw_text": "section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 7,
+      "key": "annexure:a-1",
+      "raw_text": "Annexure A-1",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 7,
+      "occurrence_index": 8,
+      "key": "annexure:a-2",
+      "raw_text": "Annexure A-2",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 9,
+      "key": "annexure:a-3",
+      "raw_text": "Annexure A-3",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 10,
+      "key": "annexure:a-4",
+      "raw_text": "Annexure A-4",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 11,
+      "key": "annexure:a-5",
+      "raw_text": "Annexure A-5",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 12,
+      "key": "annexure:a-1",
+      "raw_text": "Annexure A-1",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 7,
+      "occurrence_index": 13,
+      "key": "annexure:a-2",
+      "raw_text": "Annexure A-2",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 14,
+      "key": "annexure:a-3",
+      "raw_text": "Annexure A-3",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 15,
+      "key": "annexure:a-4",
+      "raw_text": "Annexure A-4",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 16,
+      "key": "annexure:a-5",
+      "raw_text": "Annexure A-5",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 17,
+      "key": "docref:62fcars2019",
+      "raw_text": "Misc. No. 62-FCARS/2019",
+      "resolution": "undefined",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 7,
+      "occurrence_index": 18,
+      "key": "term:arbitration act",
+      "raw_text": "Arbitration Act",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 8,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 8,
+      "occurrence_index": 1,
+      "key": "annexure:a-1",
+      "raw_text": "Annexure A-1",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 8,
+      "occurrence_index": 2,
+      "key": "annexure:a-2",
+      "raw_text": "Annexure A-2",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 8,
+      "occurrence_index": 3,
+      "key": "annexure:a-3",
+      "raw_text": "Annexure A-3",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 8,
+      "occurrence_index": 4,
+      "key": "annexure:a-4",
+      "raw_text": "Annexure A-4",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 8,
+      "occurrence_index": 5,
+      "key": "annexure:a-5",
+      "raw_text": "Annexure A-5",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 8,
+      "occurrence_index": 6,
+      "key": "para:1",
+      "raw_text": "para 1",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 8,
+      "occurrence_index": 7,
+      "key": "para:2",
+      "raw_text": "para 2",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 8,
+      "occurrence_index": 8,
+      "key": "docref:62fc2019",
+      "raw_text": "Misc. No. 62-FC/2019",
+      "resolution": "undefined",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 8,
+      "occurrence_index": 9,
+      "key": "term:arbitration act",
+      "raw_text": "Arbitration Act",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 9,
+      "occurrence_index": 0,
+      "key": "section:41",
+      "raw_text": "section 41",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 9,
+      "occurrence_index": 1,
+      "key": "section:151",
+      "raw_text": "section 151",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 9,
+      "occurrence_index": 2,
+      "key": "docref:63fcabr2019",
+      "raw_text": "Misc. No. 63-FCABR/2019",
+      "resolution": "undefined",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 12,
+      "occurrence_index": 0,
+      "key": "para:1",
+      "raw_text": "para 1",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 12,
+      "occurrence_index": 1,
+      "key": "para:2",
+      "raw_text": "para 2",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 12,
+      "occurrence_index": 2,
+      "key": "para:3",
+      "raw_text": "para 3",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 12,
+      "occurrence_index": 3,
+      "key": "para:4",
+      "raw_text": "para 4",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 12,
+      "occurrence_index": 4,
+      "key": "para:5",
+      "raw_text": "para 5",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 12,
+      "occurrence_index": 5,
+      "key": "para:6",
+      "raw_text": "para 6",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 12,
+      "occurrence_index": 6,
+      "key": "para:7",
+      "raw_text": "para 7",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 14,
+      "occurrence_index": 0,
+      "key": "term:loa",
+      "raw_text": "LOA",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 14,
+      "occurrence_index": 1,
+      "key": "term:po",
+      "raw_text": "PO",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 14,
+      "occurrence_index": 2,
+      "key": "term:nit",
+      "raw_text": "NIT",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 15,
+      "occurrence_index": 0,
+      "key": "clause:7",
+      "raw_text": "clause 7",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 15,
+      "occurrence_index": 1,
+      "key": "docref:ch90rec064xenprojects",
+      "raw_text": "letter No. CH-90/REC-064/XEN (Projects)",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 15,
+      "occurrence_index": 2,
+      "key": "term:po",
+      "raw_text": "PO",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 15,
+      "occurrence_index": 3,
+      "key": "term:nit",
+      "raw_text": "NIT",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 15,
+      "occurrence_index": 4,
+      "key": "term:gcc",
+      "raw_text": "GCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 16,
+      "occurrence_index": 0,
+      "key": "annexure:a-1",
+      "raw_text": "Annexure A-1",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 16,
+      "occurrence_index": 1,
+      "key": "annexure:a-2",
+      "raw_text": "Annexure A-2",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 16,
+      "occurrence_index": 2,
+      "key": "clause:11.1",
+      "raw_text": "clause 11.1",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 16,
+      "occurrence_index": 3,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 17,
+      "occurrence_index": 0,
+      "key": "clause:48.2",
+      "raw_text": "clause 48.2",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 17,
+      "occurrence_index": 1,
+      "key": "clause:49.0",
+      "raw_text": "clause 49.0",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 17,
+      "occurrence_index": 2,
+      "key": "term:gcc",
+      "raw_text": "GCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 17,
+      "occurrence_index": 3,
+      "key": "term:gcc",
+      "raw_text": "GCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 18,
+      "occurrence_index": 0,
+      "key": "section:33",
+      "raw_text": "section 33",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 18,
+      "occurrence_index": 1,
+      "key": "section:33",
+      "raw_text": "section 33",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 18,
+      "occurrence_index": 2,
+      "key": "annexure:a-3",
+      "raw_text": "Annexure A-3",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 18,
+      "occurrence_index": 3,
+      "key": "annexure:a-4",
+      "raw_text": "Annexure A-4",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 18,
+      "occurrence_index": 4,
+      "key": "annexure:a-5",
+      "raw_text": "Annexure A-5",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 18,
+      "occurrence_index": 5,
+      "key": "section:34",
+      "raw_text": "section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 18,
+      "occurrence_index": 6,
+      "key": "term:arbitration act",
+      "raw_text": "Arbitration Act",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 19,
+      "occurrence_index": 0,
+      "key": "section:12",
+      "raw_text": "Section 12",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 19,
+      "occurrence_index": 1,
+      "key": "section:12",
+      "raw_text": "Section 12",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 20,
+      "occurrence_index": 0,
+      "key": "docref:1",
+      "raw_text": "claim Nos. 1",
+      "resolution": "undefined",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 20,
+      "occurrence_index": 1,
+      "key": "docref:2",
+      "raw_text": "claim No. 2",
+      "resolution": "undefined",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 20,
+      "occurrence_index": 2,
+      "key": "docref:2",
+      "raw_text": "claim Nos. 2",
+      "resolution": "undefined",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 25,
+      "occurrence_index": 0,
+      "key": "clause:9.0",
+      "raw_text": "clause 9.0",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 25,
+      "occurrence_index": 1,
+      "key": "term:itb",
+      "raw_text": "ITB",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 26,
+      "occurrence_index": 0,
+      "key": "clause:9",
+      "raw_text": "clause 9",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 26,
+      "occurrence_index": 1,
+      "key": "term:itb",
+      "raw_text": "ITB",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 26,
+      "occurrence_index": 2,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 26,
+      "occurrence_index": 3,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 26,
+      "occurrence_index": 4,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 32,
+      "occurrence_index": 0,
+      "key": "clause:12.1",
+      "raw_text": "clause 12.1",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 32,
+      "occurrence_index": 1,
+      "key": "term:itb",
+      "raw_text": "ITB",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 33,
+      "occurrence_index": 0,
+      "key": "term:po",
+      "raw_text": "PO",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 36,
+      "occurrence_index": 0,
+      "key": "clause:43",
+      "raw_text": "clause 43",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 36,
+      "occurrence_index": 1,
+      "key": "term:pbg",
+      "raw_text": "PBG",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 36,
+      "occurrence_index": 2,
+      "key": "term:pbg",
+      "raw_text": "PBG",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 36,
+      "occurrence_index": 3,
+      "key": "term:pbg",
+      "raw_text": "PBG",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 36,
+      "occurrence_index": 4,
+      "key": "term:pbg",
+      "raw_text": "PBG",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 37,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 37,
+      "occurrence_index": 1,
+      "key": "annexure:a-1",
+      "raw_text": "Annexure A-1",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 37,
+      "occurrence_index": 2,
+      "key": "annexure:a-2",
+      "raw_text": "Annexure A-2",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 37,
+      "occurrence_index": 3,
+      "key": "annexure:a-3",
+      "raw_text": "Annexure A-3",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 37,
+      "occurrence_index": 4,
+      "key": "annexure:a-4",
+      "raw_text": "Annexure A-4",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 37,
+      "occurrence_index": 5,
+      "key": "annexure:a-5",
+      "raw_text": "Annexure A-5",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 38,
+      "occurrence_index": 0,
+      "key": "para:1",
+      "raw_text": "para 1",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 38,
+      "occurrence_index": 1,
+      "key": "para:2",
+      "raw_text": "para 2",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 38,
+      "occurrence_index": 2,
+      "key": "para:3",
+      "raw_text": "para 3",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 40,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 40,
+      "occurrence_index": 1,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 40,
+      "occurrence_index": 2,
+      "key": "docref:15",
+      "raw_text": "Arbitration Case No. 15",
+      "resolution": "undefined",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 40,
+      "occurrence_index": 3,
+      "key": "term:arbitration act",
+      "raw_text": "Arbitration Act",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 41,
+      "occurrence_index": 0,
+      "key": "clause:11.1",
+      "raw_text": "Clause 11.1",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 41,
+      "occurrence_index": 1,
+      "key": "clause:48.2",
+      "raw_text": "Clause 48.2",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 42,
+      "occurrence_index": 0,
+      "key": "term:gcc",
+      "raw_text": "GCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 43,
+      "occurrence_index": 0,
+      "key": "clause:9.0",
+      "raw_text": "clause 9.0",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 43,
+      "occurrence_index": 1,
+      "key": "term:itb",
+      "raw_text": "ITB",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 44,
+      "occurrence_index": 0,
+      "key": "term:pbg",
+      "raw_text": "PBG",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 45,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 45,
+      "occurrence_index": 1,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 47,
+      "occurrence_index": 0,
+      "key": "annexure:r-5",
+      "raw_text": "Annexure R5",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 47,
+      "occurrence_index": 1,
+      "key": "term:crb",
+      "raw_text": "CRB",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 47,
+      "occurrence_index": 2,
+      "key": "term:fgl",
+      "raw_text": "FGL",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 47,
+      "occurrence_index": 3,
+      "key": "term:mrc",
+      "raw_text": "MRC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 48,
+      "occurrence_index": 0,
+      "key": "annexure:r-9",
+      "raw_text": "Annexure R9",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 49,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 49,
+      "occurrence_index": 1,
+      "key": "para:22",
+      "raw_text": "para No.22",
+      "resolution": "suppressed",
+      "suppressed_reason": "case_citation"
+    },
+    {
+      "page": 49,
+      "occurrence_index": 2,
+      "key": "term:arbitration act",
+      "raw_text": "Arbitration Act",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 50,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 50,
+      "occurrence_index": 1,
+      "key": "term:arbitration act",
+      "raw_text": "Arbitration Act",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 51,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 51,
+      "occurrence_index": 1,
+      "key": "term:arbitration act",
+      "raw_text": "Arbitration Act",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 52,
+      "occurrence_index": 0,
+      "key": "annexure:r-5",
+      "raw_text": "Annexure R5",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 52,
+      "occurrence_index": 1,
+      "key": "annexure:r-9",
+      "raw_text": "Annexure R9",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 52,
+      "occurrence_index": 2,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 52,
+      "occurrence_index": 3,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 52,
+      "occurrence_index": 4,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 53,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 53,
+      "occurrence_index": 1,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 53,
+      "occurrence_index": 2,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 53,
+      "occurrence_index": 3,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 53,
+      "occurrence_index": 4,
+      "key": "term:arbitration act",
+      "raw_text": "Arbitration Act",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 53,
+      "occurrence_index": 5,
+      "key": "term:arbitration act",
+      "raw_text": "Arbitration Act",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 53,
+      "occurrence_index": 6,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 53,
+      "occurrence_index": 7,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 55,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 55,
+      "occurrence_index": 1,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 55,
+      "occurrence_index": 2,
+      "key": "term:arbitration act",
+      "raw_text": "Arbitration Act",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 55,
+      "occurrence_index": 3,
+      "key": "term:arbitration act",
+      "raw_text": "Arbitration Act",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 56,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 57,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 57,
+      "occurrence_index": 1,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 57,
+      "occurrence_index": 2,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 57,
+      "occurrence_index": 3,
+      "key": "section:34",
+      "raw_text": "Section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 57,
+      "occurrence_index": 4,
+      "key": "term:arbitration act",
+      "raw_text": "Arbitration Act",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 58,
+      "occurrence_index": 0,
+      "key": "para:18",
+      "raw_text": "para 18",
+      "resolution": "suppressed",
+      "suppressed_reason": "case_citation"
+    },
+    {
+      "page": 58,
+      "occurrence_index": 1,
+      "key": "section:28",
+      "raw_text": "Section 28",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 58,
+      "occurrence_index": 2,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 58,
+      "occurrence_index": 3,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 58,
+      "occurrence_index": 4,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 58,
+      "occurrence_index": 5,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 59,
+      "occurrence_index": 0,
+      "key": "section:34",
+      "raw_text": "section 34",
+      "resolution": "suppressed",
+      "suppressed_reason": "external_law"
+    },
+    {
+      "page": 59,
+      "occurrence_index": 1,
+      "key": "term:arbitration act",
+      "raw_text": "Arbitration Act",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 61,
+      "occurrence_index": 0,
+      "key": "docref:hdp1484rec064xenprojects",
+      "raw_text": "CONTRACT No. HDP-1484/REC-064/ XEN(PROJECTS)",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 62,
+      "occurrence_index": 0,
+      "key": "page:1",
+      "raw_text": "Page No. 1",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 62,
+      "occurrence_index": 1,
+      "key": "docref:hdp1484rec064xenprojects",
+      "raw_text": "Contract No. HDP-1484/REC-064/Xen(Projects)",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 63,
+      "occurrence_index": 0,
+      "key": "docref:rec064",
+      "raw_text": "tender enquiry No. REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 63,
+      "occurrence_index": 1,
+      "key": "docref:rec064",
+      "raw_text": "tender enquiry No. REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 63,
+      "occurrence_index": 2,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 63,
+      "occurrence_index": 3,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 0,
+      "key": "docref:hdp1484rec064xenprojects",
+      "raw_text": "award No. HDF-1484/REC-064/Xen(Projects)",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 1,
+      "key": "docref:rec064",
+      "raw_text": "bidding document No. REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 2,
+      "key": "docref:rec064",
+      "raw_text": "Technical Specification No. REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 3,
+      "key": "docref:e1070151",
+      "raw_text": "proposal No. E1070151",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 4,
+      "key": "docref:ch91rec064xenprojects",
+      "raw_text": "letter No. Ch-22/ REC-064/Xen(Projects)",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 5,
+      "key": "docref:e107015101",
+      "raw_text": "letter No. E1070151/01",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 6,
+      "key": "docref:e1070151",
+      "raw_text": "letter No. E1070151",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 7,
+      "key": "docref:e1070151",
+      "raw_text": "letter No. E1070151",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 8,
+      "key": "docref:ch91rec064xenprojects",
+      "raw_text": "letter of award No. Ch-91/REC-064/Xen(Projects)",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 9,
+      "key": "docref:hdp1484rec064xenprojects",
+      "raw_text": "award No. HDP-1484/REC-064/Xen(Projects)",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 10,
+      "key": "docref:hdp1484rec064xenprojects",
+      "raw_text": "award No. HDP-1484/REC-064/Xen(Projects)",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 11,
+      "key": "term:nit",
+      "raw_text": "NIT",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 12,
+      "key": "term:gcc",
+      "raw_text": "GCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 13,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 14,
+      "key": "term:itb",
+      "raw_text": "ITB",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 15,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 16,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 17,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 18,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 19,
+      "key": "term:contract documents",
+      "raw_text": "Contract Documents",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 20,
+      "key": "term:contract documents",
+      "raw_text": "CONTRACT DOCUMENTS",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 21,
+      "key": "term:contract documents",
+      "raw_text": "Contract Documents",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 22,
+      "key": "term:contract documents",
+      "raw_text": "contract documents",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 23,
+      "key": "term:contract documents",
+      "raw_text": "contract documents",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 24,
+      "key": "term:contract documents",
+      "raw_text": "contract documents",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 25,
+      "key": "term:contract documents",
+      "raw_text": "contract documents",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 64,
+      "occurrence_index": 26,
+      "key": "term:ecc",
+      "raw_text": "ECC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 0,
+      "key": "clause:11",
+      "raw_text": "clause 11",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 65,
+      "occurrence_index": 1,
+      "key": "term:loa",
+      "raw_text": "LOA",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 2,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 3,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 4,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 5,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 6,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 7,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 8,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 9,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 10,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 11,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 12,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 13,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 14,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 15,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 16,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 17,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 18,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 19,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 20,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 21,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 22,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 23,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 24,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 25,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 26,
+      "key": "term:contract documents",
+      "raw_text": "contract documents",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 65,
+      "occurrence_index": 27,
+      "key": "term:contract documents",
+      "raw_text": "contract documents",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 66,
+      "occurrence_index": 0,
+      "key": "clause:48",
+      "raw_text": "clause 48",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 66,
+      "occurrence_index": 1,
+      "key": "clause:49",
+      "raw_text": "clause 49",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 67,
+      "occurrence_index": 0,
+      "key": "term:citibank n",
+      "raw_text": "CITIBANK N",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 68,
+      "occurrence_index": 0,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 68,
+      "occurrence_index": 1,
+      "key": "term:contractor",
+      "raw_text": "Contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 0,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 1,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 2,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 3,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 4,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 5,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 6,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 7,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 8,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 9,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 10,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 11,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 12,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 13,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 14,
+      "key": "term:contractor",
+      "raw_text": "Contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 15,
+      "key": "term:contractor",
+      "raw_text": "Contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 16,
+      "key": "term:contractor",
+      "raw_text": "Contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 17,
+      "key": "term:contractor",
+      "raw_text": "Contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 18,
+      "key": "term:contractor",
+      "raw_text": "Contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 19,
+      "key": "term:contractor",
+      "raw_text": "Contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 69,
+      "occurrence_index": 20,
+      "key": "term:citibank n",
+      "raw_text": "Citibank N",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 70,
+      "occurrence_index": 0,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 70,
+      "occurrence_index": 1,
+      "key": "term:owner",
+      "raw_text": "Owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 70,
+      "occurrence_index": 2,
+      "key": "term:contractor",
+      "raw_text": "Contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 70,
+      "occurrence_index": 3,
+      "key": "term:contractor",
+      "raw_text": "Contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 70,
+      "occurrence_index": 4,
+      "key": "term:citibank n",
+      "raw_text": "CitiBank N",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 70,
+      "occurrence_index": 5,
+      "key": "term:citibank n",
+      "raw_text": "CITIBANK N",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 70,
+      "occurrence_index": 6,
+      "key": "term:citibank n",
+      "raw_text": "CitiBank N",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 71,
+      "occurrence_index": 0,
+      "key": "clause:11",
+      "raw_text": "clause 11",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 71,
+      "occurrence_index": 1,
+      "key": "docref:rec064",
+      "raw_text": "TENDER ENQUIRY NO. REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 71,
+      "occurrence_index": 2,
+      "key": "docref:e1070151",
+      "raw_text": "bid No. E1070151",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 71,
+      "occurrence_index": 3,
+      "key": "docref:e107015101",
+      "raw_text": "letter No. E1070151/01",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 71,
+      "occurrence_index": 4,
+      "key": "docref:e107015101",
+      "raw_text": "letter No. E1070151/01",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 71,
+      "occurrence_index": 5,
+      "key": "docref:e1070151",
+      "raw_text": "letter No. E1070151",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 71,
+      "occurrence_index": 6,
+      "key": "docref:e1070151",
+      "raw_text": "letter No. E1070151",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 71,
+      "occurrence_index": 7,
+      "key": "docref:rec064",
+      "raw_text": "Enquiry No. REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 71,
+      "occurrence_index": 8,
+      "key": "docref:ch91rec064xenprojects",
+      "raw_text": "Memo No. Ch-91/REC-064/Xen(Projects)",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 71,
+      "occurrence_index": 9,
+      "key": "term:loa",
+      "raw_text": "LOA",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 71,
+      "occurrence_index": 10,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 72,
+      "occurrence_index": 0,
+      "key": "annexure:1",
+      "raw_text": "Annexure-1",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 74,
+      "occurrence_index": 0,
+      "key": "term:po",
+      "raw_text": "PO",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 75,
+      "occurrence_index": 0,
+      "key": "annexure:5",
+      "raw_text": "Annexure-V",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 75,
+      "occurrence_index": 1,
+      "key": "annexure:5",
+      "raw_text": "Annexure-V",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 75,
+      "occurrence_index": 2,
+      "key": "annexure:5",
+      "raw_text": "Annexure-V",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 75,
+      "occurrence_index": 3,
+      "key": "annexure:5",
+      "raw_text": "Annexure-V",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 75,
+      "occurrence_index": 4,
+      "key": "term:po",
+      "raw_text": "PO",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 76,
+      "occurrence_index": 0,
+      "key": "annexure:5",
+      "raw_text": "Annexure-V",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 76,
+      "occurrence_index": 1,
+      "key": "annexure:5",
+      "raw_text": "Annexure-V",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 76,
+      "occurrence_index": 2,
+      "key": "annexure:5",
+      "raw_text": "Annexure-V",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 76,
+      "occurrence_index": 3,
+      "key": "annexure:5",
+      "raw_text": "Annexure-V",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 76,
+      "occurrence_index": 4,
+      "key": "annexure:b-1",
+      "raw_text": "ANNEXURE-B1",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 76,
+      "occurrence_index": 5,
+      "key": "term:owner",
+      "raw_text": "owner",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 77,
+      "occurrence_index": 0,
+      "key": "annexure:c-1",
+      "raw_text": "ANNEXURE-C-I",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 79,
+      "occurrence_index": 0,
+      "key": "term:po",
+      "raw_text": "PO",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 80,
+      "occurrence_index": 0,
+      "key": "term:po",
+      "raw_text": "PO",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 82,
+      "occurrence_index": 0,
+      "key": "term:ied",
+      "raw_text": "IED",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 84,
+      "occurrence_index": 0,
+      "key": "term:po",
+      "raw_text": "PO",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 86,
+      "occurrence_index": 0,
+      "key": "clause:16",
+      "raw_text": "clause 16",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 86,
+      "occurrence_index": 1,
+      "key": "clause:6",
+      "raw_text": "clause 6",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 86,
+      "occurrence_index": 2,
+      "key": "clause:11",
+      "raw_text": "clause 11",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 86,
+      "occurrence_index": 3,
+      "key": "clause:9.0",
+      "raw_text": "clause 9.0",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 86,
+      "occurrence_index": 4,
+      "key": "term:gcc",
+      "raw_text": "GCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 86,
+      "occurrence_index": 5,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 86,
+      "occurrence_index": 6,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 86,
+      "occurrence_index": 7,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 86,
+      "occurrence_index": 8,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 87,
+      "occurrence_index": 0,
+      "key": "clause:9.1.1",
+      "raw_text": "clause 9.1.1",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 87,
+      "occurrence_index": 1,
+      "key": "clause:12.3",
+      "raw_text": "clause 12.3",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 87,
+      "occurrence_index": 2,
+      "key": "clause:14",
+      "raw_text": "clause 14",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 87,
+      "occurrence_index": 3,
+      "key": "clause:11",
+      "raw_text": "clause 11",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 87,
+      "occurrence_index": 4,
+      "key": "clause:14",
+      "raw_text": "clause 14",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 87,
+      "occurrence_index": 5,
+      "key": "term:gcc",
+      "raw_text": "GCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 87,
+      "occurrence_index": 6,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 87,
+      "occurrence_index": 7,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 87,
+      "occurrence_index": 8,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 87,
+      "occurrence_index": 9,
+      "key": "term:mrc",
+      "raw_text": "MRC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 87,
+      "occurrence_index": 10,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 87,
+      "occurrence_index": 11,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 87,
+      "occurrence_index": 12,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 87,
+      "occurrence_index": 13,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 87,
+      "occurrence_index": 14,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 87,
+      "occurrence_index": 15,
+      "key": "term:contractor",
+      "raw_text": "contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 88,
+      "occurrence_index": 0,
+      "key": "clause:15",
+      "raw_text": "clause 15",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 88,
+      "occurrence_index": 1,
+      "key": "clause:15",
+      "raw_text": "clause 15",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 88,
+      "occurrence_index": 2,
+      "key": "clause:38",
+      "raw_text": "clause 38",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 88,
+      "occurrence_index": 3,
+      "key": "clause:39",
+      "raw_text": "clause 39",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 88,
+      "occurrence_index": 4,
+      "key": "clause:43",
+      "raw_text": "clause 43",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 88,
+      "occurrence_index": 5,
+      "key": "clause:42",
+      "raw_text": "clause 42",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 88,
+      "occurrence_index": 6,
+      "key": "clause:42",
+      "raw_text": "clause 42",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 88,
+      "occurrence_index": 7,
+      "key": "clause:15",
+      "raw_text": "clause 15",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 88,
+      "occurrence_index": 8,
+      "key": "clause:13",
+      "raw_text": "clause 13",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 88,
+      "occurrence_index": 9,
+      "key": "section:2",
+      "raw_text": "section-2",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 88,
+      "occurrence_index": 10,
+      "key": "clause:8.3",
+      "raw_text": "clause 8.3",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 88,
+      "occurrence_index": 11,
+      "key": "clause:25",
+      "raw_text": "clause-25",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 88,
+      "occurrence_index": 12,
+      "key": "term:gcc",
+      "raw_text": "GCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 88,
+      "occurrence_index": 13,
+      "key": "term:gcc",
+      "raw_text": "GCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 88,
+      "occurrence_index": 14,
+      "key": "term:gcc",
+      "raw_text": "GCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 88,
+      "occurrence_index": 15,
+      "key": "term:gcc",
+      "raw_text": "GCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 88,
+      "occurrence_index": 16,
+      "key": "term:gcc",
+      "raw_text": "GCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 88,
+      "occurrence_index": 17,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 88,
+      "occurrence_index": 18,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 88,
+      "occurrence_index": 19,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 88,
+      "occurrence_index": 20,
+      "key": "term:itb",
+      "raw_text": "ITB",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 88,
+      "occurrence_index": 21,
+      "key": "term:itb",
+      "raw_text": "ITB",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 88,
+      "occurrence_index": 22,
+      "key": "term:contractor",
+      "raw_text": "Contractor",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 89,
+      "occurrence_index": 0,
+      "key": "clause:24",
+      "raw_text": "clause 24",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 89,
+      "occurrence_index": 1,
+      "key": "clause:13",
+      "raw_text": "clause 13",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 89,
+      "occurrence_index": 2,
+      "key": "term:gcc",
+      "raw_text": "GCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 89,
+      "occurrence_index": 3,
+      "key": "term:scc",
+      "raw_text": "SCC",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 90,
+      "occurrence_index": 0,
+      "key": "term:nit",
+      "raw_text": "NIT",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 91,
+      "occurrence_index": 0,
+      "key": "docref:rec064",
+      "raw_text": "File No. REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 92,
+      "occurrence_index": 0,
+      "key": "docref:rec064",
+      "raw_text": "TENDER ENQUIRY NO. REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 92,
+      "occurrence_index": 1,
+      "key": "docref:e1070151",
+      "raw_text": "bid No. E1070151",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 92,
+      "occurrence_index": 2,
+      "key": "docref:e107015101",
+      "raw_text": "letter No. E1070151/01",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 92,
+      "occurrence_index": 3,
+      "key": "docref:e107c15101",
+      "raw_text": "letter No. E107C151/01",
+      "resolution": "undefined",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 92,
+      "occurrence_index": 4,
+      "key": "docref:e1070151",
+      "raw_text": "letter No. E1070151",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 92,
+      "occurrence_index": 5,
+      "key": "docref:rec064",
+      "raw_text": "Tender Enquiry No. REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 92,
+      "occurrence_index": 6,
+      "key": "term:nit",
+      "raw_text": "NIT",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 93,
+      "occurrence_index": 0,
+      "key": "page:1",
+      "raw_text": "Page 1",
+      "resolution": "suppressed",
+      "suppressed_reason": "page_footer"
+    },
+    {
+      "page": 93,
+      "occurrence_index": 1,
+      "key": "docref:rec064",
+      "raw_text": "tender Enquiry No. REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 93,
+      "occurrence_index": 2,
+      "key": "docref:e1070151",
+      "raw_text": "Bid No.: EI070151",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 93,
+      "occurrence_index": 3,
+      "key": "docref:ch35rec064xenprojects",
+      "raw_text": "Letter No.: Ch-35/REC-064/Xen(Projects)",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 93,
+      "occurrence_index": 4,
+      "key": "docref:e107015101",
+      "raw_text": "Letter No.: EI070151/01",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 93,
+      "occurrence_index": 5,
+      "key": "docref:ei070151c1",
+      "raw_text": "Letter No.: EI070151/C1",
+      "resolution": "undefined",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 93,
+      "occurrence_index": 6,
+      "key": "docref:e1070151",
+      "raw_text": "Letter No.: EI070151",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 93,
+      "occurrence_index": 7,
+      "key": "term:po",
+      "raw_text": "PO",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 94,
+      "occurrence_index": 0,
+      "key": "clause:12.0",
+      "raw_text": "clause 12.0",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 94,
+      "occurrence_index": 1,
+      "key": "section:2",
+      "raw_text": "Section II",
+      "resolution": "approximate",
+      "suppressed_reason": null
+    },
+    {
+      "page": 94,
+      "occurrence_index": 2,
+      "key": "page:1",
+      "raw_text": "Page 1",
+      "resolution": "suppressed",
+      "suppressed_reason": "page_footer"
+    },
+    {
+      "page": 94,
+      "occurrence_index": 3,
+      "key": "docref:rec064",
+      "raw_text": "ENQUIRY No. REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 94,
+      "occurrence_index": 4,
+      "key": "docref:rec064",
+      "raw_text": "Specification No.: REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 94,
+      "occurrence_index": 5,
+      "key": "term:nit",
+      "raw_text": "NIT",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 95,
+      "occurrence_index": 0,
+      "key": "page:1",
+      "raw_text": "Page 1",
+      "resolution": "suppressed",
+      "suppressed_reason": "page_footer"
+    },
+    {
+      "page": 95,
+      "occurrence_index": 1,
+      "key": "docref:rec064",
+      "raw_text": "ENQUIRY No. REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 95,
+      "occurrence_index": 2,
+      "key": "docref:rec064",
+      "raw_text": "Specification No.: REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 95,
+      "occurrence_index": 3,
+      "key": "term:nit",
+      "raw_text": "NIT",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 97,
+      "occurrence_index": 0,
+      "key": "schedule:490",
+      "raw_text": "Schedule 490",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 97,
+      "occurrence_index": 1,
+      "key": "annexure:1",
+      "raw_text": "Annexure-1",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 97,
+      "occurrence_index": 2,
+      "key": "docref:rec064",
+      "raw_text": "Specification No.: REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 98,
+      "occurrence_index": 0,
+      "key": "section:64",
+      "raw_text": "SEC-64",
+      "resolution": "suppressed",
+      "suppressed_reason": "unresolved"
+    },
+    {
+      "page": 98,
+      "occurrence_index": 1,
+      "key": "page:3",
+      "raw_text": "Page 3",
+      "resolution": "suppressed",
+      "suppressed_reason": "page_footer"
+    },
+    {
+      "page": 98,
+      "occurrence_index": 2,
+      "key": "docref:rec064",
+      "raw_text": "Specification No.: REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 98,
+      "occurrence_index": 3,
+      "key": "docref:rec064",
+      "raw_text": "Specification No.: REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 98,
+      "occurrence_index": 4,
+      "key": "term:nit",
+      "raw_text": "NIT",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 99,
+      "occurrence_index": 0,
+      "key": "page:4",
+      "raw_text": "Page 4",
+      "resolution": "suppressed",
+      "suppressed_reason": "page_footer"
+    },
+    {
+      "page": 99,
+      "occurrence_index": 1,
+      "key": "docref:rec064",
+      "raw_text": "Specification No.: REC-064",
+      "resolution": "exact",
+      "suppressed_reason": null
+    },
+    {
+      "page": 100,
+      "occurrence_index": 0,
+      "key": "page:5",
+      "raw_text": "Page 5",
+      "resolution": "suppressed",
+      "suppressed_reason": "page_footer"
+    },
+    {
+      "page": 100,
+      "occurrence_index": 1,
+      "key": "term:nit",
+      "raw_text": "NIT",
+      "resolution": "exact",
+      "suppressed_reason": null
+    }
+  ]
+}

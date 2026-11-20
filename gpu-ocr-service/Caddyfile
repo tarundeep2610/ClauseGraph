@@ -9,7 +9,7 @@
 			# look local (a DNS-rebinding protection) — Caddy forwards the
 			# original client Host header by default, which Ollama then
 			# rejects with 403. Rewrite it to match what Ollama expects.
-			reverse_proxy localhost:11434 {
+			reverse_proxy ollama:11434 {
 				header_up Host localhost:11434
 			}
 		}
@@ -21,6 +21,6 @@
 	# enforces the shared secret on its own /api/v1/* routes and intentionally
 	# leaves /health public.
 	handle {
-		reverse_proxy localhost:8000
+		reverse_proxy gpu-ocr-api:8000
 	}
 }

@@ -6,6 +6,10 @@ __pycache__/
 # Node / frontend
 node_modules/
 
+# Generated at `npm install` time by scripts/copy-pdfjs-assets.mjs — derived
+# from node_modules/pdfjs-dist, not source.
+frontend/public/pdfjs/
+
 # C extensions
 *.so
 
@@ -152,7 +156,15 @@ activemq-data/
 
 # Environments
 .env
+.env.*
+!.env.example
+*.env.local*
 .envrc
+
+# Session-local investigation notes/evidence (page text dumps, diagnostic
+# captures) — useful for picking up an investigation later, never meant to
+# be committed.
+/diagnostics/
 .venv
 env/
 venv/
@@ -223,6 +235,26 @@ __marimo__/
 # Runtime data
 data/
 *.db
+
+# Ad-hoc AI-indexing provider comparison dumps (scripts/compare_ai_indexing_qwen_vs_gemini.py) —
+# contains full extracted text/headings from real documents, not for commit.
+qwen_comparison_results/
+
+# Ad-hoc eval diff/baseline dumps from action-items accuracy investigations —
+# raw per-trial false_positive/false_negative JSON and cached OCR text, not
+# source. See AI_ACTION_ITEMS_ACCURACY_INVESTIGATION.md for the findings;
+# scratch/analyze_*.py (the reusable analysis scripts) are tracked, these
+# data dumps are not.
+scratch/baseline_post_fix_1/
+scratch/existing_eval_reports/
+scratch/build_gold_fixture_*.py
+scratch/check_*.py
+scratch/find_*.py
+scratch/get_*.py
+scratch/inspect_job*.py
+scratch/print_*.py
+scratch/survey_*.py
+scratch/test_job*.py
 
 # Build artifacts / bundled images
 *.tar
