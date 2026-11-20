@@ -1,9 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../utils/AuthContext';
 
-export default function Header({ idleState, onExit }) {
+// Presentational only - the actual health check lives on the backend
+// (gpu_ocr_client.check_health(), surfaced via GET /health); this just maps
+// the already-computed connection/model state to a label/style, the same
+// way ViewerPanel's confidence badge maps backend-computed tiers.
+function gpuStatusDisplay(gpuStatus) {
+  if (!gpuStatus) return null; // no poll has resolved yet - render nothing rather than guess
+  if (gpuStatus.gpu_ocr_service_connection !== 'online') {
+    return { className: 'offline', text: 'GPU: Offline' };
+  }
+  if (!gpuStatus.gpu_model_loaded) {
+    return { className: 'warn', text: 'GPU: Idle' };
+  }
+  return { className: '', text: 'GPU: Ready' };
+}
+
+export default function Header({ idleState, gpuStatus, onExit }) {
   const { isAdmin, user, logout } = useAuth();
   const { label, className, text } = idleState;
+  const gpuDisplay = gpuStatusDisplay(gpuStatus);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -28,6 +44,11 @@ export default function Header({ idleState, onExit }) {
         <div id="idlePill" className={className}>
           <i className="fa-solid fa-circle" style={{ fontSize: '0.5rem' }} /> {text ?? label}
         </div>
+        {gpuDisplay && (
+          <div className={`gpu-status-pill ${gpuDisplay.className}`} data-testid="gpu-status-pill">
+            <i className="fa-solid fa-circle" style={{ fontSize: '0.5rem' }} /> {gpuDisplay.text}
+          </div>
+        )}
         {isAdmin && (
           <button id="exitBtn" onClick={onExit}>
             <i className="fa-solid fa-power-off" /> Exit &amp; Free Memory

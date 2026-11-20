@@ -1,0 +1,72 @@
+version: "3.9"
+
+# LOCAL TEST ONLY — for running the GPU OCR service in CPU-fallback mode on
+# a dev machine with no GPU, alongside ../docker-compose.local-test.yml
+# running the CPU app. See ../run-local-test.ps1 and DEPLOYMENT.md's "Local
+# testing without a GPU" section. The prod file is docker-compose.yml — this
+# is identical to it except gpu-ocr-api has no GPU device reservation.
+
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    hostname: ocr-gpu
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_EXTRA_ARGS=--advertise-tags=tag:ocr-gpu
+      - TS_STATE_DIR=/var/lib/tailscale
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add: [NET_ADMIN, NET_RAW]
+    ports:
+      - "11610:11610"
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    network_mode: "service:tailscale"
+    depends_on: [tailscale]
+    environment:
+      - OLLAMA_HOST=127.0.0.1:11434
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  gpu-proxy:
+    image: caddy:2-alpine
+    network_mode: "service:tailscale"
+    depends_on: [tailscale, ollama, gpu-ocr-api]
+    environment:
+      - GPU_OCR_SHARED_SECRET=${GPU_OCR_SHARED_SECRET}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped
+
+  gpu-ocr-api:
+    image: ocr-gpu-api:latest
+    build: .
+    network_mode: "service:tailscale"
+    depends_on: [tailscale]
+    environment:
+      - GPU_OCR_SHARED_SECRET=${GPU_OCR_SHARED_SECRET}
+      # Kept at 1 here — CPU inference for one page already uses most of
+      # this box's memory/CPU; a second concurrent page risks an OOM-kill.
+      - GPU_OCR_MAX_CONCURRENT_JOBS=${GPU_OCR_MAX_CONCURRENT_JOBS:-1}
+      - UNLIMITED_OCR_ALLOW_REMOTE_CODE=1
+      - UNLIMITED_OCR_MODEL_REVISION=${UNLIMITED_OCR_MODEL_REVISION:-main}
+      - HF_HOME=/app/hf_cache
+      # hf_xet's chunked transfer protocol stalls/retries indefinitely on
+      # unstable or restricted networks ("connection struggling" in the xet
+      # log) — force the plain HTTPS downloader instead, which is far more
+      # tolerant of flaky connections.
+      - HF_HUB_DISABLE_XET=1
+    # No GPU reservation — runs on CPU. unlimited_ocr_engine.py already
+    # detects torch.cuda.is_available()==False and falls back to CPU/float32.
+    volumes:
+      - hf_cache:/app/hf_cache
+    restart: unless-stopped
+
+volumes:
+  tailscale-state:
+  ollama_data:
+  hf_cache:

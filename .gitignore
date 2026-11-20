@@ -227,6 +227,8 @@ data/
 # Build artifacts / bundled images
 *.tar
 *.tar.gz
+*.zip
+gpu-deploy-cmd.txt
 
 # Generated OCR output (not source)
 latest_ocr_result.md

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 let mockAuth = {};
@@ -59,5 +59,47 @@ describe('Header — user menu / logout', () => {
     fireEvent.click(screen.getByRole('button', { name: /Exit & Free Memory/i }));
     expect(onExit).toHaveBeenCalledOnce();
     expect(logout).not.toHaveBeenCalled();
+  });
+});
+
+describe('Header — GPU status pill', () => {
+  beforeEach(() => {
+    mockAuth = { isAdmin: false, user: null, logout: vi.fn() };
+  });
+
+  it('renders nothing before the first health poll resolves (gpuStatus still null)', () => {
+    render(<Header idleState={idleState} gpuStatus={null} onExit={vi.fn()} />);
+    expect(screen.queryByTestId('gpu-status-pill')).not.toBeInTheDocument();
+  });
+
+  it('renders "GPU: Offline" when the GPU service connection is unreachable', () => {
+    const gpuStatus = { gpu_ocr_service_connection: 'unreachable', gpu_model_loaded: false };
+    render(<Header idleState={idleState} gpuStatus={gpuStatus} onExit={vi.fn()} />);
+    const pill = screen.getByTestId('gpu-status-pill');
+    expect(pill).toHaveTextContent('GPU: Offline');
+    expect(pill.className).toContain('offline');
+  });
+
+  it('renders "GPU: Offline" when the GPU service connection is offline (reachable but errored)', () => {
+    const gpuStatus = { gpu_ocr_service_connection: 'offline', gpu_model_loaded: false };
+    render(<Header idleState={idleState} gpuStatus={gpuStatus} onExit={vi.fn()} />);
+    expect(screen.getByTestId('gpu-status-pill')).toHaveTextContent('GPU: Offline');
+  });
+
+  it('renders "GPU: Idle" when online but the model is not loaded', () => {
+    const gpuStatus = { gpu_ocr_service_connection: 'online', gpu_model_loaded: false };
+    render(<Header idleState={idleState} gpuStatus={gpuStatus} onExit={vi.fn()} />);
+    const pill = screen.getByTestId('gpu-status-pill');
+    expect(pill).toHaveTextContent('GPU: Idle');
+    expect(pill.className).toContain('warn');
+  });
+
+  it('renders "GPU: Ready" when online and the model is loaded', () => {
+    const gpuStatus = { gpu_ocr_service_connection: 'online', gpu_model_loaded: true };
+    render(<Header idleState={idleState} gpuStatus={gpuStatus} onExit={vi.fn()} />);
+    const pill = screen.getByTestId('gpu-status-pill');
+    expect(pill).toHaveTextContent('GPU: Ready');
+    expect(pill.className).not.toContain('warn');
+    expect(pill.className).not.toContain('offline');
   });
 });

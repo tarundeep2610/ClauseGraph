@@ -18,6 +18,11 @@ USER_OR_ADMIN_ROUTES = [
     ("POST", "/api/jobs/nonexistent-job-id/pause", None),
     ("POST", "/api/jobs/nonexistent-job-id/retry", None),
     ("DELETE", "/api/jobs/nonexistent-job-id", None),
+    ("GET", "/api/jobs/nonexistent-job-id/review-pages", None),
+    ("GET", "/api/review-queue", None),
+    ("GET", "/api/jobs/nonexistent-job-id/pages/1/attempts", None),
+    ("POST", "/api/jobs/nonexistent-job-id/pages/1/retry", None),
+    ("POST", "/api/jobs/nonexistent-job-id/pages/1/confirm-correct", None),
 ]
 
 PUBLIC_ROUTES = [

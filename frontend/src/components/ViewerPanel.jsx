@@ -1,4 +1,38 @@
+import { useState } from 'react';
 import { renderMarkdown } from '../utils/markdown';
+import RetryPagesModal from './RetryPagesModal';
+
+// Presentational only — the thresholds themselves live entirely on the backend
+// (confidence.py); this just maps the already-computed tier string to a label/color
+// so the frontend never has its own, possibly-drifting copy of the boundaries.
+const TIER_DISPLAY = {
+  highly_confident: { label: 'Highly Confident', color: 'var(--success)' },
+  very_confident: { label: 'Very Confident', color: '#4ade80' },
+  confident: { label: 'Confident', color: '#facc15' },
+  needs_review: { label: 'Needs Review', color: 'var(--error)' },
+  blank_page: { label: 'Blank Page', color: 'var(--muted)' },
+  failed: { label: 'Failed', color: '#991b1b' },
+};
+
+function ConfidenceBadge({ page }) {
+  if (page.confidence_pct === null || page.confidence_pct === undefined || !page.confidence_tier) return null;
+  const display = TIER_DISPLAY[page.confidence_tier];
+  if (!display) return null;
+  const showPct = page.confidence_tier !== 'blank_page' && page.confidence_tier !== 'failed';
+  return (
+    <span
+      className="confidence-badge"
+      style={{
+        display: 'inline-block', marginLeft: 10, padding: '2px 9px', borderRadius: 999,
+        fontSize: '0.7rem', fontWeight: 600, color: display.color,
+        border: `1px solid ${display.color}`, verticalAlign: 'middle',
+      }}
+      data-testid={`confidence-badge-${page.page}`}
+    >
+      {showPct ? `${page.confidence_pct}% · ${display.label}` : display.label}
+    </span>
+  );
+}
 
 export default function ViewerPanel({
   viewMode,
@@ -11,15 +45,26 @@ export default function ViewerPanel({
   onResume,
   onDownloadPdf,
   onDownloadResult,
+  sidebarCollapsed,
+  onToggleSidebar,
+  onRetryPage,
+  retryingPage,
+  onRetryPages,
 }) {
   const showPdf = viewMode !== 'result';
   const showResult = viewMode !== 'pdf';
+  const [retryModalOpen, setRetryModalOpen] = useState(false);
 
   let progressLabel = 'Ready';
   let progressColor = 'var(--accent)';
   if (jobDetails) {
     if (jobDetails.status === 'processing') progressLabel = `Processing (${jobDetails.processed_pages}/${jobDetails.total_pages} pages)...`;
-    else if (jobDetails.status === 'completed') { progressLabel = `Done (${jobDetails.total_pages} pages)`; progressColor = 'var(--success)'; }
+    else if (jobDetails.status === 'completed') {
+      const failed = jobDetails.failed_pages || 0;
+      const passed = jobDetails.total_pages - failed;
+      progressLabel = failed > 0 ? `Done (${passed} passed, ${failed} failed)` : `Done (${jobDetails.total_pages} pages)`;
+      progressColor = failed > 0 ? 'var(--warning)' : 'var(--success)';
+    }
     else if (jobDetails.status === 'paused') { progressLabel = `Paused (${jobDetails.processed_pages}/${jobDetails.total_pages} pages extracted)`; progressColor = '#67e8f9'; }
     else if (jobDetails.status === 'failed') { progressLabel = 'Failed'; progressColor = 'var(--error)'; }
     else progressLabel = 'Queued...';
@@ -27,8 +72,16 @@ export default function ViewerPanel({
 
   const pages = jobDetails?.pages_data || [];
   let resultHtml;
+  let pageBlocks = null;
   if (!pages.length) {
-    if (jobDetails?.status === 'processing') {
+    if (!jobDetails && hasSelection) {
+      // A job switch (new upload or selecting a different history entry) has
+      // already updated pdfSrc/hasSelection, but jobDetails is cleared until
+      // the fresh fetch resolves - show a neutral loading state instead of
+      // falling through to "Waiting for first page", which would be
+      // misleading for a job that's actually already completed.
+      resultHtml = '<div style="text-align:center;padding-top:60px;color:var(--muted)">Loading document...</div>';
+    } else if (jobDetails?.status === 'processing') {
       resultHtml = '<div style="text-align:center;padding-top:60px;">Scanning...</div>';
     } else if (jobDetails?.status === 'failed') {
       resultHtml = `<div style="color:var(--error);padding:18px;">Extraction failed: ${jobDetails.error_message || ''}</div>`;
@@ -36,9 +89,14 @@ export default function ViewerPanel({
       resultHtml = '<div style="text-align:center;padding-top:60px;color:var(--muted)">Waiting for first page...</div>';
     }
   } else {
-    let md = '';
-    pages.forEach((p) => { md += `### Page ${p.page}\n\n${p.text || ''}\n\n---\n\n`; });
-    resultHtml = renderMarkdown(md);
+    // Rendered per-page (not one concatenated blob) so each page can carry its own
+    // confidence badge. Pages with no score yet (still pending/processing) show no
+    // badge rather than a fabricated one.
+    pageBlocks = pages.map((p) => ({
+      page: p.page,
+      bodyHtml: renderMarkdown(p.text || ''),
+      data: p,
+    }));
   }
 
   const canPause = jobDetails?.status === 'processing';
@@ -47,21 +105,32 @@ export default function ViewerPanel({
   return (
     <div className="panel viewer-panel">
       <div className="viewer-toolbar">
-        <div className="view-toggles">
-          <button className={`view-toggle-btn ${viewMode === 'split' ? 'active' : ''}`} onClick={() => setViewMode('split')}>
-            <i className="fa-solid fa-columns" /> Split
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button
+            className="btn btn-sm btn-secondary"
+            onClick={onToggleSidebar}
+            title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+            data-testid="sidebar-toggle-btn"
+          >
+            <i className={`fa-solid ${sidebarCollapsed ? 'fa-angles-right' : 'fa-angles-left'}`} />
           </button>
-          <button className={`view-toggle-btn ${viewMode === 'pdf' ? 'active' : ''}`} onClick={() => setViewMode('pdf')}>
-            <i className="fa-regular fa-file-pdf" /> PDF Only
-          </button>
-          <button className={`view-toggle-btn ${viewMode === 'result' ? 'active' : ''}`} onClick={() => setViewMode('result')}>
-            <i className="fa-solid fa-file-lines" /> Result Only
-          </button>
+          <div className="view-toggles">
+            <button className={`view-toggle-btn ${viewMode === 'split' ? 'active' : ''}`} onClick={() => setViewMode('split')}>
+              <i className="fa-solid fa-columns" /> Split
+            </button>
+            <button className={`view-toggle-btn ${viewMode === 'pdf' ? 'active' : ''}`} onClick={() => setViewMode('pdf')}>
+              <i className="fa-regular fa-file-pdf" /> PDF Only
+            </button>
+            <button className={`view-toggle-btn ${viewMode === 'result' ? 'active' : ''}`} onClick={() => setViewMode('result')}>
+              <i className="fa-solid fa-file-lines" /> Result Only
+            </button>
+          </div>
         </div>
         {hasSelection && (
           <div className="download-group">
             {canPause && <button className="btn btn-sm btn-warn" onClick={onPause}><i className="fa-solid fa-pause" /> Pause</button>}
             {canResume && <button className="btn btn-sm btn-secondary" onClick={onResume}><i className="fa-solid fa-rotate-right" /> Resume</button>}
+            <button className="btn btn-sm btn-secondary" onClick={() => setRetryModalOpen(true)} data-testid="retry-pages-btn"><i className="fa-solid fa-rotate-right" /> Retry Pages</button>
             <button className="btn btn-sm btn-secondary" onClick={onDownloadPdf}><i className="fa-solid fa-file-arrow-down" /> PDF</button>
             <button className="btn btn-sm btn-primary" onClick={onDownloadResult}><i className="fa-solid fa-download" /> Result (.md)</button>
           </div>
@@ -86,10 +155,52 @@ export default function ViewerPanel({
               <span><i className="fa-solid fa-align-left" /> Extracted OCR Markdown</span>
               <span style={{ fontSize: '0.73rem', color: progressColor }}>{progressLabel}</span>
             </div>
-            <div className="view-box-content markdown-body" dangerouslySetInnerHTML={{ __html: hasSelection ? resultHtml : '<div style="text-align:center;color:var(--muted);padding-top:90px;">Select a document or upload a new file to view results.</div>' }} />
+            {hasSelection && pageBlocks ? (
+              <div className="view-box-content markdown-body">
+                {pageBlocks.map(({ page, bodyHtml, data }) => (
+                  <div key={page} className="ocr-page-block" data-testid={`page-block-${page}`}>
+                    <h3 style={{ display: 'flex', alignItems: 'center', margin: '0 0 8px' }}>
+                      Page {page}
+                      <ConfidenceBadge page={data} />
+                      {(data.status === 'failed' || data.status === 'review') && (
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          style={{ marginLeft: 10 }}
+                          disabled={retryingPage !== null && retryingPage !== undefined}
+                          onClick={() => onRetryPage(page)}
+                          data-testid={`retry-page-${page}`}
+                        >
+                          <i className="fa-solid fa-rotate-right" /> {retryingPage === page ? 'Retrying...' : 'Retry'}
+                        </button>
+                      )}
+                    </h3>
+                    <div dangerouslySetInnerHTML={{ __html: bodyHtml }} />
+                    <hr />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                className="view-box-content markdown-body"
+                dangerouslySetInnerHTML={{
+                  __html: hasSelection ? resultHtml : '<div style="text-align:center;color:var(--muted);padding-top:90px;">Select a document or upload a new file to view results.</div>',
+                }}
+              />
+            )}
           </div>
         )}
       </div>
+
+      <RetryPagesModal
+        open={retryModalOpen}
+        onClose={() => setRetryModalOpen(false)}
+        onConfirm={(scope) => { setRetryModalOpen(false); onRetryPages(scope); }}
+        counts={{
+          failed: jobDetails?.failed_pages ?? 0,
+          review: jobDetails?.review_pages ?? 0,
+          total: jobDetails?.total_pages ?? 0,
+        }}
+      />
     </div>
   );
 }

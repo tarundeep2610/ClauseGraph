@@ -70,6 +70,11 @@ services:
       - UNLIMITED_OCR_ALLOW_REMOTE_CODE=1
       - UNLIMITED_OCR_MODEL_REVISION=${UNLIMITED_OCR_MODEL_REVISION:-main}
       - HF_HOME=/app/hf_cache
+      # hf_xet's chunked transfer protocol stalls/retries indefinitely on
+      # unstable or restricted networks ("connection struggling" in the xet
+      # log) — force the plain HTTPS downloader instead, which is far more
+      # tolerant of flaky connections.
+      - HF_HUB_DISABLE_XET=1
     deploy:
       resources:
         reservations:

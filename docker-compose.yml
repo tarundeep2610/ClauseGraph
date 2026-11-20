@@ -36,6 +36,8 @@ services:
       - PYTHONUNBUFFERED=1
       - RENDER_SCALE=1.5
       - OCR_TIMEOUT_SECONDS=600
+      # How many pages this CPU service submits to the GPU service at once.
+      - OCR_JOB_CONCURRENCY=${OCR_JOB_CONCURRENCY:-2}
       - DATA_DIR=/app/data
       # GPU server — reached over the tailnet, see DEPLOYMENT.md
       - GPU_OCR_BASE_URL=${GPU_OCR_BASE_URL:-}
@@ -43,7 +45,10 @@ services:
       - GPU_OCR_SHARED_SECRET=${GPU_OCR_SHARED_SECRET:-}
       - GPU_OCR_CONNECT_TIMEOUT_SECONDS=${GPU_OCR_CONNECT_TIMEOUT_SECONDS:-10}
       - GPU_OCR_POLL_INTERVAL_SECONDS=${GPU_OCR_POLL_INTERVAL_SECONDS:-3}
-      - GPU_OCR_POLL_TIMEOUT_SECONDS=${GPU_OCR_POLL_TIMEOUT_SECONDS:-600}
+      # Client-side liveness safety net only (NOT a per-page timeout - that's
+      # OCR_TIMEOUT_SECONDS above, enforced by the GPU service itself). See
+      # config.py's comment for why this must stay decoupled from it.
+      - GPU_OCR_CLIENT_SAFETY_TIMEOUT_SECONDS=${GPU_OCR_CLIENT_SAFETY_TIMEOUT_SECONDS:-1800}
       - OCR_LOCAL_ENGINE=${OCR_LOCAL_ENGINE:-false}
       # AuthNexus SSO — see DEPLOYMENT.md for how to obtain these
       - AUTH_AUTHORITY=${AUTH_AUTHORITY:-}

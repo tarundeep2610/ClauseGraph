@@ -22,6 +22,10 @@ const DEFAULT_FORM = {
   glmNumPredict: '2048',
   glmRepeatPenalty: 1.2,
   unlimitedBaseSize: '1024',
+  processingMode: 'single',
+  batchSize: '5',
+  enableOverlap: true,
+  escalateBeforeFlagging: true,
 };
 
 export default function Dashboard() {
@@ -47,18 +51,40 @@ export default function Dashboard() {
   const [activeJobId, setActiveJobId] = useState(null);
   const [jobDetails, setJobDetails] = useState(null);
   const [viewMode, setViewMode] = useState(() => loadPersistedSettings().viewMode || 'split');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => loadPersistedSettings().sidebarCollapsed || false);
 
   useEffect(() => {
     const { customPrompt, pageRange, ...formToPersist } = form;
-    savePersistedSettings({ form: formToPersist, viewMode });
-  }, [form, viewMode]);
+    savePersistedSettings({ form: formToPersist, viewMode, sidebarCollapsed });
+  }, [form, viewMode, sidebarCollapsed]);
 
   const pollRef = useRef(null);
   const lastUserActionRef = useRef(Date.now());
   const [idle, setIdle] = useState({ text: 'Session active — idle timeout: --:--', className: '' });
   const [idleBanner, setIdleBanner] = useState({ visible: false, expired: false, message: '' });
+  const [gpuStatus, setGpuStatus] = useState(null);
+  const [retryingPage, setRetryingPage] = useState(null);
 
   const hasActiveJobs = jobs.some((j) => j.status === 'processing' || j.status === 'pausing');
+
+  // ── GPU service status (backs the Header pill) — independent of job
+  // polling so it keeps working with no job selected/active, unlike the
+  // job-status poll which the resume-polling-deadlock fix intentionally
+  // still gates on job activity.
+  useEffect(() => {
+    let cancelled = false;
+    async function pollGpuHealth() {
+      try {
+        const resp = await apiFetch('/health');
+        if (!cancelled && resp.ok) setGpuStatus(await resp.json());
+      } catch (e) {
+        // ignore - next poll will retry
+      }
+    }
+    pollGpuHealth();
+    const interval = setInterval(pollGpuHealth, 15000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
 
   // ── Load prompts + settings + jobs on mount ────────────────────────────
   useEffect(() => {
@@ -159,16 +185,25 @@ export default function Dashboard() {
   }, [hasActiveJobs]);
 
   useEffect(() => {
-    if (!activeJobId) { setJobDetails(null); return; }
+    // Always clear immediately on any switch (including to a different,
+    // already-selected job, not just to "none selected") - otherwise the
+    // previous job's pages_data stays displayed for however long the fresh
+    // fetch below takes, showing stale/mismatched OCR text next to the
+    // newly-selected document.
+    setJobDetails(null);
+    if (!activeJobId) return;
+    // Polls whenever a job is selected, independent of pollRef/hasActiveJobs -
+    // gating this on "the list poll happened to already be running" was the
+    // other half of the resume-polling-deadlock bug: setActiveJobId(jobId) in
+    // handleRetry is a no-op re-render when resuming the job you're already
+    // viewing (the common case - e.g. resuming from the viewer's own button),
+    // so an effect keyed on [activeJobId, hasActiveJobs] never re-ran to pick
+    // up pollRef.current having just been set.
     fetchJobDetails(activeJobId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeJobId]);
-
-  useEffect(() => {
-    if (!activeJobId || !pollRef.current) return;
     const t = setInterval(() => fetchJobDetails(activeJobId), 2500);
     return () => clearInterval(t);
-  }, [activeJobId, hasActiveJobs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeJobId]);
 
   async function fetchJobDetails(jobId) {
     const resp = await apiFetch(`/api/jobs/${jobId}`);
@@ -253,7 +288,13 @@ export default function Dashboard() {
     } else {
       params.set('tiling', 'false');
       params.set('unlimited_base_size', form.unlimitedBaseSize);
+      params.set('processing_mode', form.processingMode || 'single');
+      if (form.processingMode === 'batch') {
+        params.set('chunk_size', form.batchSize || '5');
+        params.set('enable_overlap', form.enableOverlap === false ? 'false' : 'true');
+      }
     }
+    params.set('escalate_before_flagging', form.escalateBeforeFlagging === false ? 'false' : 'true');
 
     const body = new FormData();
     body.append('file', file);
@@ -269,6 +310,11 @@ export default function Dashboard() {
       handleClearFile();
       await loadJobsList();
       setActiveJobId(res.job_id);
+      // Same race as handleRetry: a brand-new job can briefly sit at
+      // 'pending' (not recognized by hasActiveJobs) before the background
+      // task flips it to 'processing', which would otherwise leave the
+      // gated poller stuck off. Start it directly instead of waiting.
+      if (!pollRef.current) startAutoPolling();
     } catch (e) {
       alert(`Network error: ${e.message}`);
     } finally {
@@ -283,8 +329,48 @@ export default function Dashboard() {
   }
   async function handleRetry(jobId) {
     await apiFetch(`/api/jobs/${jobId}/retry`, { method: 'POST' });
+    // Select the resumed job (the history-list resume button never called
+    // onSelect) and ensure polling is running right now rather than waiting
+    // for a loadJobsList() snapshot to notice - the just-scheduled backend
+    // task may not have flipped the job's status to 'processing' yet by the
+    // time this resolves, which would otherwise leave the hasActiveJobs-gated
+    // poller stuck off indefinitely even though the job is actively running.
+    setActiveJobId(jobId);
+    if (!pollRef.current) startAutoPolling();
     loadJobsList();
   }
+  async function handleRetryPage(pageNum) {
+    if (!activeJobId) return;
+    setRetryingPage(pageNum);
+    try {
+      const resp = await apiFetch(`/api/jobs/${activeJobId}/pages/${pageNum}/retry`, { method: 'POST' });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        alert(`Retry failed: ${err.detail || resp.statusText}`);
+        return;
+      }
+      const updated = await resp.json();
+      setJobDetails((jd) => jd ? {
+        ...jd,
+        pages_data: jd.pages_data.map((p) => (p.page_num === updated.page_num ? { ...p, ...updated } : p)),
+      } : jd);
+    } finally {
+      setRetryingPage(null);
+    }
+  }
+
+  async function handleRetryPages(scope) {
+    if (!activeJobId) return;
+    const resp = await apiFetch(`/api/jobs/${activeJobId}/retry-pages?scope=${scope}`, { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert(`Retry failed: ${err.detail || resp.statusText}`);
+      return;
+    }
+    if (!pollRef.current) startAutoPolling();
+    loadJobsList();
+  }
+
   async function handleDelete(jobId) {
     if (!confirm('Delete this document and its results?')) return;
     await apiFetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
@@ -374,11 +460,11 @@ export default function Dashboard() {
 
   return (
     <div className="container">
-      <Header idleState={idle} onExit={handleExit} />
+      <Header idleState={idle} gpuStatus={gpuStatus} onExit={handleExit} />
       <IdleBanner visible={idleBanner.visible} expired={idleBanner.expired} message={idleBanner.message} onKeepAlive={handleKeepAlive} />
       <ControlBar visible={hasActiveJobs} onPauseCurrent={() => activeJobId && handlePause(activeJobId)} onStopAll={handleStopAll} />
 
-      <div className="dashboard">
+      <div className={`dashboard${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
         <div className="sidebar">
           <UploadPanel
             file={file}
@@ -424,6 +510,11 @@ export default function Dashboard() {
           onResume={() => activeJobId && handleRetry(activeJobId)}
           onDownloadPdf={() => activeJobId && handleDownloadFile(activeJobId)}
           onDownloadResult={() => activeJobId && handleDownloadResult(activeJobId)}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
+          onRetryPage={handleRetryPage}
+          retryingPage={retryingPage}
+          onRetryPages={handleRetryPages}
         />
       </div>
     </div>
