@@ -14,6 +14,7 @@ def _gpu_config(monkeypatch):
     monkeypatch.setattr(config, "GPU_OCR_POLL_INTERVAL_SECONDS", 0.01)
     monkeypatch.setattr(config, "GPU_OCR_CLIENT_SAFETY_TIMEOUT_SECONDS", 1)
     monkeypatch.setattr(config, "GPU_OCR_CONNECT_TIMEOUT_SECONDS", 2)
+    monkeypatch.setattr(config, "OLLAMA_BASE_URL", "http://localhost:11434")
 
 
 def _tiny_image():

@@ -7,6 +7,7 @@ in coarse sweeps and steer micro chunk extraction.
 """
 
 import collections
+import difflib
 import logging
 import re
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
@@ -23,15 +24,40 @@ logger = logging.getLogger("ai_indexing.macro")
 
 def classify_division_role(heading_text: str, parent_clause: Optional[str] = None) -> str:
     """Classifies a top-level container or section into a functional division role:
-    'as_is', 'eligibility', 'sow', 'scc', or 'general'."""
+    'as_is', 'eligibility', 'sow', 'scc', 'statutory_policy', or 'general'."""
     combined = f"{heading_text or ''} {parent_clause or ''}"
     norm = re.sub(r"[\s\W]+", " ", combined.casefold()).strip()
-    if any(k in norm for k in ("implemented", "as is", "as-is", "current system", "existing", "integrations", "customizations", "inventory", "bill of quantities", "bill of materials")):
+    if any(k in norm for k in (
+        "implemented", "as is", "as-is", "current system", "existing",
+        "integrations", "customizations", "inventory", "bill of quantities",
+        "bill of materials", "schedule of rates", "preamble to schedule of rates",
+        "tools tackles", "tools and tackles", "tools & tackles",
+    )):
         return "as_is"
-    if any(k in norm for k in ("eligibility", "qualification", "check list", "checklist")):
+    if any(k in norm for k in ("eligibility", "qualification", "check list", "checklist", "pqc")):
         return "eligibility"
-    if any(k in norm for k in ("scope of work", "technical specification", "technical spec", "terms of reference", "sow")):
+    if any(k in norm for k in (
+        "scope of work", "technical specification", "technical spec",
+        "terms of reference", "sow", "safety requirement", "safety guidelines",
+        "hse", "work instructions", "job execution", "repair and maintenance",
+    )):
         return "sow"
+    if any(k in norm for k in (
+        "ministry of steel", "gazette notification", "reverse auction",
+        "epay", "e-pay", "purchase preference", "local content",
+        "domestically manufactured", "public procurement policy",
+        "evaluation of contractor", "contractor performance", "contractors performance",
+        "performance evaluation", "annexure b", "appendix a", "appendix-a", "muster roll",
+        "deployment of contractual labour", "contractual labour",
+        "provident fund", "esi registration",
+        "gst condition", "gst conditions", "income tax", "vendor grievance",
+        "integrity pact", "insolvency and bankruptcy",
+        "declaration to be obtained from the contractor", "no claim declaration",
+        "land border", "holiday listing", "blacklisting", "debarment", "banning policy",
+        "guidelines for verification of documents",
+        "deployment and removal of labour", "removal of labour",
+    )):
+        return "statutory_policy"
     if any(k in norm for k in ("special conditions", "general conditions", "conditions of contract", "gcc", "scc")):
         return "scc"
     return "general"
@@ -49,6 +75,28 @@ def _is_index_or_toc_page(blocks: List[str]) -> bool:
         re.sub(r"[^\w]+", " ", b).strip().lower() in ("index", "table of contents", "contents", "table of content")
         for b in blocks[:6]
     )
+
+
+def _locate_macro_heading_in_page(
+    blocks: List[str],
+    txt: str,
+    locate_heading_fn: Callable,
+) -> Optional[Tuple[int, float]]:
+    loc = locate_heading_fn(blocks, txt, used_block_idxs=set())
+    if loc is not None:
+        return loc
+    norm_txt = re.sub(r"[\s\W]+", " ", txt.casefold()).strip()
+    if not norm_txt or len(norm_txt) < 4:
+        return None
+    # Consecutive block pair check (e.g. "SECTION-1" on block 4, "INSTRUCTIONS TO TENDERERS" on block 5)
+    for i in range(len(blocks) - 1):
+        pair = f"{blocks[i]} {blocks[i+1]}"
+        pair_norm = re.sub(r"[\s\W]+", " ", pair.casefold()).strip()
+        if norm_txt == pair_norm or norm_txt in pair_norm or pair_norm in norm_txt:
+            return (i, 1.0)
+        if difflib.SequenceMatcher(None, norm_txt, pair_norm).ratio() >= 0.8:
+            return (i, 0.9)
+    return None
 
 
 async def extract_macro_skeleton(
@@ -154,15 +202,15 @@ async def extract_macro_skeleton(
                     # on its claimed start_page (or an immediate neighbor within the chunk).
                     sp = h.start_page
                     blocks = m_page_blocks.get(sp, [])
-                    loc = locate_heading_block(blocks, txt, used_block_idxs=set())
+                    loc = _locate_macro_heading_in_page(blocks, txt, locate_heading_block)
                     actual_page = sp
                     if loc is None and (sp - 1) in m_page_blocks:
-                        loc = locate_heading_block(m_page_blocks[sp - 1], txt, used_block_idxs=set())
+                        loc = _locate_macro_heading_in_page(m_page_blocks[sp - 1], txt, locate_heading_block)
                         if loc is not None:
                             h.start_page = sp - 1
                             actual_page = sp - 1
-                    elif loc is None and (sp + 1) in m_page_blocks:
-                        loc = locate_heading_block(m_page_blocks[sp + 1], txt, used_block_idxs=set())
+                    if loc is None and (sp + 1) in m_page_blocks:
+                        loc = _locate_macro_heading_in_page(m_page_blocks[sp + 1], txt, locate_heading_block)
                         if loc is not None:
                             h.start_page = sp + 1
                             actual_page = sp + 1
@@ -252,6 +300,9 @@ def get_active_macro_context(
                 active_role = c.get("division_role") or classify_division_role(active_root)
             elif c.get("level") == 2:
                 active_parent = c["heading_text"]
+                p_role = c.get("division_role") or classify_division_role(active_parent, parent_clause=active_root)
+                if p_role != "general":
+                    active_role = p_role
 
     if not active_root and not active_parent:
         return None

@@ -5,7 +5,10 @@ vital contractual obligations (TReDS, Integrity Pact, turnover eligibility, land
 clauses) were erroneously suppressed or treated as administrative noise.
 """
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    pytest = None
 from ai_indexing.guards import (
     is_administrative_noise,
     is_table_header_or_form_field,
@@ -14,7 +17,10 @@ from ai_indexing.guards import (
     is_bare_parameter_or_platform_disclaimer,
     is_alternative_security_instrument_duplicate,
     is_ungated_sow_feature_description,
+    is_statutory_policy_leak,
+    is_contractor_evaluation_scoring_matrix,
     is_litigation_argument_or_past_recital,
+    is_standalone_leaf_bullet,
 )
 from ai_indexing.harvesters import harvest_action_items_from_text
 
@@ -324,5 +330,167 @@ def test_harvest_rules_17_and_20_to_24():
         and "L-1+15%" in it["item_text"]
         for it in items24
     )
+
+
+def test_is_standalone_leaf_bullet():
+    # Standalone bullets / micro-enumerations
+    assert is_standalone_leaf_bullet("(a)")
+    assert is_standalone_leaf_bullet("(b)")
+    assert is_standalone_leaf_bullet("(i)")
+    assert is_standalone_leaf_bullet("(iv)")
+    assert is_standalone_leaf_bullet("a.")
+    assert is_standalone_leaf_bullet("i.")
+    assert is_standalone_leaf_bullet("b)")
+
+    # Numbers like 1. or (1) are numeric clauses, not leaf letter bullets
+    assert not is_standalone_leaf_bullet("(1)")
+    assert not is_standalone_leaf_bullet("1.")
+
+    # Legitimate titled headings must not be treated as standalone bullets
+    assert not is_standalone_leaf_bullet("(a) General Description")
+    assert not is_standalone_leaf_bullet("1.1 Scope of Work")
+    assert not is_standalone_leaf_bullet("SECTION I - INSTRUCTIONS TO BIDDERS")
+    assert not is_standalone_leaf_bullet("ANNEXURE A-1")
+
+
+def test_sow_routine_procedures_filtered_and_commercial_gates_preserved():
+    # Routine PPE and safety permits without commercial gate are filtered in sow
+    assert is_ungated_sow_feature_description(
+        "obligation", "Contractor shall ensure safety helmet and safety boots for all workmen at site.", "sow"
+    )
+    assert is_ungated_sow_feature_description(
+        "obligation", "Hot work permit shall be obtained from safety officer before starting welding work.", "sow"
+    )
+    assert is_ungated_sow_feature_description(
+        "obligation", "Scaffolding tag must be displayed on every working platform.", "sow"
+    )
+    assert is_ungated_sow_feature_description(
+        "obligation", "Contractor shall ensure regular housekeeping and scrap disposal at site.", "sow"
+    )
+
+    # Substantive commercial gates and milestones in sow are PRESERVED
+    assert not is_ungated_sow_feature_description(
+        "obligation", "For dewatering from open pit, use of portable electrical submersible pump is prohibited", "sow"
+    )
+    assert not is_ungated_sow_feature_description(
+        "obligation", "Contractor shall replace defective equipment within warranty period of 12 months.", "sow"
+    )
+    assert not is_ungated_sow_feature_description(
+        "obligation", "Final bill payment will be released upon submission of stage completion certificate.", "sow"
+    )
+    assert not is_ungated_sow_feature_description(
+        "obligation", "The contractor shall rectify defects within 14 days, failing which penalty will apply.", "sow"
+    )
+
+
+def test_portal_auction_tutorial_filtered():
+    assert is_bare_parameter_or_platform_disclaimer(
+        "obligation", 'Auction gets available under "Live Auction" tab and open for bidders to quote'
+    )
+    assert is_bare_parameter_or_platform_disclaimer(
+        "obligation", "Bidder shall click on View option which will open a separate page having basic details"
+    )
+    assert is_bare_parameter_or_platform_disclaimer(
+        "obligation", "Maximum Seal Percentage: 25%"
+    )
+    assert is_bare_parameter_or_platform_disclaimer(
+        "obligation", "criteria for determination of cost of local content in the service shall be as follows"
+    )
+
+
+def test_table_milestones_and_bare_dates():
+    # Table milestones MUST be preserved (not dropped by bare parameter guard)
+    assert not is_bare_parameter_or_platform_disclaimer(
+        "condition", "Completion period of the Work</td><td>60 (Sixty) Months</td>"
+    )
+    assert not is_bare_parameter_or_platform_disclaimer(
+        "deadline", "<td>Last date of issuing addendum(if any)</td><td>27.02.2026</td>"
+    )
+    # Standalone date timestamps without milestone label MUST be filtered
+    assert is_bare_parameter_or_platform_disclaimer("deadline", "27.02.2026")
+    assert is_bare_parameter_or_platform_disclaimer("deadline", "20.02.2026 at 1100 hrs.")
+    assert is_bare_parameter_or_platform_disclaimer("deadline", "<td>27.02.2026</td>")
+
+
+def test_consultancy_noise_filtered():
+    # Category B: Personnel leave / CV submission guidelines
+    assert is_bare_parameter_or_platform_disclaimer("condition", "He/She must take prior permission from DMRC for obtaining leave during his tenure as Project Architect")
+    assert is_bare_parameter_or_platform_disclaimer("obligation", "At bidding stage, bidder is required to submit CV of Project Architect, Team Leaders of each discipline")
+
+    # Category C: JV internal equity & employer verification duration
+    # Lead partner 26% and Non-substantial partner 20% are valid procurement eligibility (gold items in dmrc-oew-16p)
+    assert not is_bare_parameter_or_platform_disclaimer("obligation", "Lead partner must be substantial partner in the JV/Consortium i.e. it should have a minimum of 26% participation")
+    assert not is_bare_parameter_or_platform_disclaimer("obligation", "Each non-substantial partner should have a minimum of 20% participation in the JV/ Consortium")
+    assert is_bare_parameter_or_platform_disclaimer("obligation", "The Parent company of the JV/Consortium shall submit undertaking in Appendix-30 of Form of Tender.")
+    assert is_bare_parameter_or_platform_disclaimer("condition", "If credentials do not get verified in a period of two months from the date of issue of Letter of Acceptance (LOA)")
+    assert is_bare_parameter_or_platform_disclaimer("obligation", "The banking reference should be from a Scheduled Bank in India... and it should not be more than 3 months old")
+
+    # Category D: Portal hardware tokens & BOQ tampering
+    assert is_bare_parameter_or_platform_disclaimer("obligation", "The authorized signatory of intending tenderer, as per Power of Attorney (POA), must have valid Class-II or Class-III digital signature.")
+    assert is_bare_parameter_or_platform_disclaimer("condition", "The details of the DD/any other accepted instrument, physically sent, should tally with the details available in the scanned copy")
+    assert is_bare_parameter_or_platform_disclaimer("condition", "If the BOQ file is found to be modified by the bidder, the bid will be rejected.")
+
+    # Category E: Procedural rejection warnings, statutory recitals, and qualification table rows
+    assert is_bare_parameter_or_platform_disclaimer("condition", "Non submission of affidavit by the tenderer shall result in rejection of their bid")
+    assert is_bare_parameter_or_platform_disclaimer("condition", "Any bidder from a country which shares a land border with India will be eligible to bid either as a single entity or as a member of a JV / Consortium with others, in any procurement whether of goods, services")
+    assert is_bare_parameter_or_platform_disclaimer("obligation", "T3 - Net Worth: Net Worth of tenderer during last audited financial year should be ≥ INR 1.73 crore.")
+    assert is_bare_parameter_or_platform_disclaimer("obligation", "T4 - Annual Turnover: The average annual turnover from consultancy works of last five financial years should be ≥ INR 6.93 crore.")
+
+
+def test_contractor_evaluation_scoring_matrix_guards():
+    """Verify that contractor evaluation mark deductions, scoring sheets, and penalty tables are identified."""
+    sample_deductions = [
+        "Violation of applicable safety, health and environment related norms Deduction of 0.5 marks",
+        "Violation of applicable safety, health and environment related norms Deduction of 3 marks",
+        "Fatal Accident:Full marks (25) Deduction",
+        "Delay upto 7 days4 Marks Delay more than 7 days but less than 15 days3 Marks",
+        "Letter issued to contractor during execution to ensure sufficient resources Deduction of 1.5% mark",
+        "IOCL forced to arrange manpower, material or any other Resource Deduction of 5 marks",
+        "Contract Terminated due to poor progressFull marks (15) Deduction",
+        "Direct payment by IOCL to sub-contractor/ Labour:Deduction of 2.5 marks",
+        "1 incidence (More than 1 working day each) - 3 marks",
+        "Price Adjustment for delay upto 1.5 % of the Total Contract Value - 7.5 marks",
+        "Rework done upto 2 times in contract periodUniform Deduction of 0.5 mark",
+        "Delay upto 1 weekDeduction of 1 mark",
+        "Cleared Site after written communication/Reminder from EICE- Deduction of 1 mark",
+        "Partially cleared hence penalty/recovery imposed by EICEDeduction of 2.5 marks",
+    ]
+    for quote in sample_deductions:
+        assert is_contractor_evaluation_scoring_matrix(quote), f"Failed to filter contractor evaluation deduction: {quote}"
+
+    # Valid contract requirements must NOT be flagged as scoring deductions
+    assert not is_contractor_evaluation_scoring_matrix("The contractor shall submit Initial Security Deposit (ISD) within 15 days.")
+    assert not is_contractor_evaluation_scoring_matrix("Validity of quoted rates shall be 04 (Four) months from scheduled due date.")
+
+
+def test_all_gold_action_items_fixtures_invariant():
+    """Mathematical invariant: ZERO gold items across all benchmark fixtures may be filtered by noise guards."""
+    import glob
+    import json
+    import os
+
+    fixtures = glob.glob(os.path.join(os.path.dirname(__file__), "fixtures", "gold_action_items_*.json"))
+    assert len(fixtures) >= 5, f"Expected at least 5 fixtures, found {len(fixtures)}"
+
+    total_tested = 0
+    for fpath in fixtures:
+        with open(fpath, encoding="utf-8") as fp:
+            data = json.load(fp)
+            items = data.get("action_items", [])
+            for item in items:
+                quote = item.get("evidence_quote") or ""
+                itype = item.get("item_type") or "obligation"
+                # Neither the bare parameter guard, contractor scoring guard, nor noise guard may reject a gold item
+                assert not is_bare_parameter_or_platform_disclaimer(itype, quote), (
+                    f"Gold item erroneously filtered by is_bare_parameter_or_platform_disclaimer in {os.path.basename(fpath)}: {quote[:100]}"
+                )
+                assert not is_contractor_evaluation_scoring_matrix(quote), (
+                    f"Gold item erroneously filtered by is_contractor_evaluation_scoring_matrix in {os.path.basename(fpath)}: {quote[:100]}"
+                )
+                total_tested += 1
+
+    assert total_tested >= 100, f"Expected at least 100 gold items tested, got {total_tested}"
+
+
 
 

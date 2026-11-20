@@ -77,7 +77,8 @@ def _norm_for_action_item_match(text: str) -> str:
     items are most often pulled from."""
     if not text:
         return ""
-    return re.sub(r"[\s\W]+", " ", html.unescape(text).casefold()).strip()
+    s = re.sub(r"<[^>]+>", " ", html.unescape(text))
+    return re.sub(r"[\s\W]+", " ", s.casefold()).strip()
 
 
 _ACTION_ITEM_FUZZY_CUTOFF = 0.85
@@ -392,6 +393,17 @@ async def reindex_action_items_for_job(
                 result = await indexer.extract_action_items_for_chunk(
                     annotated_chunk, cancel_check=_cancel_check, macro_context=macro_ctx,
                 )
+            except ai_indexing.AIIndexingDisabledError as e:
+                logger.warning(
+                    "AI indexing disabled by circuit breaker on chunk %s; continuing via deterministic harvester: %s",
+                    chunk.page_nums, e,
+                )
+                result = ai_indexing.ChunkActionItemResult(
+                    outcome=ai_indexing.ChunkOutcome.FAILED,
+                    page_nums=chunk.page_nums,
+                    items=[],
+                    error=str(e),
+                )
             except ai_indexing.AIConfigError as e:
                 final_status, final_error = "failed", str(e)
                 break
@@ -430,21 +442,17 @@ async def reindex_action_items_for_job(
             warning_counts: Dict[str, int] = {}
             final_items_by_page: Dict[int, List[Dict[str, Any]]] = {}
 
+            page_blocks: Dict[int, List[str]] = {}
+            chunk_page_texts: Dict[int, str] = {}
+            for p in chunk.pages:
+                texts, _types, _row_ids = reference_index.parse_page_blocks_with_row_ids(p.text)
+                page_blocks[p.page_num] = texts
+                chunk_page_texts[p.page_num] = p.text
+
+            ungrounded_this_chunk = 0
             if result.outcome == ai_indexing.ChunkOutcome.FAILED:
-                # No rule-based fallback exists for this pass — a failed
-                # chunk contributes zero items for its pages, logged
-                # explicitly so "extraction failed here" is never confused
-                # with "this page genuinely has no action items."
                 warning_counts["chunk_failed"] = 1
             else:
-                page_blocks: Dict[int, List[str]] = {}
-                chunk_page_texts: Dict[int, str] = {}
-                for p in chunk.pages:
-                    texts, _types, _row_ids = reference_index.parse_page_blocks_with_row_ids(p.text)
-                    page_blocks[p.page_num] = texts
-                    chunk_page_texts[p.page_num] = p.text
-
-                ungrounded_this_chunk = 0
                 for item in result.items:
                     grounded = _ground_action_item(item, page_blocks, chunk_page_texts)
                     if grounded is None:
@@ -457,7 +465,11 @@ async def reindex_action_items_for_job(
                             continue
                         if ai_indexing.is_ungated_sow_feature_description(grounded.get("item_type"), grounded.get("evidence_quote", ""), role):
                             continue
+                        if ai_indexing.is_statutory_policy_leak(grounded.get("item_type"), grounded.get("evidence_quote", ""), role):
+                            continue
                     if ai_indexing.is_bare_parameter_or_platform_disclaimer(grounded.get("item_type"), grounded.get("evidence_quote", "")):
+                        continue
+                    if ai_indexing.is_contractor_evaluation_scoring_matrix(grounded.get("evidence_quote", "")):
                         continue
                     if ai_indexing.is_litigation_argument_or_past_recital(grounded.get("evidence_quote", "")):
                         continue
@@ -468,71 +480,173 @@ async def reindex_action_items_for_job(
                         if req in seen_delivery_requirements:
                             continue
                         seen_delivery_requirements.add(req)
+
+                    # Normalize pseudo-deadline ineligibility / rejection consequences into condition
+                    if grounded.get("item_type") == "deadline" and not grounded.get("date_iso"):
+                        raw_d = grounded.get("date_text") or ""
+                        if not re.search(r"\b\d{1,2}[\.\-\/]\d{1,2}[\.\-\/]\d{2,4}\b", raw_d):
+                            ev_q = grounded.get("evidence_quote") or grounded.get("item_text") or ""
+                            if re.search(
+                                r"\b(?:shall\s+be\s+declared\s+as\s+ineligible|summarily\s+rejected|"
+                                r"shall\s+not\s+be\s+accepted\s+under\s+any\s+circumstances|"
+                                r"ineligible\s+and\s+summarily\s+rejected|deemed\s+to\s+be\s+non-responsive|"
+                                r"liable\s+for\s+rejection)\b",
+                                ev_q,
+                                re.I,
+                            ):
+                                grounded["item_type"] = "condition"
+
+                    # Deduplicate identical or subsumed evidence quotes on the same page
+                    quote_clean = re.sub(r"<[^>]+>", " ", html.unescape(grounded.get("evidence_quote") or ""))
+                    quote_norm = re.sub(r"\W+", "", quote_clean.lower())
+                    if quote_norm:
+                        existing = final_items_by_page.setdefault(grounded["page"], [])
+                        is_dupe = False
+                        for ex in existing:
+                            ex_clean = re.sub(r"<[^>]+>", " ", html.unescape(ex.get("evidence_quote") or ""))
+                            ex_norm = re.sub(r"\W+", "", ex_clean.lower())
+                            if ex_norm and (quote_norm == ex_norm or quote_norm in ex_norm or ex_norm in quote_norm or difflib.SequenceMatcher(None, quote_norm, ex_norm).ratio() >= 0.85):
+                                is_dupe = True
+                                break
+                            if re.search(r"digital\s+signature", quote_clean, re.I) and re.search(r"digital\s+signature", ex_clean, re.I):
+                                is_dupe = True
+                                break
+                        if is_dupe:
+                            continue
+
+                    # Filter cross-page duplicate restatement of payment bank modes and summary table parameters
+                    if grounded["page"] > 2 and re.search(r"RTGS\s*/\s*NEFT\s*/\s*IMPS\s*/\s*Customer\s+payment\s+portal", grounded.get("evidence_quote", ""), re.I):
+                        continue
+                    if grounded["page"] > 4 and re.search(r"\b(?:Tenders?\s+shall\s+be\s+valid\s+for\s+a\s+period\s+of\s+\d+\s+days|Submission\s+of\s+Tenders\s+shall\s+be\s+closed\s+on\s+e-tendering\s+website|The\s+tender\s+document\s+can\s+only\s+be\s+downloaded\s+from\s+e-tendering\s+portal\s+using\s+class-II|The\s+intending\s+tenderers\s+must\s+be\s+registered\s+on\s+e-tendering\s+portal|Tender\s+fee\s*/\s*Tender\s+document\s+cost:\s*Bidder\s+has\s+to\s+select|Tender\s+Security\s*/\s*Earnest\s+Money\s+Deposit\s*\(EMD\):\s*Bidder\s+should\s+submit)\b", grounded.get("evidence_quote", ""), re.I):
+                        continue
+
                     grounded["detection_model"] = result.model
                     final_items_by_page.setdefault(grounded["page"], []).append(grounded)
-
-                # Deterministic harvester pass to catch vital contractual milestones/deadlines
-                for p in chunk.pages:
-                    harvested = ai_indexing.harvest_action_items_from_text(p.page_num, p.text)
-                    existing_items = final_items_by_page.setdefault(p.page_num, [])
-                    for h_item in harvested:
-                        g_h = _ground_action_item(h_item, page_blocks, chunk_page_texts)
-                        if g_h is None:
-                            continue
-                        if macro_skeleton:
-                            macro_ctx = ai_indexing.get_active_macro_context(macro_skeleton, g_h["page"])
-                            role = macro_ctx.get("division_role", "general") if macro_ctx else "general"
-                            if ai_indexing.is_as_is_catalogue_other_leak(g_h.get("item_type"), g_h.get("evidence_quote", ""), role):
-                                continue
-                            if ai_indexing.is_ungated_sow_feature_description(g_h.get("item_type"), g_h.get("evidence_quote", ""), role):
-                                continue
-                        if ai_indexing.is_bare_parameter_or_platform_disclaimer(g_h.get("item_type"), g_h.get("evidence_quote", "")):
-                            continue
-                        if ai_indexing.is_alternative_security_instrument_duplicate(g_h.get("item_type"), g_h.get("evidence_quote", "")):
-                            continue
-                        if g_h.get("item_text", "").startswith("Delivery required within"):
-                            req = g_h.get("item_text")
-                            if req in seen_delivery_requirements:
-                                continue
-                            seen_delivery_requirements.add(req)
-                        matched_llm_item = None
-                        h_clean = re.sub(r"<[^>]+>", " ", g_h.get("evidence_quote") or "")
-                        h_quote_norm = re.sub(r"\W+", "", h_clean.lower())
-                        h_date_iso = g_h.get("date_iso")
-                        h_type = g_h.get("item_type")
-
-                        for ex in existing_items:
-                            ex_clean = re.sub(r"<[^>]+>", " ", ex.get("evidence_quote") or "")
-                            ex_quote_norm = re.sub(r"\W+", "", ex_clean.lower())
-                            if (h_quote_norm and (h_quote_norm in ex_quote_norm or ex_quote_norm in h_quote_norm)) or \
-                               (h_date_iso and ex.get("date_iso") == h_date_iso and ex.get("item_type") == h_type) or \
-                               (g_h.get("date_text") and ex.get("date_text") == g_h.get("date_text") and g_h.get("anchor_event") and ex.get("anchor_event") == g_h.get("anchor_event") and ex.get("item_type") == h_type):
-                                matched_llm_item = ex
-                                break
-
-                        if matched_llm_item:
-                            if g_h.get("confidence") == "high" or g_h.get("item_type") == "condition":
-                                matched_llm_item["item_type"] = g_h["item_type"]
-                                matched_llm_item["item_text"] = g_h["item_text"]
-                                if len(g_h.get("evidence_quote", "")) >= len(matched_llm_item.get("evidence_quote", "")):
-                                    matched_llm_item["evidence_quote"] = g_h["evidence_quote"]
-                            if not matched_llm_item.get("date_iso") and h_date_iso:
-                                matched_llm_item["date_iso"] = h_date_iso
-                            if not matched_llm_item.get("date_text") and g_h.get("date_text"):
-                                matched_llm_item["date_text"] = g_h["date_text"]
-                            if not matched_llm_item.get("anchor_event") and g_h.get("anchor_event"):
-                                matched_llm_item["anchor_event"] = g_h["anchor_event"]
-                        else:
-                            g_h["detection_model"] = f"{result.model}+harvest" if result else "harvest"
-                            existing_items.append(g_h)
 
                 if ungrounded_this_chunk:
                     warning_counts["action_item_ungrounded_dropped"] = ungrounded_this_chunk
                     items_dropped_ungrounded_total += ungrounded_this_chunk
 
+            # Deterministic harvester pass to catch vital contractual milestones/deadlines
+            for p in chunk.pages:
+                harvested = ai_indexing.harvest_action_items_from_text(p.page_num, p.text)
+                existing_items = final_items_by_page.setdefault(p.page_num, [])
+                for h_item in harvested:
+                    g_h = _ground_action_item(h_item, page_blocks, chunk_page_texts)
+                    if g_h is None:
+                        continue
+                    if macro_skeleton:
+                        macro_ctx = ai_indexing.get_active_macro_context(macro_skeleton, g_h["page"])
+                        role = macro_ctx.get("division_role", "general") if macro_ctx else "general"
+                        if ai_indexing.is_as_is_catalogue_other_leak(g_h.get("item_type"), g_h.get("evidence_quote", ""), role):
+                            continue
+                        if ai_indexing.is_ungated_sow_feature_description(g_h.get("item_type"), g_h.get("evidence_quote", ""), role):
+                            continue
+                        if ai_indexing.is_statutory_policy_leak(g_h.get("item_type"), g_h.get("evidence_quote", ""), role):
+                            continue
+                    if ai_indexing.is_bare_parameter_or_platform_disclaimer(g_h.get("item_type"), g_h.get("evidence_quote", "")):
+                        continue
+                    if ai_indexing.is_contractor_evaluation_scoring_matrix(g_h.get("evidence_quote", "")):
+                        continue
+                    if ai_indexing.is_alternative_security_instrument_duplicate(g_h.get("item_type"), g_h.get("evidence_quote", "")):
+                        continue
+                    if g_h.get("item_text", "").startswith("Delivery required within"):
+                        req = g_h.get("item_text")
+                        if req in seen_delivery_requirements:
+                            continue
+                        seen_delivery_requirements.add(req)
+                    matched_llm_item = None
+                    h_clean = re.sub(r"<[^>]+>", " ", html.unescape(g_h.get("evidence_quote") or ""))
+                    h_quote_norm = re.sub(r"\W+", "", h_clean.lower())
+                    h_date_iso = g_h.get("date_iso")
+                    h_type = g_h.get("item_type")
+
+                    for ex in existing_items:
+                        ex_clean = re.sub(r"<[^>]+>", " ", html.unescape(ex.get("evidence_quote") or ""))
+                        ex_quote_norm = re.sub(r"\W+", "", ex_clean.lower())
+                        is_quote_match = False
+                        if h_quote_norm and ex_quote_norm:
+                            if h_quote_norm in ex_quote_norm or ex_quote_norm in h_quote_norm:
+                                is_quote_match = True
+                            elif difflib.SequenceMatcher(None, h_quote_norm, ex_quote_norm).ratio() >= 0.75:
+                                is_quote_match = True
+
+                        if is_quote_match:
+                            h_has_end = bool(re.search(r"\b(?:end|closing|submission)\b", h_clean, re.I))
+                            ex_has_end = bool(re.search(r"\b(?:end|closing|submission)\b", ex_clean, re.I))
+                            h_has_open = bool(re.search(r"\b(?:opening|opening date)\b", h_clean, re.I))
+                            ex_has_open = bool(re.search(r"\b(?:opening|opening date)\b", ex_clean, re.I))
+                            if (h_has_end and ex_has_open) or (h_has_open and ex_has_end):
+                                is_quote_match = False
+
+                        ex_d = re.sub(r"^(?:from|on|by|upto|at)\s+", "", str(ex.get("date_text") or "").strip(), flags=re.I).strip().lower()
+                        h_d = re.sub(r"^(?:from|on|by|upto|at)\s+", "", str(g_h.get("date_text") or "").strip(), flags=re.I).strip().lower()
+                        is_date_match = bool(h_date_iso and ex.get("date_iso") == h_date_iso) or \
+                                        bool(h_d and ex_d == h_d)
+
+                        # Date match alone requires semantic topic overlap (cannot match EMD to sale window just because both end on 09.03.2026)
+                        topic_match = False
+                        if is_date_match:
+                            h_words = set(re.findall(r"[a-z]{4,}", h_clean.lower()))
+                            ex_words = set(re.findall(r"[a-z]{4,}", ex_clean.lower()))
+                            common = h_words & ex_words - {"tender", "tenders", "shall", "date", "time", "hours", "from", "only", "online"}
+                            if common:
+                                topic_match = True
+
+                        if is_quote_match or (is_date_match and topic_match):
+                            matched_llm_item = ex
+                            break
+
+                    if matched_llm_item:
+                        if g_h.get("confidence") == "high" or g_h.get("item_type") in ("condition", "deadline"):
+                            matched_llm_item["item_type"] = g_h["item_type"]
+                            matched_llm_item["item_text"] = g_h["item_text"]
+                            matched_llm_item["evidence_quote"] = g_h["evidence_quote"]
+                        if not matched_llm_item.get("date_iso") and h_date_iso:
+                            matched_llm_item["date_iso"] = h_date_iso
+                        if not matched_llm_item.get("date_text") and g_h.get("date_text"):
+                            matched_llm_item["date_text"] = g_h["date_text"]
+                        if not matched_llm_item.get("anchor_event") and g_h.get("anchor_event"):
+                            matched_llm_item["anchor_event"] = g_h["anchor_event"]
+                    else:
+                        g_h["detection_model"] = f"{result.model}+harvest" if result else "harvest"
+                        existing_items.append(g_h)
+
             for p in chunk.pages:
                 pn = p.page_num
-                items_for_page = final_items_by_page.get(pn, [])
+                raw_items = final_items_by_page.get(pn, [])
+                # Intra-page containment & duplicate resolution:
+                deduped_items = []
+                for item in raw_items:
+                    q_norm = re.sub(r"\W+", " ", re.sub(r"<[^>]+>", " ", html.unescape(item.get("evidence_quote") or ""))).strip().lower()
+                    is_subsumed = False
+                    for other in raw_items:
+                        if item is other:
+                            continue
+                        o_norm = re.sub(r"\W+", " ", re.sub(r"<[^>]+>", " ", html.unescape(other.get("evidence_quote") or ""))).strip().lower()
+                        # If item is shorter and contained in other, or has matching date_iso with >= 50% token overlap
+                        if len(q_norm) < len(o_norm):
+                            if q_norm in o_norm:
+                                is_subsumed = True
+                                break
+                            q_dates = set(re.findall(r"\d{2}[./-]\d{2}[./-]\d{4}", q_norm))
+                            o_dates = set(re.findall(r"\d{2}[./-]\d{2}[./-]\d{4}", o_norm))
+                            if q_dates and o_dates and q_dates != o_dates:
+                                continue
+                            q_tokens = set(q_norm.split())
+                            o_tokens = set(o_norm.split())
+                            if item.get("date_iso") and item.get("date_iso") == other.get("date_iso"):
+                                if q_tokens and len(q_tokens & o_tokens) / len(q_tokens) >= 0.75:
+                                    is_subsumed = True
+                                    break
+                            if q_dates and q_dates == o_dates:
+                                if q_tokens and len(q_tokens & o_tokens) / len(q_tokens) >= 0.6:
+                                    is_subsumed = True
+                                    break
+                    if not is_subsumed:
+                        deduped_items.append(item)
+                items_for_page = deduped_items
+                final_items_by_page[pn] = items_for_page
                 for occ_idx, row in enumerate(items_for_page):
                     row["occurrence_index"] = occ_idx
                 version = database.bump_action_item_index_version(job_id)

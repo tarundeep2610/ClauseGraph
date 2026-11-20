@@ -232,6 +232,50 @@
       "anchor_event": null,
       "responsible_party": "Bidder",
       "confidence": "high"
+    },
+    {
+      "page": 1,
+      "item_type": "condition",
+      "item_text": "Bidder shall be deemed to have conflict of interest if constituent is also constituent of another Bidder",
+      "evidence_quote": "A Bidder shall be deemed to have a conflict of interest affecting Bidding Process if a constituent of one Bidder is also a constituent of another Bidder.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 2,
+      "item_type": "deadline",
+      "item_text": "Pre-Bid Meeting on 05.09.2024 at 1500 hrs",
+      "evidence_quote": "Pre-Bid Meeting 05.09.2024 at 1500 hrs. The pre-bid meeting shall be conducted in meeting room at $ {3}^{\text{rd }} $ floor, A wing Metro Bhawan.",
+      "date_text": "05.09.2024 at 1500 hrs",
+      "date_iso": "2024-09-05",
+      "anchor_event": "Pre-bid meeting",
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 3,
+      "item_type": "deadline",
+      "item_text": "Bid validity period of not less than 180 days from the last date of submission of bid",
+      "evidence_quote": "The Bid shall be valid for a period not less than 180 days from the last date of submission of bid.",
+      "date_text": "180 days",
+      "date_iso": null,
+      "anchor_event": "Last date of submission of bid",
+      "responsible_party": "Bidder",
+      "confidence": "high"
+    },
+    {
+      "page": 4,
+      "item_type": "condition",
+      "item_text": "Lead Member of the JV/Consortium shall maintain a minimum percentage share of 51% of aggregate shareholding",
+      "evidence_quote": "Lead Member of the JV/Consortium shall maintain a minimum percentage share of 51% of the aggregate shareholding of the JV/Consortium during full tenure of License Agreement.",
+      "date_text": null,
+      "date_iso": null,
+      "anchor_event": null,
+      "responsible_party": "Bidder",
+      "confidence": "high"
     }
   ]
 }

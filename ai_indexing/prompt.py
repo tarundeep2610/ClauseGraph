@@ -113,6 +113,13 @@ REPEATING CASE-CAPTION BLOCKS THAT INTRODUCE DIFFERENT PLEADINGS
   a level-1 root that would incorrectly close out everything else that's
   genuinely still open.
 
+WHAT IS NOT A HEADING — DO NOT EXTRACT:
+- Inline list enumerations, sub-bullets, Roman numerals, or lower-case letters
+  (e.g. "(a)", "(b)", "(i)", "(ii)", "1)", "2)", or sub-bullets like "point:1.1.3.1-vii-d")
+  that simply enumerate sequential items, checklist points, or procedural steps within a clause.
+  Do NOT report these as independent structural headings. Only index formal titled clauses,
+  sections, articles, annexures, chapters, and major numbered divisions with substantive titles.
+
 RESOLVING A GARBLED HEADING: "family_hint" AND "number_hint"
 - These two fields exist ONLY to rescue a heading you cannot read cleanly —
   they are a last resort, not a general categorization exercise. If a
@@ -1030,6 +1037,7 @@ WHAT COUNTS AS AN ACTIONABLE ITEM (four types)
 3. "condition" — an if/then trigger: a penalty clause, a termination
    trigger, an escalation clause ("If the Contractor fails to complete...,
    a penalty of 0.5% per week shall apply").
+   IMPORTANT: When a clause specifies an ineligibility, disqualification, or summary rejection consequence ("shall be declared as ineligible", "shall be summarily rejected", "shall not be accepted under any circumstances", "non-submission shall lead to rejection"), classify it as a "condition", even if it mentions a date or deadline. The legal consequence (rejection/ineligibility) takes precedence over the temporal reference.
 4. "other" — something genuinely actionable-adjacent that does not fit the
    three types above. This matters most in litigation/court documents: a
    prayer for relief addressed to the court ("it is prayed that the award
@@ -1070,6 +1078,14 @@ Many Indian public procurement tenders (including GeM bids) print headings and c
 - ALWAYS extract the ENGLISH text snippet for "evidence_quote" and "item_text" whenever English text is available.
 - NEVER extract the Hindi version and the English version as two separate items — report each requirement ONCE, in English.
 - If a clause or table row is printed in both Hindi and English (e.g. "(a). जेम की शर्तों के अनुसार ईएमडी छूट... / (a). EMD EXEMPTION: The bidder seeking EMD exemption..."), ALWAYS quote the English sentence ("The bidder seeking EMD exemption, must submit the valid supporting document...").
+
+CONSULTANCY & PROFESSIONAL SERVICES COVENANTS (ALWAYS EXTRACT):
+In consultancy tenders, engineering studies, and professional services agreements (e.g. DDC, PMC, advisory services), ALWAYS extract:
+1. Key Personnel & Staffing Qualifications: Minimum qualifications, CV approval gates, and replacement restrictions ("Key Personnel proposed must meet the minimum qualifications...", "No substitution of key staff shall be made without prior written approval...").
+2. Indemnification & Liability: Duties of the consultant to indemnify and hold harmless the client/employer from third-party claims, patent infringements, or negligence.
+3. Intellectual Property & Document Ownership: Consultant covenants transferring ownership of all reports, drawings, specifications, calculations, and software developed under the contract to the client/employer.
+4. Sub-consultancy Covenants: Rules restricting sub-contracting or sub-consulting without prior written consent.
+Classify these as "obligation" (or "condition" if non-compliance triggers contract termination or rejection).
 
 LITIGATION ARGUMENTS AND HISTORICAL RECITALS IN LEGAL/ARBITRATION APPEALS ARE NOT OBLIGATIONS:
 In court petitions, appeals, and arbitration proceedings, large stretches of
@@ -1282,6 +1298,7 @@ software-UI housekeeping, not a distinct duty — do not report it.
     "sellers intending to avail payment through TReDS are required to be
      registered with at least one TReDS exchange..." (a real registration
      requirement gating payment eligibility)
+    "For participation in e-tendering process, the prospective bidder(s) has to be registered on the e-tendering portal..." (a mandatory prerequisite condition for bidding eligibility — report as an obligation/condition)
     "Bidders shall have to upload scanned copy of signed integrity pact..."
      (a specific, substantive compliance document — what must be prepared
      and submitted, not how to operate the upload button)
@@ -1416,6 +1433,13 @@ and "Bid submission must be completed by the deadline" are the SAME fact
 told three ways, not three items. If you find yourself about to write
 several items whose evidence_quote all point at the same date/clause, keep
 only the single most complete one and set its type to "deadline".
+
+DO NOT SPLIT SUB-BULLETS OF A SINGLE PROCEDURE INTO REDUNDANT ITEMS
+- If a clause, procedure, or specification contains sub-bullets (a), (b), (i), (ii)
+  that merely enumerate steps, items, or technical parameters of a single overarching
+  duty, report only the parent obligation as ONE item. Do NOT extract every sub-letter
+  bullet as a separate item unless that specific sub-bullet contains its own distinct
+  calendar deadline or standalone financial penalty.
 
 INFORMATIONAL / ALREADY-PAST DATES ARE NOT DEADLINES
 A "Key Dates" table often also lists dates that are purely informational —

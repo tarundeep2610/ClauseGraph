@@ -1,0 +1,386 @@
+{
+  "timestamp": "2026-11-02T08:21:31.347546",
+  "model": "qwen3:8b",
+  "provider": "ollama_native",
+  "datasets": {
+    "dmrc-nit-5p": {
+      "name": "DMRC Open E-Tender NIT Chapter-1 (5 pages)",
+      "page_count": 5,
+      "domain": "metro_nit",
+      "index": {
+        "duration_seconds": 72.4,
+        "merged_precision": 0.3829787234042553,
+        "merged_recall": 0.8181818181818182,
+        "scope_accuracy": 0.3333333333333333,
+        "mention_precision": 0.0,
+        "mention_recall": 0.0,
+        "rule_recall": 1.0,
+        "family_drift": 1.0,
+        "matched_targets_count": 18,
+        "total_actual_targets": 47,
+        "total_gold_targets": 22,
+        "matched_mentions_count": 0,
+        "total_actual_mentions": 4,
+        "total_gold_mentions": 4,
+        "gates_passed": false,
+        "violations": [
+          "Merged Precision 0.383 fell below minimum 0.850",
+          "Merged Recall 0.818 fell below minimum 0.950",
+          "Mention Precision 0.000 fell below minimum 0.900",
+          "Mention Recall 0.000 fell below minimum 0.900"
+        ]
+      },
+      "action_items": {
+        "duration_seconds": 62.2,
+        "precision": 0.9545454545454546,
+        "recall": 1.0,
+        "f1": 0.9767441860465117,
+        "grounding_rate": 1.0,
+        "matched_count": 21,
+        "actual_count": 22,
+        "gold_count": 21,
+        "by_type": {
+          "deadline": {
+            "precision": 0.8571428571428571,
+            "recall": 1.0,
+            "f1": 0.923076923076923,
+            "gold": 6,
+            "actual": 7,
+            "matched": 6
+          },
+          "obligation": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "gold": 7,
+            "actual": 6,
+            "matched": 7
+          },
+          "condition": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "gold": 8,
+            "actual": 9,
+            "matched": 8
+          },
+          "other": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "gold": 0,
+            "actual": 0,
+            "matched": 0
+          }
+        },
+        "gates_passed": true,
+        "violations": []
+      }
+    },
+    "dmrc-oew-16p": {
+      "name": "DMRC Contract OEW-1620 Tender Documents & NIT (16 pages)",
+      "page_count": 16,
+      "domain": "metro_works_contract",
+      "index": {
+        "duration_seconds": 216.5,
+        "merged_precision": 0.11688311688311688,
+        "merged_recall": 0.75,
+        "scope_accuracy": 0.5,
+        "mention_precision": 0.06060606060606061,
+        "mention_recall": 1.0,
+        "rule_recall": 1.0,
+        "family_drift": 0.0,
+        "matched_targets_count": 18,
+        "total_actual_targets": 154,
+        "total_gold_targets": 24,
+        "matched_mentions_count": 2,
+        "total_actual_mentions": 33,
+        "total_gold_mentions": 2,
+        "gates_passed": false,
+        "violations": [
+          "Merged Precision 0.117 fell below minimum 0.850",
+          "Merged Recall 0.750 fell below minimum 0.950",
+          "Mention Precision 0.061 fell below minimum 0.900"
+        ]
+      },
+      "action_items": {
+        "duration_seconds": 311.4,
+        "precision": 0.5897435897435898,
+        "recall": 0.9583333333333334,
+        "f1": 0.7301587301587301,
+        "grounding_rate": 1.0,
+        "matched_count": 23,
+        "actual_count": 39,
+        "gold_count": 24,
+        "by_type": {
+          "deadline": {
+            "precision": 0.875,
+            "recall": 0.875,
+            "f1": 0.875,
+            "gold": 8,
+            "actual": 8,
+            "matched": 7
+          },
+          "obligation": {
+            "precision": 0.4782608695652174,
+            "recall": 1.0,
+            "f1": 0.6470588235294118,
+            "gold": 11,
+            "actual": 23,
+            "matched": 11
+          },
+          "condition": {
+            "precision": 0.625,
+            "recall": 1.0,
+            "f1": 0.7692307692307693,
+            "gold": 5,
+            "actual": 8,
+            "matched": 5
+          },
+          "other": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "gold": 0,
+            "actual": 0,
+            "matched": 0
+          }
+        },
+        "gates_passed": false,
+        "violations": [
+          "Precision 0.590 fell below minimum 0.650"
+        ]
+      }
+    },
+    "dmrc-jcdd-27p": {
+      "name": "DMRC Consultancy JCDD-02 Jaipur Metro Phase-II DDC (27 pages)",
+      "page_count": 27,
+      "domain": "metro_consultancy_tender",
+      "index": {
+        "duration_seconds": 340.5,
+        "merged_precision": 0.12162162162162163,
+        "merged_recall": 0.782608695652174,
+        "scope_accuracy": 0.2222222222222222,
+        "mention_precision": 0.041666666666666664,
+        "mention_recall": 1.0,
+        "rule_recall": 1.0,
+        "family_drift": 0.0,
+        "matched_targets_count": 18,
+        "total_actual_targets": 148,
+        "total_gold_targets": 23,
+        "matched_mentions_count": 2,
+        "total_actual_mentions": 48,
+        "total_gold_mentions": 2,
+        "gates_passed": false,
+        "violations": [
+          "Merged Precision 0.122 fell below minimum 0.850",
+          "Merged Recall 0.783 fell below minimum 0.950",
+          "Mention Precision 0.042 fell below minimum 0.900"
+        ]
+      },
+      "action_items": {
+        "duration_seconds": 369.7,
+        "precision": 0.6190476190476191,
+        "recall": 0.7647058823529411,
+        "f1": 0.6842105263157895,
+        "grounding_rate": 1.0,
+        "matched_count": 13,
+        "actual_count": 21,
+        "gold_count": 17,
+        "by_type": {
+          "deadline": {
+            "precision": 0.875,
+            "recall": 1.0,
+            "f1": 0.9333333333333333,
+            "gold": 7,
+            "actual": 8,
+            "matched": 7
+          },
+          "obligation": {
+            "precision": 0.6666666666666666,
+            "recall": 0.5,
+            "f1": 0.5714285714285715,
+            "gold": 8,
+            "actual": 6,
+            "matched": 4
+          },
+          "condition": {
+            "precision": 0.2857142857142857,
+            "recall": 1.0,
+            "f1": 0.4444444444444445,
+            "gold": 2,
+            "actual": 7,
+            "matched": 2
+          },
+          "other": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "gold": 0,
+            "actual": 0,
+            "matched": 0
+          }
+        },
+        "gates_passed": false,
+        "violations": [
+          "Precision 0.619 fell below minimum 0.850",
+          "Recall 0.765 fell below minimum 0.950"
+        ]
+      }
+    },
+    "iocl-mathura-59p": {
+      "name": "IOCL Mathura Refinery Shutdown Tender (59 pages)",
+      "page_count": 59,
+      "domain": "oil_refinery_tender",
+      "index": {
+        "duration_seconds": 551.3,
+        "merged_precision": 0.06432748538011696,
+        "merged_recall": 0.9428571428571428,
+        "scope_accuracy": 0.18181818181818182,
+        "mention_precision": 0.0,
+        "mention_recall": 0.0,
+        "rule_recall": 1.0,
+        "family_drift": 0.0,
+        "matched_targets_count": 33,
+        "total_actual_targets": 513,
+        "total_gold_targets": 35,
+        "matched_mentions_count": 0,
+        "total_actual_mentions": 104,
+        "total_gold_mentions": 2,
+        "gates_passed": false,
+        "violations": [
+          "Merged Precision 0.064 fell below minimum 0.850",
+          "Merged Recall 0.943 fell below minimum 0.950",
+          "Mention Precision 0.000 fell below minimum 0.900",
+          "Mention Recall 0.000 fell below minimum 0.900"
+        ]
+      },
+      "action_items": {
+        "duration_seconds": 962.6,
+        "precision": 0.07142857142857142,
+        "recall": 0.875,
+        "f1": 0.1320754716981132,
+        "grounding_rate": 0.8596491228070176,
+        "matched_count": 7,
+        "actual_count": 98,
+        "gold_count": 8,
+        "by_type": {
+          "deadline": {
+            "precision": 0.0,
+            "recall": 1.0,
+            "f1": 0.0,
+            "gold": 0,
+            "actual": 8,
+            "matched": 0
+          },
+          "obligation": {
+            "precision": 0.037037037037037035,
+            "recall": 0.75,
+            "f1": 0.07058823529411765,
+            "gold": 4,
+            "actual": 54,
+            "matched": 3
+          },
+          "condition": {
+            "precision": 0.1388888888888889,
+            "recall": 1.0,
+            "f1": 0.24390243902439027,
+            "gold": 4,
+            "actual": 36,
+            "matched": 4
+          },
+          "other": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "gold": 0,
+            "actual": 0,
+            "matched": 0
+          }
+        },
+        "gates_passed": false,
+        "violations": [
+          "Recall 0.875 fell below minimum 0.950",
+          "Grounding rate 0.860 fell below minimum 0.900"
+        ]
+      }
+    },
+    "gail-jsw-61p": {
+      "name": "Delhi HC GAIL v JSW Steel Commercial Arbitration Appeal Judgment (61 pages)",
+      "page_count": 61,
+      "domain": "legal_judgment",
+      "index": {
+        "duration_seconds": 282.0,
+        "merged_precision": 0.05102040816326531,
+        "merged_recall": 0.8333333333333334,
+        "scope_accuracy": 0.0,
+        "mention_precision": 0.0,
+        "mention_recall": 0.0,
+        "rule_recall": 1.0,
+        "family_drift": 0.0,
+        "matched_targets_count": 10,
+        "total_actual_targets": 196,
+        "total_gold_targets": 12,
+        "matched_mentions_count": 0,
+        "total_actual_mentions": 42,
+        "total_gold_mentions": 1,
+        "gates_passed": false,
+        "violations": [
+          "Merged Precision 0.051 fell below minimum 0.850",
+          "Merged Recall 0.833 fell below minimum 0.950",
+          "Mention Precision 0.000 fell below minimum 0.900",
+          "Mention Recall 0.000 fell below minimum 0.900"
+        ]
+      },
+      "action_items": {
+        "duration_seconds": 133.2,
+        "precision": 0.05,
+        "recall": 0.3333333333333333,
+        "f1": 0.08695652173913045,
+        "grounding_rate": 0.9090909090909091,
+        "matched_count": 1,
+        "actual_count": 20,
+        "gold_count": 3,
+        "by_type": {
+          "deadline": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "gold": 0,
+            "actual": 0,
+            "matched": 0
+          },
+          "obligation": {
+            "precision": 0.0,
+            "recall": 1.0,
+            "f1": 0.0,
+            "gold": 0,
+            "actual": 1,
+            "matched": 0
+          },
+          "condition": {
+            "precision": 0.0,
+            "recall": 1.0,
+            "f1": 0.0,
+            "gold": 0,
+            "actual": 15,
+            "matched": 0
+          },
+          "other": {
+            "precision": 0.25,
+            "recall": 0.3333333333333333,
+            "f1": 0.28571428571428575,
+            "gold": 3,
+            "actual": 4,
+            "matched": 1
+          }
+        },
+        "gates_passed": false,
+        "violations": [
+          "Precision 0.050 fell below minimum 0.200",
+          "Recall 0.333 fell below minimum 0.900"
+        ]
+      }
+    }
+  }
+}

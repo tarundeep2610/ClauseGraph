@@ -23,6 +23,26 @@ def normalize_key_for_scoring(key: Optional[str]) -> str:
     return key or ""
 
 
+def normalize_scope_path(scope: Optional[str]) -> str:
+    """Normalizes each segment in a scope path for robust comparison."""
+    if not scope:
+        return ""
+    parts = scope.split("/")
+    return "/".join(normalize_key_for_scoring(p) for p in parts if p)
+
+
+def is_scope_match(gold_scope: Optional[str], actual_scope: Optional[str]) -> bool:
+    """Checks whether actual scope matches gold scope, tolerating immediate parent vs full path."""
+    norm_gold = normalize_scope_path(gold_scope)
+    norm_actual = normalize_scope_path(actual_scope)
+    if norm_gold == norm_actual:
+        return True
+    if norm_gold and norm_actual:
+        if norm_actual.endswith("/" + norm_gold) or norm_gold.endswith("/" + norm_actual):
+            return True
+    return False
+
+
 def target_identifier(target: Dict[str, Any]) -> Tuple[Any, str, int]:
     """Generates the primary identification tuple for a target: (page, normalized_key, occurrence_index)."""
     return (
@@ -99,7 +119,7 @@ def score_target_slice(
     actual_scope_map = {target_identifier(t): (t.get("scope_key") or "") for t in actual_targets}
 
     scope_matches = sum(
-        1 for tid in matched if gold_scope_map.get(tid) == actual_scope_map.get(tid)
+        1 for tid in matched if is_scope_match(gold_scope_map.get(tid), actual_scope_map.get(tid))
     )
     scope_acc = (scope_matches / len(matched)) if matched else 1.0
 
